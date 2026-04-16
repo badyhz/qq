@@ -1,0 +1,16 @@
+{
+  "R1_repo_bootstrap": true,
+  "R2_config_loader": true,
+  "R3_logger_system": true,
+  "R4_main_boot_flow": true,
+  "R5_core_module_interfaces": true,
+  "R6_dry_run_execution_guard": true,
+  "R7_basic_run_validation": true,
+
+  "R8_task_governance": false,
+  "R9_cc_supervisor_rules": false,
+  "R10_codex_worker_rules": false,
+  "R11_binance_api_safety_spec": false,
+  "R12_config_validation_upgrade": false,
+  "R13_logging_upgrade": false
+}
