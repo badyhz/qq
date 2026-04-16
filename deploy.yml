@@ -1,0 +1,127 @@
+# QQ Trading Bot CI/CD 自动化部署配置
+name: Deploy QQ Trading Bot
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run tests
+      run: |
+        python -m pytest tests/ -v
+        
+    - name: Create deployment package
+      run: |
+        tar -czf qq_bot_deploy.tar.gz \
+          --exclude ".venv" \
+          --exclude "__pycache__" \
+          --exclude "*.pyc" \
+          --exclude ".git" \
+          --exclude "logs" \
+          --exclude "*.swp" \
+          --exclude "*.log" \
+          --exclude ".DS_Store" \
+          --exclude "._*" \
+          .
+          
+    - name: Deploy to server
+      env:
+        SERVER_IP: ${{ secrets.SERVER_IP }}
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+        SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+      run: |
+        apt-get update && apt-get install -y expect
+        
+        cat > deploy.exp << 'EXPECT_EOF'
+        #!/usr/bin/expect -f
+        set timeout 60
+        set server_ip "$env(SERVER_IP)"
+        set server_user "$env(SERVER_USER)"
+        set server_password "$env(SERVER_PASSWORD)"
+        
+        spawn scp -o StrictHostKeyChecking=no qq_bot_deploy.tar.gz ${server_user}@${server_ip}:/tmp/
+        expect "password:"
+        send "${server_password}\r"
+        expect eof
+        
+        spawn ssh -o StrictHostKeyChecking=no ${server_user}@${server_ip}
+        expect "password:"
+        send "${server_password}\r"
+        expect "# "
+        send "cd /root/qq && tar -xzf /tmp/qq_bot_deploy.tar.gz --overwrite\\n"
+        expect "# "
+        send "source .venv/bin/activate && pip install -r requirements.txt\\n"
+        expect "# "
+        send "systemctl restart qq-bot\\n"
+        expect "# "
+        send "exit\\n"
+        expect eof
+        EXPECT_EOF
+        
+        chmod +x deploy.exp
+        ./deploy.exp
+        
+    - name: Verify deployment
+      env:
+        SERVER_IP: ${{ secrets.SERVER_IP }}
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+        SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+      run: |
+        apt-get update && apt-get install -y expect
+        
+        cat > verify.exp << 'VERIFY_EOF'
+        #!/usr/bin/expect -f
+        set timeout 30
+        set server_ip "$env(SERVER_IP)"
+        set server_user "$env(SERVER_USER)"
+        set server_password "$env(SERVER_PASSWORD)"
+        
+        spawn ssh -o StrictHostKeyChecking=no ${server_user}@${server_ip}
+        expect "password:"
+        send "${server_password}\r"
+        expect "# "
+        send "systemctl status qq-bot\\n"
+        expect "# "
+        send "ps aux | grep -E 'python.*main' | grep -v grep\\n"
+        expect "# "
+        send "tail -5 /root/qq/logs/bot.log\\n"
+        expect "# "
+        send "exit\\n"
+        expect eof
+        VERIFY_EOF
+        
+        chmod +x verify.exp
+        ./verify.exp
+        
+    - name: Send deployment notification
+      if: always()
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        message: |
+          🚀 QQ Trading Bot 部署完成!
+          
+          状态: ${{ job.status }}
+          分支: ${{ github.ref }}
+          提交: ${{ github.sha }}
+          
+          查看详情: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

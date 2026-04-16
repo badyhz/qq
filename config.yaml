@@ -1,0 +1,119 @@
+mode: "dry-run"
+data_mode: "websocket"
+
+timeframe: "5m"
+
+runtime:
+  loop_interval_seconds: 0.5
+  heartbeat_interval_seconds: 60
+  max_loops: 0
+
+experiment:
+  active_strategy_profile: "aggressive"
+  baseline_strategy_profile: "baseline"
+  compare_profiles: ["baseline", "aggressive"]
+
+data:
+  warmup_candles: 200
+  websocket_reconnect_seconds: 5
+  websocket_stale_seconds: 75
+
+portfolio:
+  max_open_positions: 3
+
+radar:
+  enabled: true
+  max_hot_symbols: 10
+  min_24h_volume: 10000000
+  update_interval: 60
+  price_weight: 0.6
+  funding_weight: 0.4
+  min_score: 24.0
+  quote_asset: "USDT"
+  exclude_symbols: []
+  always_include_symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"]
+  fallback_symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"]
+
+risk:
+  starting_balance_usdt: 1000
+  risk_per_trade: 0.01
+  max_daily_loss_pct: 0.03
+  max_consecutive_losses: 2
+  cooldown_minutes: 15
+  leverage: 1
+  min_notional_usdt: 25
+  max_notional_usdt: 100
+
+strategy:
+  lookback: 50
+  ema_period: 21
+  vwap_window: 20
+  std_window: 50
+  atr_period: 14
+  low_volatility_filter_pct: 0.0025
+  stop_atr_multiplier: 1.2
+  take_profit_rr: 1.6
+  min_stop_pct: 0.01
+  max_stop_pct: 0.035
+  min_take_profit_rr: 1.5
+  max_take_profit_rr: 2.2
+  zscore_retrace_delta: 0.30
+  cooldown_bars: 1
+
+strategy_profiles:
+  baseline:
+    armed_zscore: 1.6
+    entry_zscore: 1.8
+    min_score: 4
+    low_volatility_filter_pct: 0.0025
+    take_profit_rr: 1.6
+    min_stop_pct: 0.01
+    max_stop_pct: 0.035
+    min_take_profit_rr: 1.5
+    max_take_profit_rr: 2.2
+    zscore_retrace_delta: 0.35
+    cooldown_bars: 2
+  aggressive:
+    armed_zscore: 1.35
+    entry_zscore: 1.5
+    min_score: 3
+    low_volatility_filter_pct: 0.0020
+    take_profit_rr: 1.55
+    min_stop_pct: 0.01
+    max_stop_pct: 0.035
+    min_take_profit_rr: 1.5
+    max_take_profit_rr: 2.05
+    zscore_retrace_delta: 0.28
+    cooldown_bars: 1
+
+execution:
+  slippage_threshold: 0.003
+  dry_run_fee_rate: 0.0004
+  working_type: "MARK_PRICE"
+  allow_live_without_protection: false
+  guard_check_interval_seconds: 5
+
+logging:
+  level: "INFO"
+  file_path: "logs/bot.log"
+
+# Bark 消息推送配置
+bark:
+  enabled: true  # 是否启用 Bark 推送
+  device_key: "qQH2uNcLvpFuqfHqykmMCD"  # 你的 Bark 设备密钥
+  notify_on_error: true  # 错误时推送
+  notify_on_trade: true  # 交易平仓时推送
+  notify_on_signal: true  # 发现交易信号时推送
+  notify_on_status: false  # 定期状态推送（默认关闭）
+  error_cooldown_minutes: 10  # 错误推送冷却时间（避免频繁推送）
+  trade_cooldown_minutes: 5  # 交易推送冷却时间
+  status_interval_hours: 6  # 状态推送间隔
+
+paths:
+  trades_csv_template: "trades_{profile}.csv"
+  trades_csv: "trades_aggressive.csv"
+
+binance:
+  api_key: ""
+  api_secret: ""
+  futures_base_url: "https://fapi.binance.com"

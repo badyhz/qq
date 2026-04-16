@@ -1,0 +1,1 @@
+trade_id,symbol,mode,side,strategy_profile,entry_price,exit_price,stop_price,take_profit_price,quantity,notional,gross_pnl,fees_paid,pnl,return_pct,score,zscore,vwap,vwap_dev,atr,volume_ratio,reward_risk_ratio,estimated_loss_at_stop,estimated_gain_at_target,mae_price_distance,mfe_price_distance,mae_pct,mfe_pct,entry_time,exit_time,duration_sec,exit_reason,notes
