@@ -27,6 +27,22 @@
 
 ---
 
+## T201 execution.py 单元测试
+目标：
+- 为 execution.py 添加最小单元测试
+- 只测试 dry-run 模式
+- 只测试 open_short 方法
+
+验收：
+- 创建 tests/unit/test_execution.py
+- 测试 dry-run 开仓成功场景
+- 测试 quantity <= 0 边界条件
+- 所有测试通过
+
+状态：✅ 完成 (2026-04-17)
+
+---
+
 ## T003 日志系统
 目标：
 - 建立统一日志模块
