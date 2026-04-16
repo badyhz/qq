@@ -1,0 +1,33 @@
+{
+  "project_name": "qq",
+  "current_stage": "stage_0_init",
+  "global_rules": [
+    "default_dry_run_true",
+    "no_hardcoded_secrets",
+    "modular_design_required",
+    "must_be_runnable",
+    "must_be_testable"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "基础工程结构",
+      "accepted_when": [
+        "存在 main.py",
+        "存在 core 目录",
+        "存在 utils 目录",
+        "存在 config 文件",
+        "项目可启动"
+      ]
+    },
+    {
+      "id": "M2",
+      "name": "配置与日志",
+      "accepted_when": [
+        "支持配置加载",
+        "支持日志输出",
+        "dry_run 可配置"
+      ]
+    }
+  ]
+}
