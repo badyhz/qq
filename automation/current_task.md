@@ -1,31 +1,30 @@
-# Codex Task: T201 Execution Engine Unit Tests
+# Codex Task: T202 Risk Manager Unit Tests
 
 ## Task ID
-T201 - execution.py 单元测试（最小版）
+T202 - risk_manager.py 单元测试（最小版）
 
 ## Overview
-为 `core/execution.py` 添加单元测试，只覆盖 dry-run 模式的核心逻辑和边界条件。
+为 `core/risk_manager.py` 添加单元测试，只覆盖权限检查和仓位计算逻辑。
 
 ---
 
 ## Step-by-Step Instructions
 
 ### Step 1: Read Source Code
-First, read `core/execution.py` to understand:
-- The `ExecutionEngine.__init__` constructor signature
+First, read `core/risk_manager.py` to understand:
+- The `RiskManager.__init__` constructor signature
 - What config keys are used (look for `config.get(...)` calls)
-- What the `open_short` method returns in dry-run mode
-- What fields are in the return dictionary
+- What `can_open_new_trade` method returns and what conditions it checks
+- What `calculate_position` method returns and how it calculates quantities
 
 ### Step 2: Create Test File
-Create `tests/unit/` directory if it doesn't exist.
-Create `tests/unit/test_execution.py` with the following structure:
+Create `tests/unit/test_risk_manager.py` with following structure:
 
 ```python
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
 import pytest
-from core.execution import ExecutionEngine
+from core.risk_manager import RiskManager
 
 # Fixtures will be added below
 
@@ -33,53 +32,56 @@ from core.execution import ExecutionEngine
 ```
 
 ### Step 3: Add Fixtures
-Based on what you learned from reading `core/execution.py` in Step 1, create these fixtures:
+Based on what you learned from reading `core/risk_manager.py` in Step 1, create these fixtures:
 
 1. `mock_config()` - Return a config dict with:
-   - `mode`: "dry-run"
-   - `execution` section with keys used by ExecutionEngine (dry_run_fee_rate, slippage_threshold, allow_live_without_protection)
-   - Any other keys the constructor uses (e.g., "strategy_profile")
+   - `risk` section with keys used by RiskManager (starting_balance_usdt, risk_per_trade, max_daily_loss_pct, max_consecutive_losses, cooldown_minutes, min_notional_usdt, max_notional_usdt, leverage)
+   - Any other keys constructor uses
 
 2. `mock_logger()` - Return a MagicMock object
 
-3. `mock_order_manager()` - Return a MagicMock object
+### Step 4: Test can_open_new_trade Permission Logic
+Create test `test_can_open_new_trade`:
 
-4. `mock_exchange()` - Return a MagicMock object
+1. Test normal case - should return (True, "ok")
+2. Test cooldown active - should return (False, "cooldown_active")
+3. Test daily loss limit - should return (False, "daily_loss_limit")
+4. Test consecutive losses limit - should return (False, "consecutive_loss_limit")
+5. Test balance depleted - should return (False, "balance_depleted")
 
-### Step 4: Test Dry-Run Success
-Create test `test_dry_run_open_short_success`:
+For each test case:
+- Set up RiskManager with appropriate state
+- Call `manager.can_open_new_trade(symbol, timestamp)`
+- Assert the returned tuple matches expected (bool, reason)
 
-1. Use the fixtures from Step 3
-2. Create a valid `position_plan`, `signal`, and `market` dict
-3. Instantiate ExecutionEngine with the mocked dependencies
-4. Call `engine.open_short(position_plan, signal, market)`
-5. Assert the result matches what `core/execution.py` returns in dry-run mode:
-   - `result["accepted"]` should be True
-   - `result["mode"]` should be "dry-run"
-   - Assert all key fields are present and correct based on source code
+### Step 5: Test calculate_position Logic
+Create test `test_calculate_position`:
 
-### Step 5: Test Invalid Quantity
-Create test `test_open_short_invalid_quantity_rejected`:
+1. Test normal position calculation with valid parameters
+2. Test adjustment for minimum notional
+3. Test adjustment for maximum notional
+4. Test handling of zero or negative risk distance
 
-1. Test with `quantity = 0.0` - should return accepted=False, reason="invalid_quantity"
-2. Test with `quantity = -0.5` - should return accepted=False, reason="invalid_quantity"
-3. Verify warning is logged
+For each test case:
+- Create a valid `signal` dict with entry, stop, tp
+- Call `manager.calculate_position(signal, symbol, open_positions)`
+- Assert returned quantity, notional, and other fields are correct
 
 ### Step 6: Verify Tests Run
-Run: `pytest tests/unit/test_execution.py -v`
+Run: `pytest tests/unit/test_risk_manager.py -v`
 
 ---
 
 ## File Permissions
 
 ### Allowed to Modify/Create
-- `tests/unit/test_execution.py` - ONLY this file
+- `tests/unit/test_risk_manager.py` - ONLY this file
 
 ### Forbidden to Modify (DO NOT TOUCH THESE FILES)
-- `core/execution.py`
+- `core/risk_manager.py`
 - `main.py`
 - `config.yaml`
-- `core/risk_manager.py`
+- `core/execution.py`
 - `core/order_manager.py`
 - `core/signal_engine.py`
 - `core/data_feed.py`
@@ -93,11 +95,12 @@ Run: `pytest tests/unit/test_execution.py -v`
 
 ## Important Instructions
 
-1. **READ THE SOURCE FIRST** - Before writing any tests, read `core/execution.py` carefully
+1. **READ THE SOURCE FIRST** - Before writing any tests, read `core/risk_manager.py` carefully
 2. **ADAPT TO SOURCE CODE** - Don't use hardcoded values. Use what the actual code expects.
-3. **USE MAGICK MIGG** - Mock all dependencies (config, logger, order_manager, exchange)
-4. **ONLY TEST DRY-RUN** - Do not test live mode or ensure_live_protection
-5. **KEEP IT SIMPLE** - Only test the specified scenarios
+3. **USE MAGICMOCK** - Mock logger dependency
+4. **ONLY TEST TWO METHODS** - Test `can_open_new_trade` and `calculate_position` only
+5. **DO NOT TEST on_trade_closed** - Not in scope for this task
+6. **KEEP IT SIMPLE** - Only test specified scenarios
 
 ---
 
@@ -105,30 +108,33 @@ Run: `pytest tests/unit/test_execution.py -v`
 
 ```bash
 # Collect tests
-pytest tests/unit/test_execution.py --collect-only
+pytest tests/unit/test_risk_manager.py --collect-only
 
 # Run all tests
-pytest tests/unit/test_execution.py -v
+pytest tests/unit/test_risk_manager.py -v
 
-# Run specific test
-pytest tests/unit/test_execution.py::test_dry_run_open_short_success -v
+# Run can_open_new_trade tests
+pytest tests/unit/test_risk_manager.py -k can_open -v
+
+# Run calculate_position tests
+pytest tests/unit/test_risk_manager.py -k calculate_position -v
 ```
 
 ---
 
 ## Completion Checklist
 
-- [ ] Read `core/execution.py` and understood the structure
-- [ ] Created `tests/unit/test_execution.py` with proper imports
-- [ ] Added all required fixtures (mock_config, mock_logger, mock_order_manager, mock_exchange)
-- [ ] Created `test_dry_run_open_short_success` and it passes
-- [ ] Created `test_open_short_invalid_quantity_rejected` and it passes
-- [ ] All tests pass with `pytest tests/unit/test_execution.py -v`
+- [ ] Read `core/risk_manager.py` and understood of structure
+- [ ] Created `tests/unit/test_risk_manager.py` with proper imports
+- [ ] Added required fixtures (mock_config, mock_logger)
+- [ ] Created `test_can_open_new_trade` and all sub-tests pass
+- [ ] Created `test_calculate_position` and all sub-tests pass
+- [ ] All tests pass with `pytest tests/unit/test_risk_manager.py -v`
 - [ ] NO source code files were modified
 
 ---
 
 ## Reference
 
-- Source file: `core/execution.py`
-- Test file to create: `tests/unit/test_execution.py`
+- Source file: `core/risk_manager.py`
+- Test file to create: `tests/unit/test_risk_manager.py`

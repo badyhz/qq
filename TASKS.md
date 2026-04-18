@@ -43,6 +43,22 @@
 
 ---
 
+## T202 risk_manager.py 单元测试
+目标：
+- 为 risk_manager.py 添加最小单元测试
+- 只测试 can_open_new_trade() 方法
+- 只测试 calculate_position() 方法
+
+验收：
+- 创建 tests/unit/test_risk_manager.py
+- 测试权限检查的所有允许/拒绝条件
+- 测试仓位计算和边界调整
+- 所有测试通过
+
+状态：✅ 完成 (2026-04-18)
+
+---
+
 ## T003 日志系统
 目标：
 - 建立统一日志模块
