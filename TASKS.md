@@ -59,6 +59,22 @@
 
 ---
 
+## T203 order_manager.py 单元测试
+目标：
+- 为 order_manager.py 添加最小单元测试
+- 只测试状态流转方法
+- 只测试止损止盈触发逻辑
+
+验收：
+- 创建 tests/unit/test_order_manager.py
+- 测试 has_position/can_open/open_position 状态变化
+- 测试 update_market 的止损/止盈触发
+- 所有测试通过
+
+状态：✅ 完成 (2026-04-18)
+
+---
+
 ## T003 日志系统
 目标：
 - 建立统一日志模块
