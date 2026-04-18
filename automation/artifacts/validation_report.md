@@ -1,21 +1,14 @@
 # Validation Report
 
 ## Time
-2026年 4月18日 星期六 14时43分11秒 CST
+2026年 4月18日 星期六 15时20分52秒 CST
 
 ## Git Status
  M automation/artifacts/codex_result.md
  M automation/artifacts/validation_report.md
  M automation/current_task.md
 ?? .claude.bak.20260417-015653/
-?? CLAUDE.md
-?? automation/approval.json
-?? automation/build_review_packet.sh
-?? automation/run_codex.sh
-?? automation/validate_codex.sh
-?? memory/
-?? rules/
-?? tests/unit/test_order_manager.py
+?? tests/unit/test_signal_engine.py
 
 ## Changed Files
 automation/artifacts/codex_result.md
@@ -23,10 +16,10 @@ automation/artifacts/validation_report.md
 automation/current_task.md
 
 ## Test File
-tests/unit/test_order_manager.py
+tests/unit/test_signal_engine.py
 
 ## Test Command
-./.venv/bin/python -m pytest tests/unit/test_order_manager.py -v
+./.venv/bin/python -m pytest tests/unit/test_signal_engine.py -v
 
 ## Test Output
 ============================= test session starts ==============================
@@ -35,11 +28,11 @@ cachedir: .pytest_cache
 rootdir: /Users/winnie/Documents/trae_projects/qq
 collecting ... collected 6 items
 
-tests/unit/test_order_manager.py::test_has_position_returns_false_initially PASSED [ 16%]
-tests/unit/test_order_manager.py::test_can_open_returns_true_initially PASSED [ 33%]
-tests/unit/test_order_manager.py::test_open_position_updates_state_and_stores_fields PASSED [ 50%]
-tests/unit/test_order_manager.py::test_update_market_triggers_close[market_overrides0-105.0-STOP_LOSS--12.5] PASSED [ 66%]
-tests/unit/test_order_manager.py::test_update_market_triggers_close[market_overrides1-90.0-TAKE_PROFIT-25.0] PASSED [ 83%]
-tests/unit/test_order_manager.py::test_update_market_with_no_trigger_returns_none PASSED [100%]
+tests/unit/test_signal_engine.py::test_initial_state_is_idle PASSED      [ 16%]
+tests/unit/test_signal_engine.py::test_on_position_opened_changes_state_to_in_position PASSED [ 33%]
+tests/unit/test_signal_engine.py::test_on_trade_closed_with_cooldown_changes_state_to_cooldown PASSED [ 50%]
+tests/unit/test_signal_engine.py::test_on_trade_closed_without_cooldown_changes_state_to_idle PASSED [ 66%]
+tests/unit/test_signal_engine.py::test_state_returns_to_idle_after_cooldown_completion PASSED [ 83%]
+tests/unit/test_signal_engine.py::test_on_candle_returns_none_when_no_signal PASSED [100%]
 
-============================== 6 passed in 0.05s ===============================
+============================== 6 passed in 0.07s ===============================

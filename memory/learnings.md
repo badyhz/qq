@@ -118,6 +118,33 @@ order_manager.py 作为第三波接管模块完全符合当前阶段约束：
 
 ---
 
+## 2026-04-18 T204 Task Execution
+
+### Observation
+signal_engine.py 作为第四波接管模块符合当前阶段约束：
+- 无外部 API 依赖
+- 状态机逻辑相对独立
+- 复杂度高（5种状态、多指标计算）
+
+### Impact
+- 验证了复杂状态机模块的测试可行性
+- 非信号路径测试有效降低测试复杂度
+- 避免指标精确断言提升了测试稳定性
+- 证明了分阶段测试策略的有效性
+
+### Recommendation
+1. 对于复杂模块，优先测试非关键路径（NONE返回）
+2. 避免对依赖模块做精确断言（如indicators.py）
+3. 状态机测试应覆盖所有状态转换路径
+4. 后续可补充信号触发路径作为独立任务
+
+### Related Files
+- core/signal_engine.py
+- tests/unit/test_signal_engine.py
+- automation/current_task.md
+
+---
+
 ## Initial Context
 
 ### Project Phase
