@@ -1,8 +1,8 @@
-在 [tests/unit/test_execution.py](/Users/winnie/Documents/trae_projects/qq/tests/unit/test_execution.py:1) 添加了最小版 dry-run 单元测试，只覆盖你指定的两类场景。
+新增了 [tests/unit/test_risk_manager.py](/Users/winnie/Documents/trae_projects/qq/tests/unit/test_risk_manager.py)，只覆盖 `RiskManager.can_open_new_trade` 和 `RiskManager.calculate_position`。测试按源码真实行为写了 9 个参数化场景：5 个权限检查返回值，4 个仓位计算场景，其中“无效风险距离”按实现实际只覆盖了 `entry == stop`，因为源码先做了 `abs(stop - entry)`，不存在单独的“负风险距离”分支。
 
-`test_dry_run_open_short_success` 校验了 `open_short` 在 dry-run 下的完整返回结构和关键数值，包括 `accepted/mode/symbol/entry_price/stop_price/take_profit_price/quantity/notional/fees_paid/fee_rate/meta/notes/execution_duration`。`test_open_short_invalid_quantity_rejected` 用参数化覆盖了 `quantity=0.0` 和 `quantity=-0.5`，并验证返回 `{"accepted": False, "reason": "invalid_quantity"}`，同时断言 warning 被记录，且不会触发 live 分支调用。
-
-验证结果：
-- `PYTHONPYCACHEPREFIX=/tmp/pycache ./.venv/bin/python -m py_compile tests/unit/test_execution.py` 通过。
-- 手动执行 `ExecutionEngine.open_short(...)` 的 dry-run 成功路径和非法数量路径，返回值与测试断言一致。
-- `pytest tests/unit/test_execution.py -v` 目前无法在这个会话里执行，因为系统 Python 和仓库 `.venv` 都没有安装 `pytest`，报错是 `No module named pytest`。如果你补装 `pytest`，这个文件就可以按你给的命令直接跑。
+验证已完成，使用仓库虚拟环境运行：
+```bash
+./.venv/bin/python -m pytest tests/unit/test_risk_manager.py --collect-only
+./.venv/bin/python -m pytest tests/unit/test_risk_manager.py -v
+```
+结果是 `9 passed`。本次只新增了目标测试文件；`git status` 里还有一些仓库中原本就存在的未提交改动，但没有修改 `core/risk_manager.py` 或其他受限文件。
