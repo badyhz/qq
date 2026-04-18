@@ -145,6 +145,32 @@ signal_engine.py 作为第四波接管模块符合当前阶段约束：
 
 ---
 
+## 2026-04-18 T205 Task Execution
+
+### Observation
+T205 完成了核心链回归集整理：
+- 4 个核心模块测试已覆盖 execution → risk_manager → order_manager → signal_engine
+- 回归文档提供了统一的测试入口
+- 回归命令基于 .venv 虚拟环境
+
+### Impact
+- 建立了可重复的回归标准
+- 为 CI/CD 集成提供了基础
+- 文档化的回归命令确保测试一致性
+- 核心链完整测试覆盖了 main.py 依赖关系
+
+### Recommendation
+1. 回归命令应优先使用 .venv 路径
+2. 回归文档应随任务更新维护
+3. 后续新增测试应同步更新 REGRESSION.md
+4. 可选：添加覆盖率报告到回归命令
+
+### Related Files
+- tests/REGRESSION.md
+- automation/current_task.md
+
+---
+
 ## Initial Context
 
 ### Project Phase
