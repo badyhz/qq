@@ -1,149 +1,153 @@
-# Codex Task: T204 Signal Engine Unit Tests
+# Codex Task: T205 Core Chain Regression Documentation
 
 ## Task ID
-T204 - signal_engine.py 单元测试（最小版）
+T205 - 核心链测试整理与回归入口规范（最小版）
 
 ## Overview
-为 `core/signal_engine.py` 添加单元测试，只覆盖状态机基础流转和非信号路径。
+为已完成的 4 个核心模块测试创建回归文档和验证回归命令可用。
 
 ---
 
 ## Step-by-Step Instructions
 
-### Step 1: Read Source Code
-First, read `core/signal_engine.py` to understand:
-- The `SignalEngine.__init__` constructor signature
-- What config keys are used (look for `config.get(...)` calls)
-- What state machine states exist (IDLE, ARMED, TRIGGERED, IN_POSITION, COOLDOWN)
-- What methods change state (on_position_opened, on_trade_closed, on_candle)
-- What `on_candle` returns in different scenarios
+### Step 1: Create Regression Documentation
+Create `tests/REGRESSION.md` with following content:
 
-### Step 2: Create Test File
-Create `tests/unit/test_signal_engine.py` with following structure:
+```markdown
+# Core Chain Regression
 
-```python
-from datetime import datetime, timezone
-from unittest.mock import MagicMock
-import pytest
-from core.signal_engine import SignalEngine
+## Overview
+This regression suite tests the 4 core modules that form the main trading execution chain:
+1. Execution Execution Engine (execution.py)
+2. Risk Manager (risk_manager.py)
+3. Order Manager (order_manager.py)
+4. Signal Engine (signal_engine.py)
 
-# Fixtures will be added below
+## Test Files
+- `tests/unit/test_execution.py` - T201 completed
+- `tests/unit/test_risk_manager.py` - T202 completed
+- `tests/unit/test_order_manager.py` - T203 completed
+- `tests/unit/test_signal_engine.py` - T204 completed
 
-# Tests will be added below
+## Regression Commands
+
+### Run All Core Chain Tests
+```bash
+./.venv/bin/python -m pytest tests/unit/ -v
 ```
 
-### Step 3: Add Fixtures
-Based on what you learned from reading `core/signal_engine.py` in Step 1, create these fixtures:
+### Run Individual Module Tests
+```bash
+# Execution engine tests
+./.venv/bin/python -m pytest tests/unit/test_execution.py -v
 
-1. `mock_config()` - Return a config dict with:
-   - `strategy` section with keys used by SignalEngine
-   - Any other keys constructor uses
+# Risk manager tests
+./.venv/bin/python -m pytest tests/unit/test_risk_manager.py -v
 
-2. `mock_logger()` - Return a MagicMock object
+# Order manager tests
+./.venv/bin/python -m pytest tests/unit/test_order_manager.py -v
 
-3. `mock_candle()` - Return a valid candle dict with timestamp, close, high, low, volume
+# Signal engine tests
+./.venv/bin/python -m pytest tests/unit/test_signal_engine.py -v
+```
 
-### Step 4: Test State Machine Flow
-Create tests for state transitions:
+### Run by Test Name Pattern
+```bash
+# Test specific functions
+./.venv/bin/python -m pytest tests/unit/ -k "test_open_short" -v
+./.venv/bin/python -m pytest tests/unit/ -k "test_can_open" -v
+./.venv/bin/python -m pytest tests/unit/ -k "test_state" -v
+./.venv/bin/python -m pytest tests/unit/ -k "test_on_candle" -v
+```
 
-1. Test initial state is IDLE
-2. Test `on_position_opened()` changes state to IN_POSITION
-3. Test `on_trade_closed()` with cooldown > 0 changes state to COOLDOWN
-4. Test `on_trade_closed()` with cooldown = 0 changes state to IDLE
-5. Test cooldown completion returns state to IDLE (call on_candle enough times)
+## Completion Status
+- [x] T201: execution.py unit tests
+- [x] T202: risk_manager.py unit tests
+- [x] T203: order_manager.py unit tests
+- [x] T204: signal_engine.py unit tests
 
-For each test:
-- Instantiate SignalEngine with mock config
-- Call state-changing methods
-- Assert state matches expected value
-- Use whatever state checking method exists or access private state if needed
+## Notes
+- All tests use dry-run mode
+- No live trading code is tested
+- No external APIs are called
+- Tests are designed to be fast and deterministic
+```
 
-### Step 5: Test on_candle Non-Signal Paths
-Create test `test_on_candle_returns_none_when_no_signal`:
+### Step 2: Verify Regression Commands
+Run the core chain regression command to ensure it works:
 
-1. Test when insufficient data (not enough candles) - returns action="NONE"
-2. Test when already has position - returns action="NONE"
-3. Test when in cooldown - returns action="NONE"
-4. Test when conditions not met for signal - returns action="NONE"
+```bash
+./.venv/bin/python -m pytest tests/unit/ -v
+```
 
-For each test:
-- Set up SignalEngine with appropriate state
-- Create mock candle data
-- Call `signal_engine.on_candle(candle, has_position=...)`
-- Assert returned dict has `action` key
-- Assert `action` is "NONE"
-- Do NOT test actual SHORT signal triggers
-- Do NOT make precise assertions on indicator values
-
-### Step 6: Verify Tests Run
-Run: `pytest tests/unit/test_signal_engine.py -v`
+Expected output should show:
+- Tests collected from all 4 test files
+- All tests pass
+- No errors
 
 ---
 
 ## File Permissions
 
 ### Allowed to Modify/Create
-- `tests/unit/test_signal_engine.py` - ONLY this file
+- `tests/REGRESSION.md` - ONLY this file
 
 ### Forbidden to Modify (DO NOT TOUCH THESE FILES)
-- `core/signal_engine.py`
+- All core/ source files (execution.py, risk_manager.py, order_manager.py, signal_engine.py, etc.)
 - `main.py`
 - `config.yaml`
-- `core/execution.py`
-- `core/risk_manager.py`
-- `core/order_manager.py`
-- `core/data_feed.py`
-- `core/ticker_scanner.py`
-- `core/trade_logger.py`
-- `core/exchange.py`
-- `utils/indicators.py`
-- Any other files in `tests/` directory
+- Any test files in `tests/unit/`
+- `tests/conftest.py` - DO NOT create this
+- Any other files in `tests/`
 
 ---
 
 ## Important Instructions
 
-1. **READ THE SOURCE FIRST** - Before writing any tests, read `core/signal_engine.py` carefully
-2. **ADAPT TO SOURCE CODE** - Don't use hardcoded values. Use what actual code expects.
-3. **USE MAGICMOCK** - Mock logger dependency
-4. **ONLY TEST NON-SIGNAL PATHS** - Do NOT test actual SHORT signal triggers
-5. **DO NOT TEST ARMED STATE** - Focus on IDLE, IN_POSITION, COOLDOWN transitions
-6. **NO PRE- INDICATOR ASSERTIONS** - Don't assert exact EMA/VWAP/ATR values
-7. **KEEP IT SIMPLE** - Only test specified scenarios
+1. **ONLY CREATE REGRESSION DOCUMENT** - This is a documentation task only
+2. **DO NOT CREATE conftest.py** - No shared fixtures
+3. **DO NOT MODIFY EXISTING TESTS** - All test files stay as-is
+4. **USE VENV PATH** - All commands must use `./.venv/bin/python`
+5. **KEEP IT SIMPLE** - Just document existing tests, don't refactor
 
 ---
 
 ## Verification Commands
 
 ```bash
-# Collect tests
-pytest tests/unit/test_signal_engine.py --collect-only
+# Verify regression doc exists
+cat tests/REGRESSION.md
 
-# Run all tests
-pytest tests/unit/test_signal_engine.py -v
+# Run core chain regression
+./.venv/bin/python -m pytest tests/unit/ -v
 
-# Run state machine tests
-pytest tests/unit/test_signal_engine.py -k "test_state" -v
-
-# Run on_candle tests
-pytest tests/unit/test_signal_engine.py -k "test_on_candle" -v
+# Verify individual test files
+./.venv/bin/python -m pytest tests/unit/test_execution.py -v
+./.venv/bin/python -m pytest tests/unit/test_risk_manager.py -v
+./.venv/bin/python -m pytest tests/unit/test_order_manager.py -v
+./.venv/bin/python -m pytest tests/unit/test_signal_engine.py -v
 ```
 
 ---
 
 ## Completion Checklist
 
-- [ ] Read `core/signal_engine.py` and understood structure
-- [ ] Created `tests/unit/test_signal_engine.py` with proper imports
-- [ ] Added required fixtures (mock_config, mock_logger, mock_candle)
-- [ ] Created state flow tests and they pass
-- [ ] Created non-signal path tests and they pass
-- [ ] All tests pass with `pytest tests/unit/test_signal_engine.py -v`
+- [ ] Created `tests/REGRESSION.md` with proper content
+- [ ] Regression doc lists all 4 test files
+- [ ] Regression doc uses `./.venv/bin/python` paths
+- [ ] Core chain regression command passes: `./.venv/bin/python -m pytest tests/unit/ -v`
+- [ ] All 4 individual test files pass
 - [ ] NO source code files were modified
+- [ ] NO existing test files were modified
+- [ ] NO conftest.py was created
 
 ---
 
 ## Reference
 
-- Source file: `core/signal_engine.py`
-- Test file to create: `tests/unit/test_signal_engine.py`
+- Regression doc to create: `tests/REGRESSION.md`
+- Test files (do NOT modify):
+  - tests/unit/test_execution.py
+  - tests/unit/test_risk_manager.py
+  - tests/unit/test_order_manager.py
+  - tests/unit/test_signal_engine.py
