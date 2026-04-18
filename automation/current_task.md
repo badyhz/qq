@@ -1,30 +1,32 @@
-# Codex Task: T202 Risk Manager Unit Tests
+# Codex Task: T203 Order Manager Unit Tests
 
 ## Task ID
-T202 - risk_manager.py 单元测试（最小版）
+T203 - order_manager.py 单元测试（最小版）
 
 ## Overview
-为 `core/risk_manager.py` 添加单元测试，只覆盖权限检查和仓位计算逻辑。
+为 `core/order_manager.py` 添加单元测试，只覆盖状态管理和平仓逻辑。
 
 ---
 
 ## Step-by-Step Instructions
 
 ### Step 1: Read Source Code
-First, read `core/risk_manager.py` to understand:
-- The `RiskManager.__init__` constructor signature
+First, read `core/order_manager.py` to understand:
+- The `OrderManager.__init__` constructor signature
 - What config keys are used (look for `config.get(...)` calls)
-- What `can_open_new_trade` method returns and what conditions it checks
-- What `calculate_position` method returns and how it calculates quantities
+- What `has_position()` and `can_open()` methods return
+- What `open_position()` method creates and stores
+- What `update_market()` method does in dry-run mode
+- What `_close_position()` method returns (the closed trade dict)
 
 ### Step 2: Create Test File
-Create `tests/unit/test_risk_manager.py` with following structure:
+Create `tests/unit/test_order_manager.py` with following structure:
 
 ```python
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 import pytest
-from core.risk_manager import RiskManager
+from core.order_manager import OrderManager
 
 # Fixtures will be added below
 
@@ -32,57 +34,77 @@ from core.risk_manager import RiskManager
 ```
 
 ### Step 3: Add Fixtures
-Based on what you learned from reading `core/risk_manager.py` in Step 1, create these fixtures:
+Based on what you learned from reading `core/order_manager.py` in Step 1, create these fixtures:
 
 1. `mock_config()` - Return a config dict with:
-   - `risk` section with keys used by RiskManager (starting_balance_usdt, risk_per_trade, max_daily_loss_pct, max_consecutive_losses, cooldown_minutes, min_notional_usdt, max_notional_usdt, leverage)
-   - Any other keys constructor uses
+   - `mode`: "dry-run"
+   - Any other keys constructor uses (e.g., "strategy_profile")
 
-2. `mock_logger()` - Return a MagicMock object
+2. `mock_execution_result()` - Return a valid execution result dict with:
+   - accepted: True
+   - mode: "dry-run"
+   - All required fields that `open_position` expects
 
-### Step 4: Test can_open_new_trade Permission Logic
-Create test `test_can_open_new_trade`:
+3. `mock_signal()` - Return a valid signal dict
 
-1. Test normal case - should return (True, "ok")
-2. Test cooldown active - should return (False, "cooldown_active")
-3. Test daily loss limit - should return (False, "daily_loss_limit")
-4. Test consecutive losses limit - should return (False, "consecutive_loss_limit")
-5. Test balance depleted - should return (False, "balance_depleted")
+4. `mock_market()` - Return a valid market dict with close, high, low, timestamp
 
-For each test case:
-- Set up RiskManager with appropriate state
-- Call `manager.can_open_new_trade(symbol, timestamp)`
-- Assert the returned tuple matches expected (bool, reason)
+### Step 4: Test State Flow (has_position, can_open, open_position)
+Create tests for state transitions:
 
-### Step 5: Test calculate_position Logic
-Create test `test_calculate_position`:
+1. Test `has_position()` returns False initially
+2. Test `can_open()` returns True initially
+3. Test after `open_position()`:
+   - `has_position()` returns True
+   - `can_open()` returns False
+   - Position has correct fields (entry_price, stop_price, take_profit_price, quantity, etc.)
 
-1. Test normal position calculation with valid parameters
-2. Test adjustment for minimum notional
-3. Test adjustment for maximum notional
-4. Test handling of zero or negative risk distance
+For each test:
+- Instantiate OrderManager with mock config
+- Call methods and assert expected state changes
+- Assert position dict has required keys from source code
 
-For each test case:
-- Create a valid `signal` dict with entry, stop, tp
-- Call `manager.calculate_position(signal, symbol, open_positions)`
-- Assert returned quantity, notional, and other fields are correct
+### Step 5: Test Stop Loss / Take Profit Triggers
+Create test `test_update_market_triggers_close`:
+
+1. Create a position with mock data
+2. Test stop loss trigger:
+   - Create market with high >= stop_price
+   - Call `update_market(market)`
+   - Assert returns closed trade dict
+   - Assert exit_reason is "STOP_LOSS"
+3. Test take profit trigger:
+   - Create position with mock data
+   - Create market with low <= take_profit_price
+   - Call `update_market(market)`
+   - Assert returns closed trade dict
+   - Assert exit_reason is "TAKE_PROFIT"
+4. Test no trigger:
+   - Create position
+   - Create market within stop/tp range
+   - Call `update_market(market)`
+   - Assert returns None (no close)
+
+For each test:
+- Assert closed trade has expected fields based on `_close_position` source
+- Verify pnl calculations if applicable
 
 ### Step 6: Verify Tests Run
-Run: `pytest tests/unit/test_risk_manager.py -v`
+Run: `pytest tests/unit/test_order_manager.py -v`
 
 ---
 
 ## File Permissions
 
 ### Allowed to Modify/Create
-- `tests/unit/test_risk_manager.py` - ONLY this file
+- `tests/unit/test_order_manager.py` - ONLY this file
 
 ### Forbidden to Modify (DO NOT TOUCH THESE FILES)
-- `core/risk_manager.py`
+- `core/order_manager.py`
 - `main.py`
 - `config.yaml`
 - `core/execution.py`
-- `core/order_manager.py`
+- `core/risk_manager.py`
 - `core/signal_engine.py`
 - `core/data_feed.py`
 - `core/ticker_scanner.py`
@@ -95,12 +117,12 @@ Run: `pytest tests/unit/test_risk_manager.py -v`
 
 ## Important Instructions
 
-1. **READ THE SOURCE FIRST** - Before writing any tests, read `core/risk_manager.py` carefully
-2. **ADAPT TO SOURCE CODE** - Don't use hardcoded values. Use what the actual code expects.
-3. **USE MAGICMOCK** - Mock logger dependency
-4. **ONLY TEST TWO METHODS** - Test `can_open_new_trade` and `calculate_position` only
-5. **DO NOT TEST on_trade_closed** - Not in scope for this task
-6. **KEEP IT SIMPLE** - Only test specified scenarios
+1. **READ THE SOURCE FIRST** - Before writing any tests, read `core/order_manager.py` carefully
+2. **ADAPT TO SOURCE CODE** - Don't use hardcoded values. Use what actual code expects.
+3. **USE FIXTURES** - Create mock fixtures for test data
+4. **ONLY TEST SPECIFIED METHODS** - Do not test `_update_excursions` or MAE/MFE
+5. **KEEP IT SIMPLE** - Only test specified scenarios
+6. **FOCUS ON DRY-RUN** - `update_market` only closes positions in dry-run mode
 
 ---
 
@@ -108,33 +130,33 @@ Run: `pytest tests/unit/test_risk_manager.py -v`
 
 ```bash
 # Collect tests
-pytest tests/unit/test_risk_manager.py --collect-only
+pytest tests/unit/test_order_manager.py --collect-only
 
 # Run all tests
-pytest tests/unit/test_risk_manager.py -v
+pytest tests/unit/test_order_manager.py -v
 
-# Run can_open_new_trade tests
-pytest tests/unit/test_risk_manager.py -k can_open -v
+# Run state flow tests
+pytest tests/unit/test_order_manager.py -k "test_has_position or test_can_open or test_open_position" -v
 
-# Run calculate_position tests
-pytest tests/unit/test_risk_manager.py -k calculate_position -v
+# Run close trigger tests
+pytest tests/unit/test_order_manager.py -k "test_update_market" -v
 ```
 
 ---
 
 ## Completion Checklist
 
-- [ ] Read `core/risk_manager.py` and understood of structure
-- [ ] Created `tests/unit/test_risk_manager.py` with proper imports
-- [ ] Added required fixtures (mock_config, mock_logger)
-- [ ] Created `test_can_open_new_trade` and all sub-tests pass
-- [ ] Created `test_calculate_position` and all sub-tests pass
-- [ ] All tests pass with `pytest tests/unit/test_risk_manager.py -v`
+- [ ] Read `core/order_manager.py` and understood structure
+- [ ] Created `tests/unit/test_order_manager.py` with proper imports
+- [ ] Added required fixtures (mock_config, mock_execution_result, mock_signal, mock_market)
+- [ ] Created state flow tests and they pass
+- [ ] Created stop loss / take profit trigger tests and they pass
+- [ ] All tests pass with `pytest tests/unit/test_order_manager.py -v`
 - [ ] NO source code files were modified
 
 ---
 
 ## Reference
 
-- Source file: `core/risk_manager.py`
-- Test file to create: `tests/unit/test_risk_manager.py`
+- Source file: `core/order_manager.py`
+- Test file to create: `tests/unit/test_order_manager.py`
