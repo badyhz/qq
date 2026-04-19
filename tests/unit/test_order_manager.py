@@ -11,22 +11,37 @@ def mock_config():
     return {
         "mode": "dry-run",
         "strategy_profile": "mean_reversion",
+        "execution": {
+            "dry_run_slippage_rate": 0.001,
+        },
     }
 
 
 @pytest.fixture
 def mock_execution_result():
+    quantity = 2.5
+    reference_entry_price = 100.0
+    entry_fill_price = 99.9
+    fee_rate = 0.0004
+    entry_fee = entry_fill_price * quantity * fee_rate
+    notional = entry_fill_price * quantity
     return {
         "accepted": True,
         "mode": "dry-run",
         "symbol": "BTCUSDT",
-        "entry_price": 100.0,
+        "reference_entry_price": reference_entry_price,
+        "entry_fill_price": entry_fill_price,
+        "entry_price": entry_fill_price,
         "stop_price": 105.0,
         "take_profit_price": 90.0,
-        "quantity": 2.5,
-        "notional": 250.0,
-        "fees_paid": 0.1,
-        "fee_rate": 0.0004,
+        "quantity": quantity,
+        "notional": notional,
+        "entry_fee": entry_fee,
+        "total_fees": entry_fee,
+        "fees_paid": entry_fee,
+        "fee_rate": fee_rate,
+        "leverage": 1.0,
+        "margin_required": notional,
         "meta": {
             "strategy_profile": "intraday_mean_reversion",
             "reward_risk_ratio": 2.0,
@@ -95,14 +110,26 @@ def test_open_position_updates_state_and_stores_fields(
     assert position["symbol"] == mock_execution_result["symbol"]
     assert position["side"] == "SHORT"
     assert position["entry_price"] == pytest.approx(mock_execution_result["entry_price"])
+    assert position["reference_entry_price"] == pytest.approx(
+        mock_execution_result["reference_entry_price"]
+    )
+    assert position["entry_fill_price"] == pytest.approx(
+        mock_execution_result["entry_fill_price"]
+    )
     assert position["stop_price"] == pytest.approx(mock_execution_result["stop_price"])
     assert position["take_profit_price"] == pytest.approx(
         mock_execution_result["take_profit_price"]
     )
     assert position["quantity"] == pytest.approx(mock_execution_result["quantity"])
     assert position["notional"] == pytest.approx(mock_execution_result["notional"])
+    assert position["entry_fee"] == pytest.approx(mock_execution_result["entry_fee"])
+    assert position["total_fees"] == pytest.approx(mock_execution_result["total_fees"])
     assert position["fees_paid"] == pytest.approx(mock_execution_result["fees_paid"])
     assert position["fee_rate"] == pytest.approx(mock_execution_result["fee_rate"])
+    assert position["leverage"] == pytest.approx(mock_execution_result["leverage"])
+    assert position["margin_required"] == pytest.approx(
+        mock_execution_result["margin_required"]
+    )
     assert position["opened_at"] == mock_market["timestamp"]
     assert position["score"] == mock_signal["score"]
     assert position["strategy_profile"] == mock_signal["meta"]["strategy_profile"]
@@ -171,24 +198,50 @@ def test_update_market_triggers_close(
     assert closed_trade["mode"] == mock_execution_result["mode"]
     assert closed_trade["side"] == "SHORT"
     assert closed_trade["entry_price"] == pytest.approx(mock_execution_result["entry_price"])
-    assert closed_trade["exit_price"] == pytest.approx(expected_exit_price)
+    assert closed_trade["reference_entry_price"] == pytest.approx(
+        mock_execution_result["reference_entry_price"]
+    )
+    assert closed_trade["entry_fill_price"] == pytest.approx(
+        mock_execution_result["entry_fill_price"]
+    )
     assert closed_trade["stop_price"] == pytest.approx(mock_execution_result["stop_price"])
     assert closed_trade["take_profit_price"] == pytest.approx(
         mock_execution_result["take_profit_price"]
     )
     assert closed_trade["quantity"] == pytest.approx(mock_execution_result["quantity"])
     assert closed_trade["notional"] == pytest.approx(mock_execution_result["notional"])
-    assert closed_trade["gross_pnl"] == pytest.approx(expected_gross_pnl)
+    assert closed_trade["margin_required"] == pytest.approx(
+        mock_execution_result["margin_required"]
+    )
 
+    expected_exit_fill_price = expected_exit_price * (
+        1.0 + mock_config["execution"]["dry_run_slippage_rate"]
+    )
+    expected_reference_gross_pnl = expected_gross_pnl
+    expected_gross_pnl = (
+        mock_execution_result["entry_fill_price"] - expected_exit_fill_price
+    ) * mock_execution_result["quantity"]
     expected_exit_fee = (
-        expected_exit_price
+        expected_exit_fill_price
         * mock_execution_result["quantity"]
         * mock_execution_result["fee_rate"]
     )
-    expected_total_fees = mock_execution_result["fees_paid"] + expected_exit_fee
+    expected_total_fees = mock_execution_result["entry_fee"] + expected_exit_fee
+    expected_slippage_cost = expected_reference_gross_pnl - expected_gross_pnl
     expected_net_pnl = expected_gross_pnl - expected_total_fees
     expected_return_pct = expected_net_pnl / mock_execution_result["notional"] * 100.0
 
+    assert closed_trade["reference_exit_price"] == pytest.approx(expected_exit_price)
+    assert closed_trade["exit_fill_price"] == pytest.approx(expected_exit_fill_price)
+    assert closed_trade["exit_fee"] == pytest.approx(expected_exit_fee)
+    assert closed_trade["total_fees"] == pytest.approx(expected_total_fees)
+    assert closed_trade["reference_gross_pnl"] == pytest.approx(
+        expected_reference_gross_pnl
+    )
+    assert closed_trade["gross_pnl"] == pytest.approx(expected_gross_pnl)
+    assert closed_trade["slippage_cost"] == pytest.approx(expected_slippage_cost)
+    assert closed_trade["net_pnl"] == pytest.approx(expected_net_pnl)
+    assert closed_trade["exit_price"] == pytest.approx(expected_exit_fill_price)
     assert closed_trade["fees_paid"] == pytest.approx(expected_total_fees)
     assert closed_trade["pnl"] == pytest.approx(expected_net_pnl)
     assert closed_trade["return_pct"] == pytest.approx(expected_return_pct)
