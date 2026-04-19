@@ -6,6 +6,9 @@ class OrderManager:
     def __init__(self, config: dict):
         self.config = config
         self.mode = config.get("mode", "dry-run")
+        self.dry_run_slippage_rate = max(
+            0.0, float(config.get("execution", {}).get("dry_run_slippage_rate", 0.0))
+        )
         self.position = None
         self._trade_sequence = 0
 
@@ -19,6 +22,14 @@ class OrderManager:
         self._trade_sequence += 1
         opened_at = market.get("timestamp") or datetime.now(timezone.utc)
         entry_price = float(execution_result["entry_price"])
+        reference_entry_price = float(execution_result.get("reference_entry_price", entry_price))
+        entry_fill_price = float(execution_result.get("entry_fill_price", entry_price))
+        entry_fee = float(execution_result.get("entry_fee", execution_result.get("fees_paid", 0.0)))
+        total_fees = float(execution_result.get("total_fees", execution_result.get("fees_paid", 0.0)))
+        notional = float(execution_result.get("notional", 0.0))
+        leverage = float(execution_result.get("leverage", self.config.get("risk", {}).get("leverage", 1)))
+        leverage = leverage if leverage > 0 else 1.0
+        margin_required = float(execution_result.get("margin_required", notional / leverage))
         execution_meta = dict(execution_result.get("meta", {}))
         signal_meta = dict(signal.get("meta", {}))
         self.position = {
@@ -27,12 +38,18 @@ class OrderManager:
             "symbol": execution_result["symbol"],
             "side": "SHORT",
             "entry_price": entry_price,
+            "reference_entry_price": reference_entry_price,
+            "entry_fill_price": entry_fill_price,
             "stop_price": float(execution_result["stop_price"]),
             "take_profit_price": float(execution_result["take_profit_price"]),
             "quantity": float(execution_result["quantity"]),
-            "notional": float(execution_result.get("notional", 0.0)),
-            "fees_paid": float(execution_result.get("fees_paid", 0.0)),
+            "notional": notional,
+            "entry_fee": entry_fee,
+            "total_fees": total_fees,
+            "fees_paid": total_fees,
             "fee_rate": float(execution_result.get("fee_rate", 0.0)),
+            "leverage": leverage,
+            "margin_required": margin_required,
             "opened_at": opened_at,
             "score": int(signal.get("score", 0)),
             "strategy_profile": signal_meta.get(
@@ -104,9 +121,15 @@ class OrderManager:
 
     def _close_position(self, exit_price: float, exit_reason: str, closed_at: datetime) -> dict:
         trade = self.position
-        gross_pnl = (trade["entry_price"] - exit_price) * trade["quantity"]
-        exit_fee = exit_price * trade["quantity"] * trade["fee_rate"]
-        total_fees = trade["fees_paid"] + exit_fee
+        reference_entry_price = float(trade.get("reference_entry_price", trade["entry_price"]))
+        entry_fill_price = float(trade.get("entry_fill_price", trade["entry_price"]))
+        reference_exit_price = float(exit_price)
+        exit_fill_price = reference_exit_price * (1.0 + self.dry_run_slippage_rate)
+        reference_gross_pnl = (reference_entry_price - reference_exit_price) * trade["quantity"]
+        gross_pnl = (entry_fill_price - exit_fill_price) * trade["quantity"]
+        exit_fee = exit_fill_price * trade["quantity"] * trade["fee_rate"]
+        total_fees = float(trade.get("entry_fee", trade.get("fees_paid", 0.0))) + exit_fee
+        slippage_cost = reference_gross_pnl - gross_pnl
         net_pnl = gross_pnl - total_fees
         duration = (closed_at - trade["opened_at"]).total_seconds()
         return_pct = (net_pnl / trade["notional"] * 100.0) if trade["notional"] else 0.0
@@ -117,12 +140,22 @@ class OrderManager:
             "mode": trade["mode"],
             "side": trade["side"],
             "entry_price": trade["entry_price"],
-            "exit_price": float(exit_price),
+            "reference_entry_price": reference_entry_price,
+            "entry_fill_price": entry_fill_price,
+            "exit_price": exit_fill_price,
+            "reference_exit_price": reference_exit_price,
+            "exit_fill_price": exit_fill_price,
             "stop_price": trade["stop_price"],
             "take_profit_price": trade["take_profit_price"],
             "quantity": trade["quantity"],
             "notional": trade["notional"],
+            "margin_required": float(trade.get("margin_required", 0.0)),
+            "exit_fee": exit_fee,
+            "total_fees": total_fees,
+            "reference_gross_pnl": reference_gross_pnl,
             "gross_pnl": gross_pnl,
+            "slippage_cost": slippage_cost,
+            "net_pnl": net_pnl,
             "fees_paid": total_fees,
             "pnl": net_pnl,
             "return_pct": return_pct,

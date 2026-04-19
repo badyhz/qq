@@ -9,6 +9,9 @@ class ExecutionEngine:
         self.logger = logger
         self.mode = config.get("mode", "dry-run")
         self.fee_rate = float(config.get("execution", {}).get("dry_run_fee_rate", 0.0004))
+        self.dry_run_slippage_rate = max(
+            0.0, float(config.get("execution", {}).get("dry_run_slippage_rate", 0.0))
+        )
         self.allow_live_without_protection = bool(
             config.get("execution", {}).get("allow_live_without_protection", False)
         )
@@ -34,21 +37,32 @@ class ExecutionEngine:
             return {"accepted": False, "reason": "invalid_quantity"}
 
         if self.mode == "dry-run":
-            entry_price = float(market["close"])
+            reference_entry_price = float(market["close"])
             quantity = float(position_plan["quantity"])
-            entry_fee = entry_price * quantity * self.fee_rate
-            notional = quantity * entry_price
+            entry_fill_price = reference_entry_price * (1.0 - self.dry_run_slippage_rate)
+            entry_fee = entry_fill_price * quantity * self.fee_rate
+            total_fees = entry_fee
+            notional = quantity * entry_fill_price
+            leverage = float(position_plan.get("leverage", self.config.get("risk", {}).get("leverage", 1)))
+            leverage = leverage if leverage > 0 else 1.0
+            margin_required = notional / leverage
             duration = time.time() - execution_start
             
             result = {
                 "accepted": True,
                 "mode": "dry-run",
                 "symbol": signal["symbol"],
-                "entry_price": entry_price,
+                "reference_entry_price": reference_entry_price,
+                "entry_fill_price": entry_fill_price,
+                "entry_fee": entry_fee,
+                "total_fees": total_fees,
+                "entry_price": entry_fill_price,
                 "stop_price": float(position_plan["stop_price"]),
                 "take_profit_price": float(position_plan["take_profit_price"]),
                 "quantity": quantity,
                 "notional": notional,
+                "leverage": leverage,
+                "margin_required": margin_required,
                 "fees_paid": entry_fee,
                 "fee_rate": self.fee_rate,
                 "meta": {
@@ -66,9 +80,9 @@ class ExecutionEngine:
             }
             
             self.logger.info(
-                "DRY-RUN EXECUTION SUCCESS | entry=%.4f | qty=%.6f | notional=%.2f USDT | "
-                "stop=%.4f | take_profit=%.4f | fee=%.4f USDT | duration=%.3fs",
-                entry_price, quantity, notional,
+                "DRY-RUN EXECUTION SUCCESS | ref_entry=%.4f | fill_entry=%.4f | qty=%.6f | "
+                "notional=%.2f USDT | stop=%.4f | take_profit=%.4f | fee=%.4f USDT | duration=%.3fs",
+                reference_entry_price, entry_fill_price, quantity, notional,
                 float(position_plan["stop_price"]), float(position_plan["take_profit_price"]),
                 entry_fee, duration
             )
