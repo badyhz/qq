@@ -113,6 +113,7 @@ def run_scheduled_observation(
     run_id: str = "",
     build_candidates: bool = True,
     send_digest: bool = False,
+    send_notification: bool = False,
     notification_channel: str = "stdout",
     risk_events_jsonl: str = DEFAULT_RISK_EVENTS_PATH,
     candidates_jsonl: str = "logs/execution_candidates.jsonl",
@@ -140,7 +141,7 @@ def run_scheduled_observation(
         "observation_shift_id": "",
         "candidates_created": 0,
         "candidates_skipped": 0,
-        "notification_status": "not_requested",
+        "notification_status": "disabled",
         "risk_event_counts": {},
         "recommended_actions": [],
         "generated_files": generated_files,
@@ -237,7 +238,8 @@ def run_scheduled_observation(
         else:
             summary["steps"].append({"name": "build_execution_candidates", "status": "SKIPPED"})
 
-        if send_digest:
+        should_send_notification = bool(send_notification or send_digest)
+        if should_send_notification:
             digest = _step_call(
                 name="send_notification_digest",
                 summary=summary,
@@ -261,6 +263,7 @@ def run_scheduled_observation(
                 dict(digest.get("notification_result", {})).get("status", "unknown")
             )
         else:
+            summary["notification_status"] = "disabled"
             summary["steps"].append({"name": "send_notification_digest", "status": "SKIPPED"})
 
         if summary.get("errors"):
@@ -290,6 +293,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", default="")
     parser.add_argument("--build-candidates", default="true")
     parser.add_argument("--send-digest", default="false")
+    parser.add_argument("--send-notification", default="false")
     parser.add_argument("--notification-channel", default="stdout")
     parser.add_argument("--risk-events-jsonl", default=DEFAULT_RISK_EVENTS_PATH)
     parser.add_argument("--candidates-jsonl", default="logs/execution_candidates.jsonl")
@@ -314,6 +318,7 @@ def main() -> None:
         run_id=str(args.run_id or ""),
         build_candidates=_to_bool(args.build_candidates, default=True),
         send_digest=_to_bool(args.send_digest, default=False),
+        send_notification=_to_bool(args.send_notification, default=False),
         notification_channel=str(args.notification_channel or "stdout"),
         risk_events_jsonl=str(args.risk_events_jsonl or DEFAULT_RISK_EVENTS_PATH),
         candidates_jsonl=str(args.candidates_jsonl or "logs/execution_candidates.jsonl"),
