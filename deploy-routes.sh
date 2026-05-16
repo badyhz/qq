@@ -6,6 +6,8 @@ mkdir -p ~/.ai-routes
 cp ~/Documents/trae_projects/qq/claude-use-anthropic-official.sh ~/.ai-routes/
 cp ~/Documents/trae_projects/qq/claude-use-volcengine-ark.sh ~/.ai-routes/
 cp ~/Documents/trae_projects/qq/claude-use-deepseek.sh ~/.ai-routes/
+cp ~/Documents/trae_projects/qq/claude-use-deepseek-flash.sh ~/.ai-routes/
+cp ~/Documents/trae_projects/qq/claude-use-deepseek-flash-full.sh ~/.ai-routes/
 chmod +x ~/.ai-routes/claude-use-*.sh
 echo "  OK"
 
@@ -38,6 +40,31 @@ cc-deep() {
   claude "$@"
 }
 
+cc-deep-pro() {
+  cd ~/Documents/trae_projects/qq || return 1
+  source ~/.ai-routes/claude-use-deepseek.sh
+  claude "$@"
+}
+
+cc-deep-flash() {
+  cd ~/Documents/trae_projects/qq || return 1
+  source ~/.ai-routes/claude-use-deepseek-flash.sh
+  claude "$@"
+}
+
+cc-deep-flash-full() {
+  cd ~/Documents/trae_projects/qq || return 1
+  ~/.ai-routes/claude-use-deepseek-flash-full.sh "$@"
+}
+
+cc-deep-flash-bypass() {
+  cc-deep-flash-full "$@"
+}
+
+cc-deep-flash-unsafe() {
+  cc-deep-flash-full "$@"
+}
+
 cc-test-official() {
   cd ~/Documents/trae_projects/qq || return 1
   source ~/.ai-routes/claude-use-anthropic-official.sh
@@ -54,6 +81,23 @@ cc-test-deep() {
   cd ~/Documents/trae_projects/qq || return 1
   source ~/.ai-routes/claude-use-deepseek.sh
   claude -p "请只回复 OK"
+}
+
+cc-test-deep-pro() {
+  cd ~/Documents/trae_projects/qq || return 1
+  source ~/.ai-routes/claude-use-deepseek.sh
+  claude -p "请只回复 OK"
+}
+
+cc-test-deep-flash() {
+  cd ~/Documents/trae_projects/qq || return 1
+  source ~/.ai-routes/claude-use-deepseek-flash.sh
+  claude -p "请只回复 OK"
+}
+
+cc-test-deep-flash-full() {
+  cd ~/Documents/trae_projects/qq || return 1
+  ~/.ai-routes/claude-use-deepseek-flash-full.sh -p "请只回复 OK"
 }
 
 cc-route() {
@@ -90,8 +134,16 @@ echo "=== 部署完成 ==="
 echo "可用命令:"
 echo "  cc-official     - 使用 Anthropic 官方 API 运行 Claude Code"
 echo "  cc-ark          - 使用火山 Ark Coding API 运行 Claude Code"
-echo "  cc-deep         - 使用 DeepSeek API 运行 Claude Code"
+echo "  cc-deep         - 使用 DeepSeek Pro 路由运行 Claude Code"
+echo "  cc-deep-pro     - 使用 DeepSeek Pro 路由运行 Claude Code"
+echo "  cc-deep-flash   - 使用 DeepSeek Flash 路由运行 Claude Code"
+echo "  cc-deep-flash-full - 使用 DeepSeek Flash + bypass permissions"
+echo "  cc-deep-flash-bypass - cc-deep-flash-full 别名"
+echo "  cc-deep-flash-unsafe - cc-deep-flash-full 别名"
 echo "  cc-test-official- 测试 Anthropic 官方路由"
 echo "  cc-test-ark     - 测试火山 Ark 路由"
 echo "  cc-test-deep    - 测试 DeepSeek 路由"
+echo "  cc-test-deep-pro- 测试 DeepSeek Pro 路由"
+echo "  cc-test-deep-flash - 测试 DeepSeek Flash 路由"
+echo "  cc-test-deep-flash-full - 测试 DeepSeek Flash Full 路由"
 echo "  cc-route        - 查看当前路由环境变量"
