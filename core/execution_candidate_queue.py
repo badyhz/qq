@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from core.trade_logger import read_jsonl_rows
+from scripts.strategy_edge_common import read_jsonl_rows
 
 
 def _utc_now() -> datetime:
@@ -49,7 +49,7 @@ def find_duplicate_candidate_ids(rows: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def load_candidates(path: str) -> list[dict[str, Any]]:
-    return [row for row in read_jsonl_rows(path) if isinstance(row, dict)]
+    return [row for row in read_jsonl_rows(Path(path)) if isinstance(row, dict)]
 
 
 def append_candidate(path: str, candidate: dict[str, Any]) -> dict[str, Any]:
