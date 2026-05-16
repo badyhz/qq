@@ -8,3 +8,24 @@ node_modules/
 *.log
 
 automation/approval.json
+
+.claude/
+.codex/
+.trae/
+.agents/
+.npm/
+certs/
+logs/
+reports/
+data/
+notes/
+*.csv
+*.txt
+*.txt~
+*.diff
+*.tmp
+*.bak
+git_status.tmp
+skills-lock.json
+1
+50
