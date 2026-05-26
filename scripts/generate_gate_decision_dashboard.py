@@ -3,11 +3,17 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.execution_guards import (
+    ExecutionGuardError,
+    assert_dry_run_required,
+    normalize_execution_mode,
+)
 from scripts.strategy_edge_common import read_csv_rows
 
 
@@ -217,6 +223,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_arg_parser().parse_args()
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     result = generate_gate_decision_dashboard(
         gate_audit_jsonl=str(args.gate_audit_jsonl or "logs/gate_audit/gate_audit.jsonl"),
         gate_replay_csv=str(args.gate_replay_csv or "reports/gate_replay/gate_replay_results.csv"),
