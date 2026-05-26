@@ -30,10 +30,10 @@
 
 | Component | File | Implemented | Tested |
 |---|---|---|---|
-| Pure helpers | `core/execution_guards.py` | yes | yes (62) |
-| Schema validation | `core/execution_guard_schema.py` | yes | yes (38) |
-| Status report wrapper | `scripts/generate_execution_guard_status_report.py` | yes | yes (31) |
-| Contract tests | `tests/unit/test_execution_guard_contract.py` | yes | yes (20) |
+| Pure helpers | `core/execution_guards.py` | Completed | Completed (62) |
+| Schema validation | `core/execution_guard_schema.py` | Completed | Completed (38) |
+| Status report wrapper | `scripts/generate_execution_guard_status_report.py` | Completed | Completed (31) |
+| Contract tests | `tests/unit/test_execution_guard_contract.py` | Completed | Completed (20) |
 
 ---
 
@@ -52,12 +52,12 @@
 
 | Target | Guard Functions | Status | Tests |
 |---|---|---|---|
-| CLI polish (`--compact`, `--pretty`) | `generate_report` | done | done |
-| Schema drift helper | `get_guard_schema_required_keys` | done | done |
-| Summary formatter | `format_guard_summary_text` | done | done |
-| Report examples | JSON docs | done | n/a |
-| Integration matrix | this file | done | n/a |
-| Runtime integration proposal | `docs/` | planned | n/a |
+| CLI polish (`--compact`, `--pretty`) | `generate_report` | Completed | Completed |
+| Schema drift helper | `get_guard_schema_required_keys` | Completed | Completed |
+| Summary formatter | `format_guard_summary_text` | Completed | Completed |
+| Report examples | JSON docs | Completed | n/a |
+| Integration matrix | this file | Completed | n/a |
+| Runtime integration proposal | `docs/` | Planned | n/a |
 
 ---
 
@@ -75,9 +75,9 @@
 
 | Target | Required Guards | Status | Tests | Blocker |
 |---|---|---|---|---|
-| Signal trial | `assert_submit_unlocked` | not started | none | needs Phase1 |
-| Observation shift | `assert_submit_unlocked` | not started | none | needs Phase1 |
-| Experiment plan | `assert_dry_run_required` | not started | none | needs Phase1 |
+| Signal trial | `assert_submit_unlocked` | Blocked | none | needs Phase1 |
+| Observation shift | `assert_submit_unlocked` | Blocked | none | needs Phase1 |
+| Experiment plan | `assert_dry_run_required` | Blocked | none | needs Phase1 |
 
 ---
 
@@ -137,7 +137,21 @@
 
 ## Summary
 
-- **Implemented**: Phase0 (complete), Phase1 (complete)
-- **Tested**: ~150 tests across all components
-- **Frozen**: 21 HIGH_RISK scripts (Phase3-4) — no integration until explicit unfreeze
+- **Phase0**: Completed
+- **Phase1**: Completed
+- **Phase2**: Blocked (waiting on Phase1 validation)
+- **Phase3–4**: Frozen (21 HIGH_RISK scripts)
+- **Tests**: ~153 across all components
 - **Next**: Runtime integration proposal, non-frozen script audit
+
+---
+
+## Audit Snapshot
+
+| Field | Value |
+|---|---|
+| Current phase status | Phase0–1 Completed, Phase2 Blocked, Phase3–4 Frozen |
+| Frozen script count | 21 |
+| execution_guard tests | ~153 |
+| High-risk integration performed | No |
+| Last audit | T630–T634 docs cleanup |
