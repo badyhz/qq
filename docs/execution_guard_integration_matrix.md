@@ -90,6 +90,8 @@ Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
 | `scripts/validate_testnet_artifacts.py` | `assert_dry_run_required` | Completed | 6 | `f4cfba0` |
 | `scripts/generate_runner_dry_run_report.py` | `assert_dry_run_required` | Completed | 6 | `9ece5b1` |
 | `scripts/generate_gate_decision_dashboard.py` | `assert_dry_run_required` | Completed | 6 | `8bf2181` |
+| `scripts/generate_trading_system_health_dashboard.py` | `assert_dry_run_required` | Completed | 6 | `e45905e` |
+| `scripts/generate_sample_collection_eod_report.py` | `assert_dry_run_required` | Completed | 6 | `cab8e95` |
 
 ---
 
@@ -151,9 +153,9 @@ Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
 
 - **Phase0**: Completed
 - **Phase1**: Completed
-- **Phase2**: Blocked (waiting on Phase1 validation)
+- **Phase2**: In Progress (5 safe integrations completed)
 - **Phase3–4**: Frozen (22 frozen files: 21 scripts + `core/live_runner.py`)
-- **Tests**: ~153 across all components
+- **Tests**: ~192 across all components
 - **Next**: Runtime integration proposal, non-frozen script audit
 
 ---
@@ -164,7 +166,7 @@ Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
 |---|---|
 | Current phase status | Phase0–1 Completed, Phase2 In Progress, Phase3–4 Frozen |
 | Frozen file count | 22 (21 scripts + core/live_runner.py) |
-| Phase2 safe integrations | 3 (validate_testnet_artifacts, generate_runner_dry_run_report, generate_gate_decision_dashboard) |
-| execution_guard tests | ~171 |
+| Phase2 safe integrations | 5 (validate_testnet_artifacts, generate_runner_dry_run_report, generate_gate_decision_dashboard, generate_trading_system_health_dashboard, generate_sample_collection_eod_report) |
+| execution_guard tests | ~192 |
 | High-risk integration performed | No |
-| Last audit | T635 Phase2 checkpoint |
+| Last audit | Phase2 safe batch complete |
