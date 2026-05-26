@@ -32,6 +32,15 @@ _REQUIRED_BLOCKED_KEYS = frozenset({
 _VALID_STATUSES = frozenset({"OK", "BLOCKED"})
 
 
+def get_guard_schema_required_keys(status: str) -> frozenset[str]:
+    """Single source of truth for required keys by status."""
+    if status == "OK":
+        return _REQUIRED_OK_KEYS
+    elif status == "BLOCKED":
+        return _REQUIRED_BLOCKED_KEYS
+    raise ValueError(f"unknown status: {status!r}")
+
+
 def assert_guard_report_keys(report: dict) -> None:
     """Raise ValueError if report is missing required keys for its status."""
     if not isinstance(report, dict):
@@ -112,3 +121,21 @@ def build_guard_report_summary(report: dict) -> dict:
     elif status == "BLOCKED":
         summary["reason"] = report["reason"]
     return summary
+
+
+def format_guard_summary_text(summary: dict) -> str:
+    """Format a summary dict as a compact one-line text string."""
+    if not isinstance(summary, dict):
+        raise ValueError("summary must be dict")
+    status = summary.get("status")
+    action = summary.get("action")
+    if not status or not action:
+        raise ValueError("summary must contain status and action")
+    if status == "OK":
+        mode = summary.get("mode", "?")
+        layers = "PASS" if summary.get("all_layers_pass") else "FAIL"
+        return f"[OK] {action} mode={mode} layers={layers}"
+    elif status == "BLOCKED":
+        reason = summary.get("reason", "UNKNOWN")
+        return f"[BLOCKED] {action} reason={reason}"
+    raise ValueError(f"unknown status: {status!r}")

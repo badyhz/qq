@@ -14,6 +14,8 @@ from core.execution_guards import (
 from core.execution_guard_schema import (
     validate_guard_report,
     build_guard_report_summary,
+    get_guard_schema_required_keys,
+    format_guard_summary_text,
 )
 
 
@@ -180,11 +182,9 @@ class TestSchemaDrift:
         )
         report["status"] = "OK"
         report["env_overrides"] = {}
-        # Simulate schema drift: add hypothetical new required key
-        validate_guard_report(report)  # passes now
-        # If schema added "layer6_new_key" as required, this would fail
+        validate_guard_report(report)
 
-    def test_producer_has_all_ok_keys(self):
+    def test_producer_has_all_ok_keys_via_helper(self):
         report = build_execution_guard_report(
             mode="dry_run",
             action="submit",
@@ -193,11 +193,18 @@ class TestSchemaDrift:
         )
         report["status"] = "OK"
         report["env_overrides"] = {}
-        required = {
-            "status", "mode", "action", "env_overrides",
-            "layer0_blocked", "layer1_capability", "layer2_cli_allow",
-            "layer3_env_unlock", "layer4_manual_confirm", "layer5_symbol_ok",
+        required = get_guard_schema_required_keys("OK")
+        assert required.issubset(set(report.keys()))
+
+    def test_producer_has_all_blocked_keys_via_helper(self):
+        report = {
+            "status": "BLOCKED",
+            "reason": "FAIL_CLOSED",
+            "action": "submit",
+            "symbol": "BTCUSDT",
+            "env_overrides": {},
         }
+        required = get_guard_schema_required_keys("BLOCKED")
         assert required.issubset(set(report.keys()))
 
     def test_summary_keys_stable(self):
@@ -212,6 +219,78 @@ class TestSchemaDrift:
         summary = build_guard_report_summary(report)
         expected = {"blocked", "status", "action", "mode", "all_layers_pass"}
         assert set(summary.keys()) == expected
+
+
+# ---------------------------------------------------------------------------
+# get_guard_schema_required_keys
+# ---------------------------------------------------------------------------
+
+class TestGetRequiredKeys:
+    def test_ok_keys(self):
+        keys = get_guard_schema_required_keys("OK")
+        assert "status" in keys
+        assert "layer0_blocked" in keys
+        assert "layer5_symbol_ok" in keys
+
+    def test_blocked_keys(self):
+        keys = get_guard_schema_required_keys("BLOCKED")
+        assert "status" in keys
+        assert "reason" in keys
+        assert "symbol" in keys
+
+    def test_unknown_status_raises(self):
+        with pytest.raises(ValueError, match="unknown status"):
+            get_guard_schema_required_keys("PENDING")
+
+
+# ---------------------------------------------------------------------------
+# format_guard_summary_text
+# ---------------------------------------------------------------------------
+
+class TestFormatSummaryText:
+    def test_ok_formatting(self):
+        summary = {
+            "blocked": False,
+            "status": "OK",
+            "action": "submit",
+            "mode": "dry_run",
+            "all_layers_pass": True,
+        }
+        text = format_guard_summary_text(summary)
+        assert text == "[OK] submit mode=dry_run layers=PASS"
+
+    def test_ok_layers_fail(self):
+        summary = {
+            "blocked": False,
+            "status": "OK",
+            "action": "cancel",
+            "mode": "testnet",
+            "all_layers_pass": False,
+        }
+        text = format_guard_summary_text(summary)
+        assert text == "[OK] cancel mode=testnet layers=FAIL"
+
+    def test_blocked_formatting(self):
+        summary = {
+            "blocked": True,
+            "status": "BLOCKED",
+            "action": "submit",
+            "reason": "LIVE_MODE_NOT_ALLOWED",
+        }
+        text = format_guard_summary_text(summary)
+        assert text == "[BLOCKED] submit reason=LIVE_MODE_NOT_ALLOWED"
+
+    def test_missing_status_raises(self):
+        with pytest.raises(ValueError, match="must contain status"):
+            format_guard_summary_text({"action": "submit"})
+
+    def test_missing_action_raises(self):
+        with pytest.raises(ValueError, match="must contain status"):
+            format_guard_summary_text({"status": "OK"})
+
+    def test_not_dict_raises(self):
+        with pytest.raises(ValueError, match="must be dict"):
+            format_guard_summary_text("nope")
 
 
 # ---------------------------------------------------------------------------

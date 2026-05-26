@@ -6,6 +6,8 @@ import pytest
 from core.execution_guard_schema import (
     assert_guard_report_keys,
     build_guard_report_summary,
+    format_guard_summary_text,
+    get_guard_schema_required_keys,
     validate_guard_report,
 )
 
@@ -215,3 +217,53 @@ class TestEmptyMalformed:
     def test_empty_env_overrides_fails(self):
         with pytest.raises(ValueError, match="env_overrides must be dict"):
             validate_guard_report(_ok_report(env_overrides=None))
+
+
+# ---------------------------------------------------------------------------
+# get_guard_schema_required_keys
+# ---------------------------------------------------------------------------
+
+class TestGetRequiredKeys:
+    def test_ok_keys_match(self):
+        keys = get_guard_schema_required_keys("OK")
+        assert keys == frozenset({
+            "status", "mode", "action", "env_overrides",
+            "layer0_blocked", "layer1_capability", "layer2_cli_allow",
+            "layer3_env_unlock", "layer4_manual_confirm", "layer5_symbol_ok",
+        })
+
+    def test_blocked_keys_match(self):
+        keys = get_guard_schema_required_keys("BLOCKED")
+        assert keys == frozenset({
+            "status", "reason", "action", "symbol", "env_overrides",
+        })
+
+    def test_unknown_raises(self):
+        with pytest.raises(ValueError, match="unknown status"):
+            get_guard_schema_required_keys("NOPE")
+
+
+# ---------------------------------------------------------------------------
+# format_guard_summary_text
+# ---------------------------------------------------------------------------
+
+class TestFormatSummaryText:
+    def test_ok_pass(self):
+        summary = {"blocked": False, "status": "OK", "action": "submit", "mode": "dry_run", "all_layers_pass": True}
+        assert format_guard_summary_text(summary) == "[OK] submit mode=dry_run layers=PASS"
+
+    def test_ok_fail(self):
+        summary = {"blocked": False, "status": "OK", "action": "cancel", "mode": "testnet", "all_layers_pass": False}
+        assert format_guard_summary_text(summary) == "[OK] cancel mode=testnet layers=FAIL"
+
+    def test_blocked(self):
+        summary = {"blocked": True, "status": "BLOCKED", "action": "flatten", "reason": "FAIL_CLOSED"}
+        assert format_guard_summary_text(summary) == "[BLOCKED] flatten reason=FAIL_CLOSED"
+
+    def test_missing_field_rejects(self):
+        with pytest.raises(ValueError, match="must contain status"):
+            format_guard_summary_text({})
+
+    def test_not_dict_rejects(self):
+        with pytest.raises(ValueError, match="must be dict"):
+            format_guard_summary_text("bad")
