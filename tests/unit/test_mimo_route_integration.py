@@ -15,7 +15,11 @@ def test_mimo_provider_script_auth_and_defaults() -> None:
 
     assert 'if [ -z "${MIMO_API_KEY:-}" ]; then' in text
     assert 'export MIMO_BASE_URL="${MIMO_BASE_URL:-https://token-plan-cn.xiaomimimo.com/v1}"' in text
-    assert 'export ANTHROPIC_BASE_URL="$MIMO_BASE_URL"' in text
+    assert (
+        'export MIMO_ANTHROPIC_BASE_URL="${MIMO_ANTHROPIC_BASE_URL:-https://token-plan-cn.xiaomimimo.com/anthropic}"'
+        in text
+    )
+    assert 'export ANTHROPIC_BASE_URL="$MIMO_ANTHROPIC_BASE_URL"' in text
     assert 'export ANTHROPIC_AUTH_TOKEN="$MIMO_API_KEY"' in text
 
 
@@ -59,6 +63,8 @@ def test_provider_registry_and_docs_include_mimo() -> None:
 
     assert "MiMo full route: `cc-mimo-full`" in routes_doc
     assert "MiMo Full / Bypass: `mimo-v2.5`" in routes_doc
+    assert "Anthropic-compatible API" in routes_doc
+    assert "MIMO_ANTHROPIC_BASE_URL" in routes_doc
     assert "MIMO_BASE_URL" in routes_doc
     assert "MIMO_API_KEY" in routes_doc
 
@@ -97,6 +103,7 @@ def test_mimo_full_route_invocation_propagates_auth_and_flags(tmp_path: Path) ->
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     env["MIMO_API_KEY"] = "mimo_test_key"
     env["MIMO_BASE_URL"] = "https://token-plan-cn.xiaomimimo.com/v1"
+    env["MIMO_ANTHROPIC_BASE_URL"] = "https://token-plan-cn.xiaomimimo.com/anthropic"
 
     script = REPO_ROOT / "claude-use-mimo-full.sh"
     subprocess.run(
@@ -110,9 +117,47 @@ def test_mimo_full_route_invocation_propagates_auth_and_flags(tmp_path: Path) ->
 
     trace = trace_file.read_text(encoding="utf-8")
     assert "ARGS=--permission-mode bypassPermissions --dangerously-skip-permissions -p OK" in trace
-    assert "BASE=https://token-plan-cn.xiaomimimo.com/v1" in trace
+    assert "BASE=https://token-plan-cn.xiaomimimo.com/anthropic" in trace
     assert "TOKEN=mimo_test_key" in trace
     assert "MODEL=mimo-v2.5" in trace
+
+
+def test_mimo_full_route_does_not_use_openai_v1_as_anthropic_base(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    trace_file = tmp_path / "trace.txt"
+    fake_claude = bin_dir / "claude"
+    fake_claude.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                f"printf 'BASE=%s\\n' \"${{ANTHROPIC_BASE_URL:-}}\" > \"{trace_file}\"",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_claude.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+    env["MIMO_API_KEY"] = "mimo_test_key"
+    env["MIMO_BASE_URL"] = "https://token-plan-cn.xiaomimimo.com/v1"
+
+    script = REPO_ROOT / "claude-use-mimo-full.sh"
+    subprocess.run(
+        [str(script), "-p", "OK"],
+        check=True,
+        env=env,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    trace = trace_file.read_text(encoding="utf-8")
+    assert "BASE=https://token-plan-cn.xiaomimimo.com/anthropic" in trace
+    assert "BASE=https://token-plan-cn.xiaomimimo.com/v1" not in trace
 
 
 def test_mimo_model_normalization_accepts_title_case_input(tmp_path: Path) -> None:
