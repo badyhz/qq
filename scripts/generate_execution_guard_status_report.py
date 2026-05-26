@@ -16,6 +16,7 @@ from core.execution_guards import (
     parse_symbol_allowlist,
     read_bool_env,
 )
+from core.execution_guard_schema import validate_guard_report
 
 
 def _resolve_mode(args_mode: str | None) -> str | None:
@@ -133,6 +134,17 @@ def main(argv: list[str] | None = None) -> None:
         cli_allow=args.cli_allow,
         manual_confirm=args.manual_confirm,
     )
+
+    try:
+        validate_guard_report(report)
+    except ValueError:
+        report = {
+            "status": "BLOCKED",
+            "reason": "SCHEMA_VALIDATION_FAILED",
+            "action": args.action,
+            "symbol": (args.symbol or "").upper(),
+            "env_overrides": report.get("env_overrides", {}),
+        }
 
     output_str = json.dumps(report, indent=2, sort_keys=True)
 

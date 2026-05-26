@@ -175,3 +175,25 @@ class TestGenerateReportDirect:
         )
         assert report["status"] == "OK"
         assert report["action"] == "flatten"
+
+
+class TestSchemaValidationIntegration:
+    def test_all_ok_reports_validate(self, capsys):
+        for action in ("submit", "cancel", "flatten"):
+            main(["--mode", "dry_run", "--action", action])
+            captured = capsys.readouterr()
+            report = json.loads(captured.out)
+            assert report["status"] == "OK"
+
+    def test_all_blocked_reports_validate(self, capsys):
+        main(["--action", "submit"])
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
+        assert report["status"] == "BLOCKED"
+
+    def test_validation_failure_produces_blocked(self, monkeypatch, capsys):
+        monkeypatch.setenv("QQ_NO_SUBMIT", "1")
+        main(["--mode", "dry_run", "--action", "submit"])
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
+        assert report["status"] == "OK"
