@@ -8,6 +8,9 @@ node_modules/
 *.log
 
 automation/approval.json
+automation/artifacts/review_packet.md
+automation/artifacts/codex_result.md
+automation/artifacts/validation_report.md
 
 .claude/
 .codex/
@@ -27,5 +30,3 @@ notes/
 *.bak
 git_status.tmp
 skills-lock.json
-1
-50
