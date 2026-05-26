@@ -211,7 +211,7 @@ class TestSummary:
 
 class TestEmptyMalformed:
     def test_empty_report_fails(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="invalid status"):
             assert_guard_report_keys({})
 
     def test_empty_env_overrides_fails(self):

@@ -50,7 +50,7 @@ def generate_report(
         return {
             "status": "BLOCKED",
             "reason": "FAIL_CLOSED",
-            "mode_input": str(mode or ""),
+            "mode": "",
             "action": action,
             "symbol": symbol.upper(),
             "env_overrides": env_overrides,
