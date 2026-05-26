@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.execution_guards import (
+    ExecutionGuardError,
+    assert_dry_run_required,
+    normalize_execution_mode,
+)
 from scripts.strategy_edge_common import read_csv_rows
 
 
@@ -139,6 +145,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_arg_parser().parse_args()
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     result = generate_sample_collection_eod_report(
         sample_tracker_csv=str(args.sample_tracker_csv or "reports/sample_collection_tracker/sample_collection_tracker.csv"),
         shadow_collection_summary_json=str(args.shadow_collection_summary_json or "reports/shadow_candidate_collection/summary.json"),
