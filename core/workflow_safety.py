@@ -191,3 +191,37 @@ def validate_workflow_safety(workflow_data: dict) -> dict:
         "violations": [{"rule": v.rule, "severity": v.severity.value, "detail": v.detail} for v in violations],
         "summary": validator.summary(),
     }
+
+
+def pre_tag_frozen_check(staged_files: list[str]) -> dict:
+    """Pre-tag integrity check: verify no frozen files are staged.
+
+    Call this BEFORE creating any git tag to prevent frozen file contamination.
+
+    Args:
+        staged_files: List of file paths staged for commit (from git diff --cached --name-only)
+
+    Returns:
+        dict with:
+            - safe: bool (True if no frozen files staged)
+            - violations: list of frozen files found
+            - checked: int (number of files checked)
+    """
+    violations = []
+    for f in staged_files:
+        for pattern in FROZEN_PATTERNS:
+            if pattern in f:
+                violations.append({
+                    "file": f,
+                    "pattern": pattern,
+                    "rule": "PRE_TAG_FROZEN_CHECK",
+                    "severity": "CRITICAL",
+                    "detail": f"Frozen file '{f}' detected in staged files. BLOCKED before tag.",
+                })
+                break
+
+    return {
+        "safe": len(violations) == 0,
+        "violations": violations,
+        "checked": len(staged_files),
+    }
