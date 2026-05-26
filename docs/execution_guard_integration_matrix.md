@@ -24,7 +24,7 @@
 - `docs/execution_guard_report_examples.md` — JSON examples
 - `docs/execution_guard_integration_matrix.md` — this file
 
-**Forbidden targets**: All 21 frozen HIGH_RISK scripts, `core/live_runner.py`, any submit/cancel/flatten chain.
+**Forbidden targets**: All 22 frozen files (21 scripts + `core/live_runner.py`), any submit/cancel/flatten chain.
 
 **Acceptance gate**: All tests pass, no high-risk imports, readonly-only.
 
@@ -46,7 +46,7 @@
 - `docs/` (extend)
 - New readonly scripts in `scripts/` (non-frozen)
 
-**Forbidden targets**: All 21 frozen HIGH_RISK scripts, `core/live_runner.py`, any submit/cancel/flatten chain.
+**Forbidden targets**: All 22 frozen files (21 scripts + `core/live_runner.py`), any submit/cancel/flatten chain.
 
 **Acceptance gate**: CLI validated, docs complete, no high-risk imports, contract tests pass.
 
@@ -69,7 +69,7 @@
 - Non-frozen payload builder scripts (if any exist)
 - Guard helper functions
 
-**Forbidden targets**: All 21 frozen HIGH_RISK scripts, `core/live_runner.py`, any submit/cancel/flatten chain.
+**Forbidden targets**: All 22 frozen files (21 scripts + `core/live_runner.py`), any submit/cancel/flatten chain.
 
 **Acceptance gate**: Each target has dedicated tests, all guard layers validated, no live-mode leak.
 
@@ -87,7 +87,7 @@
 
 **Allowed targets**: Only after explicit unfreeze + review.
 
-**Forbidden targets**: `core/live_runner.py`, any HIGH_RISK_RUNTIME scripts.
+**Forbidden targets**: `core/live_runner.py`, any HIGH_RISK_RUNTIME scripts. (15 runtime files remain frozen.)
 
 **Acceptance gate**: Full layered unlock validated, kill-switch tested, rollback plan documented.
 
@@ -140,7 +140,7 @@
 - **Phase0**: Completed
 - **Phase1**: Completed
 - **Phase2**: Blocked (waiting on Phase1 validation)
-- **Phase3–4**: Frozen (21 HIGH_RISK scripts)
+- **Phase3–4**: Frozen (22 frozen files: 21 scripts + `core/live_runner.py`)
 - **Tests**: ~153 across all components
 - **Next**: Runtime integration proposal, non-frozen script audit
 
@@ -151,7 +151,7 @@
 | Field | Value |
 |---|---|
 | Current phase status | Phase0–1 Completed, Phase2 Blocked, Phase3–4 Frozen |
-| Frozen script count | 21 |
+| Frozen file count | 22 (21 scripts + core/live_runner.py) |
 | execution_guard tests | ~153 |
 | High-risk integration performed | No |
 | Last audit | T630–T634 docs cleanup |
