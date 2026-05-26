@@ -39,8 +39,9 @@
 
 ## Xiaomi MiMo Full Route
 - Command: `cc-mimo-full`
-- Provider endpoint type: OpenAI-compatible API
-- Base URL env: `MIMO_BASE_URL` (default `https://token-plan-cn.xiaomimimo.com/v1`)
+- Claude Code endpoint type: Anthropic-compatible API
+- Anthropic base URL env: `MIMO_ANTHROPIC_BASE_URL` (default `https://token-plan-cn.xiaomimimo.com/anthropic`)
+- OpenAI base URL env (model discovery/OpenAI clients): `MIMO_BASE_URL` (default `https://token-plan-cn.xiaomimimo.com/v1`)
 - API key env: `MIMO_API_KEY`
 - Model: `mimo-v2.5`
 - Permissions: Claude Code bypass permissions via `--dangerously-skip-permissions`
