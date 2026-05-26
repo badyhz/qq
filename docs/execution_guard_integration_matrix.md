@@ -61,7 +61,7 @@
 
 ---
 
-## Phase2 — Payload Builders (blocked)
+## Phase2 — Payload Builders (in progress)
 
 **Scope**: Guard integration into non-frozen payload builder scripts.
 
@@ -78,6 +78,18 @@
 | Signal trial | `assert_submit_unlocked` | Blocked | none | needs Phase1 |
 | Observation shift | `assert_submit_unlocked` | Blocked | none | needs Phase1 |
 | Experiment plan | `assert_dry_run_required` | Blocked | none | needs Phase1 |
+
+---
+
+## Phase2 Safe Integrations Completed
+
+Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
+
+| Script | Guard | Status | Tests | Commit |
+|---|---|---|---|---|
+| `scripts/validate_testnet_artifacts.py` | `assert_dry_run_required` | Completed | 6 | `f4cfba0` |
+| `scripts/generate_runner_dry_run_report.py` | `assert_dry_run_required` | Completed | 6 | `9ece5b1` |
+| `scripts/generate_gate_decision_dashboard.py` | `assert_dry_run_required` | Completed | 6 | `8bf2181` |
 
 ---
 
@@ -150,8 +162,9 @@
 
 | Field | Value |
 |---|---|
-| Current phase status | Phase0–1 Completed, Phase2 Blocked, Phase3–4 Frozen |
+| Current phase status | Phase0–1 Completed, Phase2 In Progress, Phase3–4 Frozen |
 | Frozen file count | 22 (21 scripts + core/live_runner.py) |
-| execution_guard tests | ~153 |
+| Phase2 safe integrations | 3 (validate_testnet_artifacts, generate_runner_dry_run_report, generate_gate_decision_dashboard) |
+| execution_guard tests | ~171 |
 | High-risk integration performed | No |
-| Last audit | T630–T634 docs cleanup |
+| Last audit | T635 Phase2 checkpoint |

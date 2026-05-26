@@ -40,6 +40,18 @@ Last updated: 2026-05-26
 
 ---
 
+## Non-frozen Safe Guarded Scripts
+
+**Count**: 3
+
+| # | File | Guard |
+|---|---|---|
+| 1 | `scripts/validate_testnet_artifacts.py` | `assert_dry_run_required` |
+| 2 | `scripts/generate_runner_dry_run_report.py` | `assert_dry_run_required` |
+| 3 | `scripts/generate_gate_decision_dashboard.py` | `assert_dry_run_required` |
+
+---
+
 ## Policy
 
 - **Visible untracked on purpose**: These files are intentionally left as untracked `??` in git status.
