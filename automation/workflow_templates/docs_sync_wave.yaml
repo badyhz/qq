@@ -1,0 +1,46 @@
+name: DOCS_SYNC_WAVE
+description: "Synchronize all docs to reflect current state."
+mode: DAG
+
+inputs:
+  current_metrics:
+    type: "dict"
+    required: true
+    description: "TRUE_GUARDED, coverage, tests"
+  doc_files:
+    type: "list[str]"
+    required: true
+    description: "Docs to update"
+
+outputs:
+  updated_docs:
+    type: "list[str]"
+    description: "Files updated"
+
+parallel_policy:
+  mode: DAG
+  max_agents: 5
+  rules:
+    - "Independent writes to different files"
+    - "No two agents edit same doc"
+
+tasks:
+  - id: audit_staleness
+    deps: []
+  - id: update_matrix
+    deps: [audit_staleness]
+  - id: update_dashboard
+    deps: [audit_staleness]
+  - id: update_metrics
+    deps: [audit_staleness]
+  - id: verify_consistency
+    deps: [update_matrix, update_dashboard, update_metrics]
+
+validation_checklist:
+  - "All stale counts updated"
+  - "All inventory lists complete"
+  - "All metrics consistent"
+
+stop_conditions:
+  - "Doc count mismatch"
+  - "Missing inventory entry"

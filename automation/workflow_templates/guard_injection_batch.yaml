@@ -1,0 +1,52 @@
+name: GUARD_INJECTION_BATCH
+description: "Inject guard contract into 5 scripts per batch."
+mode: QUEUE
+
+inputs:
+  scripts:
+    type: "list[str]"
+    required: true
+    description: "5 approved scripts"
+  guard_contract:
+    type: "dict"
+    required: true
+    description: "Guard function to inject"
+
+outputs:
+  guarded_scripts:
+    type: "list[str]"
+    description: "Scripts with guard injected"
+  test_results:
+    type: "dict"
+    description: "Test pass/fail counts"
+
+parallel_policy:
+  mode: QUEUE
+  max_agents: 1
+  rules:
+    - "One batch at a time"
+    - "Inject → test → sync sequence"
+    - "Each step validates before next"
+
+tasks:
+  - id: inject_scripts
+    deps: []
+  - id: create_tests
+    deps: [inject_scripts]
+  - id: run_targeted_tests
+    deps: [create_tests]
+  - id: run_regression
+    deps: [run_targeted_tests]
+  - id: sync_docs
+    deps: [run_regression]
+
+validation_checklist:
+  - "Guard is first 2 lines in main()"
+  - "No high-risk imports added"
+  - "6/6 tests pass per script"
+  - "No regression in baseline"
+
+stop_conditions:
+  - "Test failure"
+  - "Guard placement error"
+  - "Regression detected"
