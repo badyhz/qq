@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from core.execution_guards import (
+    ExecutionGuardError,
+    assert_dry_run_required,
+    normalize_execution_mode,
+)
 
 def _parse_dt(value: Any) -> datetime | None:
     text = str(value or "").strip()
@@ -310,6 +317,8 @@ def _print_human(summary: dict[str, Any]) -> None:
 
 def main() -> None:
     args = build_arg_parser().parse_args()
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     summary = validate_testnet_artifacts(
         logs_dir=str(args.logs_dir or "logs"),
         date=str(args.date or ""),
