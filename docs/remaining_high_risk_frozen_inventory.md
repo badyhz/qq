@@ -42,13 +42,15 @@ Last updated: 2026-05-26
 
 ## Non-frozen Safe Guarded Scripts
 
-**Count**: 3
+**Count**: 5
 
 | # | File | Guard |
 |---|---|---|
 | 1 | `scripts/validate_testnet_artifacts.py` | `assert_dry_run_required` |
 | 2 | `scripts/generate_runner_dry_run_report.py` | `assert_dry_run_required` |
 | 3 | `scripts/generate_gate_decision_dashboard.py` | `assert_dry_run_required` |
+| 4 | `scripts/generate_trading_system_health_dashboard.py` | `assert_dry_run_required` |
+| 5 | `scripts/generate_sample_collection_eod_report.py` | `assert_dry_run_required` |
 
 ---
 
