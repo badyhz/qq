@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def generate_ohlcv_gap_manual_review_phase_control_report_v1(
     manual_gate_report: Optional[Dict] = None,
@@ -126,6 +128,8 @@ def generate_ohlcv_gap_manual_review_phase_control_report_v1(
 
 
 def main():
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--manual-gate-json", type=str, help="Path to T424 manual gate report JSON file")

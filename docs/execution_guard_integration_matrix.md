@@ -79,11 +79,12 @@
 | Observation shift | `assert_submit_unlocked` | Blocked | none | needs Phase1 |
 | Experiment plan | `assert_dry_run_required` | Blocked | none | needs Phase1 |
 
----
-
-## Phase2 Safe Integrations Completed
+## Phase2 Safe Integrations Completed (41)
 
 Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
+
+---
+
 
 | Script | Guard | Status | Tests | Commit |
 |---|---|---|---|---|
@@ -92,6 +93,42 @@ Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
 | `scripts/generate_gate_decision_dashboard.py` | `assert_dry_run_required` | Completed | 6 | `8bf2181` |
 | `scripts/generate_trading_system_health_dashboard.py` | `assert_dry_run_required` | Completed | 6 | `e45905e` |
 | `scripts/generate_sample_collection_eod_report.py` | `assert_dry_run_required` | Completed | 6 | `cab8e95` |
+| `scripts/audit_real_ohlcv_source_schema.py` | `assert_dry_run_required` | Completed | 6 | T627 |
+| `scripts/calculate_execution_quality_score.py` | `assert_dry_run_required` | Completed | 6 | T627 |
+| `scripts/generate_ohlcv_gap_validation_control_report_v1.py` | `assert_dry_run_required` | Completed | 6 | T627 |
+| `scripts/generate_real_ohlcv_source_mapping_v1.py` | `assert_dry_run_required` | Completed | 6 | T627 |
+| `scripts/validate_real_ohlcv_gap_candidates.py` | `assert_dry_run_required` | Completed | 6 | T627 |
+| `scripts/analyze_post_entry_mfe_mae.py` | `assert_dry_run_required` | Completed | 6 | T635 |
+| `scripts/analyze_trade_lifecycle_performance.py` | `assert_dry_run_required` | Completed | 6 | T635 |
+| `scripts/evaluate_missing_klines_recovery.py` | `assert_dry_run_required` | Completed | 6 | T635 |
+| `scripts/evaluate_tp_sl_efficiency.py` | `assert_dry_run_required` | Completed | 6 | T635 |
+| `scripts/show_trade_stats.py` | `assert_dry_run_required` | Completed | 6 | T635 |
+| `scripts/generate_daily_operator_checklist.py` | `assert_dry_run_required` | Completed | 6 | T640 |
+| `scripts/audit_price_field_source_trust.py` | `assert_dry_run_required` | Completed | 6 | T640 |
+| `scripts/generate_phase_control_report_v1.py` | `assert_dry_run_required` | Completed | 6 | T640 |
+| `scripts/generate_phase_control_report_v2.py` | `assert_dry_run_required` | Completed | 6 | T640 |
+| `scripts/generate_strategy_relaxation_suggestions.py` | `assert_dry_run_required` | Completed | 6 | T640 |
+| `scripts/analyze_readiness_blocker_attribution.py` | `assert_dry_run_required` | Completed | 6 | T645 |
+| `scripts/diagnose_near_miss_strict_gap.py` | `assert_dry_run_required` | Completed | 6 | T645 |
+| `scripts/evaluate_strategy_promotion_rules.py` | `assert_dry_run_required` | Completed | 6 | T645 |
+| `scripts/generate_single_human_gated_execution_local_audit_manifest_v1.py` | `assert_dry_run_required` | Completed | 6 | T645 |
+| `scripts/map_readiness_blockers_to_actions.py` | `assert_dry_run_required` | Completed | 6 | T645 |
+| `scripts/generate_human_confirmation_token_gate_v1.py` | `assert_dry_run_required` | Completed | 6 | T666 |
+| `scripts/generate_human_gated_execution_final_safety_gate_v1.py` | `assert_dry_run_required` | Completed | 6 | T666 |
+| `scripts/generate_human_gated_execution_wrapper_eligibility_report_v1.py` | `assert_dry_run_required` | Completed | 6 | T666 |
+| `scripts/generate_human_gated_execution_wrapper_phase_control_report_v1.py` | `assert_dry_run_required` | Completed | 6 | T666 |
+| `scripts/generate_single_human_gated_execution_command_preview_packet_v1.py` | `assert_dry_run_required` | Completed | 6 | T666 |
+| `scripts/generate_single_human_gated_execution_wrapper_artifact_phase_control_report_v1.py` | `assert_dry_run_required` | Completed | 6 | T681 |
+| `scripts/generate_single_human_gated_testnet_execution_wrapper_artifact_v1.py` | `assert_dry_run_required` | Completed | 6 | T681 |
+| `scripts/generate_ohlcv_gap_manual_approval_artifact_v1.py` | `assert_dry_run_required` | Completed | 6 | T681 |
+| `scripts/generate_ohlcv_gap_manual_approval_gate_report_v1.py` | `assert_dry_run_required` | Completed | 6 | T681 |
+| `scripts/generate_ohlcv_gap_manual_review_packet_v1.py` | `assert_dry_run_required` | Completed | 6 | T681 |
+| `scripts/generate_ohlcv_gap_manual_review_phase_control_report_v1.py` | `assert_dry_run_required` | Completed | 6 | T684 |
+| `scripts/interpret_ohlcv_gap_manual_review_checklist_v1.py` | `assert_dry_run_required` | Completed | 6 | T684 |
+| `scripts/generate_repeat_small_batch_candidate_refresh_packet_v1.py` | `assert_dry_run_required` | Completed | 6 | T684 |
+| `scripts/generate_human_copy_paste_dry_run_readiness_packet_v1.py` | `assert_dry_run_required` | Completed | 6 | T684 |
+| `scripts/verify_human_copy_paste_dry_run_command_v1.py` | `assert_dry_run_required` | Completed | 6 | T684 |
+| `scripts/simulate_human_token_validation_v1.py` | `assert_dry_run_required` | Completed | 6 | T684 |
 
 ---
 
@@ -153,9 +190,9 @@ Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
 
 - **Phase0**: Completed
 - **Phase1**: Completed
-- **Phase2**: In Progress (5 safe integrations completed)
+- **Phase2**: DONE (41 safe integrations completed)
 - **Phase3–4**: Frozen (22 frozen files: 21 scripts + `core/live_runner.py`)
-- **Tests**: ~192 across all components
+- **Tests**: ~374 across all components (124 guard core + 30 batch1 + 30 batch2 + 24+6 skipped batch3 + 30 batch4 + 30 batch5 + 30 batch6 + 30 batch7 + 30 batch8 + 6 batch9)
 - **Next**: Runtime integration proposal, non-frozen script audit
 
 ---
@@ -164,9 +201,9 @@ Non-frozen readonly/planner scripts with dry-run guard at CLI entry.
 
 | Field | Value |
 |---|---|
-| Current phase status | Phase0–1 Completed, Phase2 In Progress, Phase3–4 Frozen |
+| Current phase status | Phase0–1 Completed, Phase2 DONE, Phase3–4 Frozen |
 | Frozen file count | 22 (21 scripts + core/live_runner.py) |
-| Phase2 safe integrations | 5 (validate_testnet_artifacts, generate_runner_dry_run_report, generate_gate_decision_dashboard, generate_trading_system_health_dashboard, generate_sample_collection_eod_report) |
-| execution_guard tests | ~192 |
+| Phase2 safe integrations | 41 (validate_testnet_artifacts, generate_runner_dry_run_report, generate_gate_decision_dashboard, generate_trading_system_health_dashboard, generate_sample_collection_eod_report, audit_real_ohlcv_source_schema, calculate_execution_quality_score, generate_ohlcv_gap_validation_control_report_v1, generate_real_ohlcv_source_mapping_v1, validate_real_ohlcv_gap_candidates, analyze_post_entry_mfe_mae, analyze_trade_lifecycle_performance, evaluate_missing_klines_recovery, evaluate_tp_sl_efficiency, show_trade_stats, generate_daily_operator_checklist, audit_price_field_source_trust, generate_phase_control_report_v1, generate_phase_control_report_v2, generate_strategy_relaxation_suggestions, analyze_readiness_blocker_attribution, diagnose_near_miss_strict_gap, evaluate_strategy_promotion_rules, generate_single_human_gated_execution_local_audit_manifest_v1, map_readiness_blockers_to_actions, generate_human_confirmation_token_gate_v1, generate_human_gated_execution_final_safety_gate_v1, generate_human_gated_execution_wrapper_eligibility_report_v1, generate_human_gated_execution_wrapper_phase_control_report_v1, generate_single_human_gated_execution_command_preview_packet_v1, generate_single_human_gated_execution_wrapper_artifact_phase_control_report_v1, generate_single_human_gated_testnet_execution_wrapper_artifact_v1, generate_ohlcv_gap_manual_approval_artifact_v1, generate_ohlcv_gap_manual_approval_gate_report_v1, generate_ohlcv_gap_manual_review_packet_v1, generate_ohlcv_gap_manual_review_phase_control_report_v1, interpret_ohlcv_gap_manual_review_checklist_v1, generate_repeat_small_batch_candidate_refresh_packet_v1, generate_human_copy_paste_dry_run_readiness_packet_v1, verify_human_copy_paste_dry_run_command_v1, simulate_human_token_validation_v1) |
+| execution_guard tests | ~374 |
 | High-risk integration performed | No |
-| Last audit | Phase2 safe batch complete |
+| Last audit | Phase2 safe batch complete (batch9, 41 guarded) |

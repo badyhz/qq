@@ -5,6 +5,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 PHASE = "SINGLE_HUMAN_GATED_EXECUTION_WRAPPER_ARTIFACT"
 
@@ -95,6 +97,8 @@ def generate_phase_report(
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser(description="Generate single human-gated execution wrapper artifact phase control report")
     parser.add_argument("--wrapper-artifact-json", required=True)
     parser.add_argument("--wrapper-invariant-json", required=True)

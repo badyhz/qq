@@ -5,6 +5,8 @@ import os
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def interpret_ohlcv_gap_manual_review_checklist_v1(
     review_packet: Optional[Dict] = None,
@@ -127,6 +129,8 @@ def interpret_ohlcv_gap_manual_review_checklist_v1(
 
 
 def main():
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--review-packet-json", type=str, help="Path to T421 manual review packet JSON file")

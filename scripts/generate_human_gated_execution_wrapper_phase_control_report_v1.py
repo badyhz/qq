@@ -5,6 +5,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 PHASE = "HUMAN_GATED_EXECUTION_WRAPPER_REVIEW"
 
@@ -102,6 +104,9 @@ def generate_phase_report(
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
+
     parser = argparse.ArgumentParser(description="Generate human-gated execution wrapper phase control report")
     parser.add_argument("--wrapper-eligibility-json", required=True)
     parser.add_argument("--dry-run-plan-json", required=True)

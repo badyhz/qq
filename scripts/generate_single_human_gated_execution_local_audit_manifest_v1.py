@@ -8,6 +8,8 @@ import sys
 import uuid
 from typing import Any, Dict, Optional, List
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def sha256_file(path: str) -> Optional[str]:
     if not path or not os.path.exists(path):
@@ -174,6 +176,8 @@ def generate_manifest(
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser(description="Generate single human-gated execution local audit manifest")
     parser.add_argument("--wrapper-phase-json", required=True)
     parser.add_argument("--final-safety-gate-json", required=True)

@@ -4,10 +4,12 @@ import argparse
 import csv
 import json
 import math
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
 from scripts.strategy_edge_common import read_csv_rows, to_float_nan
 
 
@@ -218,6 +220,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     args = build_arg_parser().parse_args()
     result = diagnose_near_miss_strict_gap(
         observation_samples_csv=str(args.observation_samples_csv or "reports/observation_sample_store/observation_samples.csv"),

@@ -5,6 +5,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def load_json(path: str) -> Optional[Dict[str, Any]]:
     if not path or not os.path.exists(path):
@@ -113,6 +115,9 @@ def generate_report(
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
+
     parser = argparse.ArgumentParser(description="Generate human-gated execution wrapper eligibility report")
     parser.add_argument("--single-manual-submit-phase-json", required=True)
     parser.add_argument("--human-token-packet-json", required=True)

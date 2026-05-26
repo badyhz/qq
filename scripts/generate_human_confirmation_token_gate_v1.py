@@ -7,6 +7,8 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def load_json(path: str) -> Optional[Dict[str, Any]]:
     if not os.path.exists(path):
@@ -106,6 +108,9 @@ def generate_token_gate(phase_report: Optional[Dict[str, Any]], invariant_report
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
+
     parser = argparse.ArgumentParser(description="Generate human confirmation token gate")
     parser.add_argument("--inputs", nargs=3, metavar=("PHASE_REPORT", "INVARIANT_REPORT", "RISK_DELTA_REPORT"), required=True)
     parser.add_argument("--output", required=True)

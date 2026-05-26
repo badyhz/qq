@@ -5,6 +5,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def load_json(path: str) -> Optional[Dict[str, Any]]:
     if not path or not os.path.exists(path):
@@ -102,6 +104,8 @@ def verify_command(
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser(description="Verify human copy-paste dry-run command")
     parser.add_argument("--dry-run-readiness-json", required=True)
     parser.add_argument("--provided-command")

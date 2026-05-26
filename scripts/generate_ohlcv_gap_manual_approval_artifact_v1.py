@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def generate_ohlcv_gap_manual_approval_artifact_v1(
     checklist_interpretation: Optional[Dict] = None,
@@ -124,6 +126,8 @@ def generate_ohlcv_gap_manual_approval_artifact_v1(
 
 
 def main():
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--checklist-json", type=str, help="Path to T422 checklist interpretation JSON file")
