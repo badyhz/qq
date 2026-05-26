@@ -200,12 +200,20 @@ class TestSchemaValidationIntegration:
 
 
 class TestSchemaExceptionPath:
-    def test_malformed_report_recovery(self, monkeypatch, capsys):
-        monkeypatch.setenv("QQ_NO_SUBMIT", "1")
+    def test_validation_error_produces_blocked(self, monkeypatch, capsys):
+        import scripts.generate_execution_guard_status_report as mod
+
+        def _raise(_report):
+            raise ValueError("injected")
+
+        monkeypatch.setattr(mod, "validate_guard_report", _raise)
         main(["--mode", "dry_run", "--action", "submit"])
         captured = capsys.readouterr()
         report = json.loads(captured.out)
-        assert report["status"] == "OK"
+        assert report["status"] == "BLOCKED"
+        assert report["reason"] == "SCHEMA_VALIDATION_FAILED"
+        assert "mode" in report
+        assert report["action"] == "submit"
         assert "env_overrides" in report
 
     def test_output_is_json_safe(self, capsys):
@@ -227,7 +235,7 @@ class TestSchemaExceptionPath:
         main(["--action", "submit"])
         captured = capsys.readouterr()
         report = json.loads(captured.out)
-        assert "mode" in report or "mode_input" in report
+        assert "mode" in report
 
 
 class TestCompactOutput:

@@ -172,8 +172,8 @@ class TestEnvRoundtrip:
 # ---------------------------------------------------------------------------
 
 class TestSchemaDrift:
-    def test_new_required_key_would_fail(self):
-        """If schema adds a required key, producer must match."""
+    def test_missing_required_key_detected(self):
+        """Producer missing a required key fails validation."""
         report = build_execution_guard_report(
             mode="dry_run",
             action="submit",
@@ -182,7 +182,9 @@ class TestSchemaDrift:
         )
         report["status"] = "OK"
         report["env_overrides"] = {}
-        validate_guard_report(report)
+        required = get_guard_schema_required_keys("OK")
+        missing = required - set(report.keys())
+        assert not missing, f"producer missing keys: {sorted(missing)}"
 
     def test_producer_has_all_ok_keys_via_helper(self):
         report = build_execution_guard_report(
