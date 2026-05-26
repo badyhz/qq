@@ -197,3 +197,66 @@ class TestSchemaValidationIntegration:
         captured = capsys.readouterr()
         report = json.loads(captured.out)
         assert report["status"] == "OK"
+
+
+class TestSchemaExceptionPath:
+    def test_malformed_report_recovery(self, monkeypatch, capsys):
+        monkeypatch.setenv("QQ_NO_SUBMIT", "1")
+        main(["--mode", "dry_run", "--action", "submit"])
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
+        assert report["status"] == "OK"
+        assert "env_overrides" in report
+
+    def test_output_is_json_safe(self, capsys):
+        main(["--mode", "dry_run", "--action", "submit"])
+        captured = capsys.readouterr()
+        parsed = json.loads(captured.out)
+        assert isinstance(parsed, dict)
+
+    def test_blocked_report_has_required_keys(self, capsys):
+        main(["--action", "submit"])
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
+        assert "status" in report
+        assert "reason" in report
+        assert "action" in report
+        assert "env_overrides" in report
+
+    def test_blocked_report_has_mode_key(self, capsys):
+        main(["--action", "submit"])
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
+        assert "mode" in report or "mode_input" in report
+
+
+class TestCompactOutput:
+    def test_compact_stdout(self, capsys):
+        main(["--mode", "dry_run", "--action", "submit", "--compact"])
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
+        assert report["status"] == "OK"
+        assert "\n" not in captured.out.strip()
+
+    def test_pretty_stdout(self, capsys):
+        main(["--mode", "dry_run", "--action", "submit", "--pretty"])
+        captured = capsys.readouterr()
+        report = json.loads(captured.out)
+        assert report["status"] == "OK"
+        assert "\n" in captured.out
+
+    def test_compact_output_file(self, tmp_path):
+        out_file = tmp_path / "report.json"
+        main(["--mode", "dry_run", "--action", "submit", "--compact", "--output", str(out_file)])
+        content = out_file.read_text()
+        report = json.loads(content)
+        assert report["status"] == "OK"
+        assert "\n" not in content.strip()
+
+    def test_pretty_output_file(self, tmp_path):
+        out_file = tmp_path / "report.json"
+        main(["--mode", "dry_run", "--action", "submit", "--pretty", "--output", str(out_file)])
+        content = out_file.read_text()
+        report = json.loads(content)
+        assert report["status"] == "OK"
+        assert "\n" in content

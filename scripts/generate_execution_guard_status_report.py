@@ -122,6 +122,8 @@ def main(argv: list[str] | None = None) -> None:
         "--symbol-allowlist", default=None, help="Comma-separated symbols"
     )
     parser.add_argument("--json", action="store_true", default=False)
+    parser.add_argument("--compact", action="store_true", default=False)
+    parser.add_argument("--pretty", action="store_true", default=False)
     parser.add_argument("--output", default=None, help="Output file path")
     args = parser.parse_args(argv)
 
@@ -137,16 +139,20 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         validate_guard_report(report)
-    except ValueError:
+    except (ValueError, KeyError, TypeError):
         report = {
             "status": "BLOCKED",
             "reason": "SCHEMA_VALIDATION_FAILED",
+            "mode": report.get("mode", ""),
             "action": args.action,
             "symbol": (args.symbol or "").upper(),
             "env_overrides": report.get("env_overrides", {}),
         }
 
-    output_str = json.dumps(report, indent=2, sort_keys=True)
+    if args.compact:
+        output_str = json.dumps(report, separators=(",", ":"), sort_keys=True)
+    else:
+        output_str = json.dumps(report, indent=2, sort_keys=True)
 
     if args.output:
         with open(args.output, "w") as f:
