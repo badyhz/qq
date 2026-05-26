@@ -27,6 +27,8 @@ notes/
 *.txt~
 *.diff
 *.tmp
-*.bak
+*.bak*
 git_status.tmp
 skills-lock.json
+automation/trae_tasks/
+tests/unit/test_mimo_model_discovery.py
