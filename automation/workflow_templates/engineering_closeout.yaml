@@ -1,0 +1,55 @@
+name: ENGINEERING_CLOSEOUT
+description: "Standardized phase/milestone closure."
+mode: CLOSEOUT
+
+inputs:
+  phase_name:
+    type: "str"
+    required: true
+    description: "Phase identifier"
+  files_to_commit:
+    type: "list[str]"
+    required: true
+    description: "Files to stage"
+
+outputs:
+  closure_commit:
+    type: "str"
+    description: "Commit hash"
+  closure_tag:
+    type: "str"
+    description: "Tag name"
+
+parallel_policy:
+  mode: CLOSEOUT
+  max_agents: 1
+  rules:
+    - "Sequential verification steps"
+    - "Tag created after commit only"
+
+tasks:
+  - id: verify_clean_tree
+    deps: []
+  - id: classify_dirty
+    deps: [verify_clean_tree]
+  - id: check_frozen
+    deps: [classify_dirty]
+  - id: stage
+    deps: [check_frozen]
+  - id: commit
+    deps: [stage]
+  - id: tag
+    deps: [commit]
+  - id: verify
+    deps: [tag]
+
+validation_checklist:
+  - "Inside git repo"
+  - "Clean tree (except frozen/junk)"
+  - "No frozen files staged"
+  - "Tag points to HEAD"
+
+stop_conditions:
+  - "Frozen file detected in staging"
+  - "Tag already exists"
+  - "Verification failure"
