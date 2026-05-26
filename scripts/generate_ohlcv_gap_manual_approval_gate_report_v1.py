@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
+
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
 
 
 def generate_ohlcv_gap_manual_approval_gate_report_v1(
@@ -139,6 +142,8 @@ def generate_ohlcv_gap_manual_approval_gate_report_v1(
 
 
 def main():
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()

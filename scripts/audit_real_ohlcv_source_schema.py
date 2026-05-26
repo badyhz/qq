@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Tuple
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def audit_single_source(source_path: str) -> Dict:
     row_count = 0
@@ -211,6 +213,9 @@ def audit_real_ohlcv_source_schema(discovery_json_path: Optional[str] = None, ca
 
 
 def main():
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--discovery-json", type=str, help="Path to T411 discovery JSON file")

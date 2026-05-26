@@ -5,6 +5,8 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def load_json(path: str) -> Optional[Any]:
     if not path or not os.path.exists(path):
@@ -151,6 +153,8 @@ def generate_refresh(
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser(description="Generate repeat small batch candidate refresh packet")
     parser.add_argument("--repeat-eligibility-json", required=True)
     parser.add_argument("--new-candidates-json", required=True)

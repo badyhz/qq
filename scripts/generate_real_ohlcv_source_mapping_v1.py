@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def parse_symbol_and_timeframe_from_path(path: str) -> tuple[Optional[str], Optional[str]]:
     parts = path.split(os.sep)
@@ -147,6 +149,9 @@ def generate_real_ohlcv_source_mapping_v1(
 
 
 def main():
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--schema-audit-json", type=str, help="Path to T412 schema audit JSON file")

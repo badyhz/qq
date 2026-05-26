@@ -5,6 +5,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def load_json(path: str) -> Optional[Dict[str, Any]]:
     if not path or not os.path.exists(path):
@@ -106,6 +108,8 @@ def generate_readiness(
 
 
 def main(argv=None) -> int:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     parser = argparse.ArgumentParser(description="Generate human copy-paste dry-run readiness packet")
     parser.add_argument("--wrapper-artifact-phase-json", required=True)
     parser.add_argument("--command-preview-json", required=True)

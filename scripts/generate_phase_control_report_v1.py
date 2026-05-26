@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -126,6 +129,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     args = build_arg_parser().parse_args()
     result = generate_phase_control_report_v1(
         shadow_research_kpi_json=str(args.shadow_research_kpi_json or "reports/shadow_research_kpi/kpi_dashboard.json"),

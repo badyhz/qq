@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -186,6 +189,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
+
     args = build_arg_parser().parse_args()
     summary = calculate_execution_quality_score(
         input_csv=str(args.input_csv or "reports/trade_lifecycle/trade_lifecycle.csv"),

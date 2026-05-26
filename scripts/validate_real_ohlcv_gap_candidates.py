@@ -5,6 +5,8 @@ import os
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
+from core.execution_guards import assert_dry_run_required, normalize_execution_mode
+
 
 def validate_real_ohlcv_gap_candidates(
     records_result: Optional[Dict] = None,
@@ -140,6 +142,9 @@ def validate_real_ohlcv_gap_candidates(
 
 
 def main():
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--records-json", type=str, help="Path to T414 records JSON file")
