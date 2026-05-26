@@ -38,4 +38,11 @@ SAFE_READONLY_AUDIT = {
         "Assume scripts are safe without reading",
         "Batch too many scripts (>5)",
     ],
+    "tasks": [
+        {"id": "scan_candidate_scripts", "deps": []},
+        {"id": "check_frozen_exclusion", "deps": ["scan_candidate_scripts"]},
+        {"id": "classify_risk_level", "deps": ["check_frozen_exclusion"]},
+        {"id": "verify_guard_eligibility", "deps": ["classify_risk_level"]},
+        {"id": "produce_audit_report", "deps": ["verify_guard_eligibility"]},
+    ],
 }
