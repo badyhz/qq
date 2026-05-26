@@ -4,9 +4,16 @@ import argparse
 import csv
 import json
 import math
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from core.execution_guards import (
+    ExecutionGuardError,
+    assert_dry_run_required,
+    normalize_execution_mode,
+)
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -371,6 +378,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_arg_parser().parse_args()
+    mode = normalize_execution_mode(os.environ.get("QQ_RUNTIME_MODE"))
+    assert_dry_run_required(mode)
     result = generate_trading_system_health_dashboard(
         logs_dir=str(args.logs_dir or "logs"),
         reports_dir=str(args.reports_dir or "reports"),
