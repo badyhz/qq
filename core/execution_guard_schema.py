@@ -95,6 +95,7 @@ def build_guard_report_summary(report: dict) -> dict:
     assert_guard_report_keys(report)
     status = report["status"]
     summary: dict[str, Any] = {
+        "blocked": status == "BLOCKED",
         "status": status,
         "action": report["action"],
     }

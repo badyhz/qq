@@ -169,11 +169,19 @@ class TestExtraKeys:
 class TestSummary:
     def test_ok_summary_keys(self):
         s = build_guard_report_summary(_ok_report())
-        assert set(s.keys()) == {"status", "action", "mode", "all_layers_pass"}
+        assert set(s.keys()) == {"blocked", "status", "action", "mode", "all_layers_pass"}
 
     def test_blocked_summary_keys(self):
         s = build_guard_report_summary(_blocked_report())
-        assert set(s.keys()) == {"status", "action", "reason"}
+        assert set(s.keys()) == {"blocked", "status", "action", "reason"}
+
+    def test_ok_summary_blocked_false(self):
+        s = build_guard_report_summary(_ok_report())
+        assert s["blocked"] is False
+
+    def test_blocked_summary_blocked_true(self):
+        s = build_guard_report_summary(_blocked_report())
+        assert s["blocked"] is True
 
     def test_ok_all_layers_pass_true(self):
         s = build_guard_report_summary(_ok_report(
