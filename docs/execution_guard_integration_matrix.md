@@ -1,5 +1,14 @@
 # Execution Guard Integration Matrix
 
+## Legend
+
+| Status | Meaning |
+|---|---|
+| **Completed** | Implemented, tested, no further work needed |
+| **Planned** | Designed but not yet implemented |
+| **Blocked** | Waiting on prior phase or explicit unfreeze |
+| **Frozen** | HIGH_RISK script; no modification until explicit unfreeze + review |
+
 ## Phase0 — Helper / Schema / Contract (completed)
 
 **Scope**: Pure functions, schema validation, report generation, contract tests.
@@ -28,7 +37,7 @@
 
 ---
 
-## Phase1 — Readonly Integration (planned)
+## Phase1 — Readonly Integration (completed)
 
 **Scope**: CLI usage, docs, runtime integration proposal, readonly wrappers for non-frozen scripts.
 

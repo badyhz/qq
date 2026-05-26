@@ -1,5 +1,17 @@
 # Execution Guard Report Examples
 
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| **fail-closed** | Unknown or missing state defaults to blocked; never silently proceeds |
+| **layered unlock** | 5-layer gate (capability → CLI allow → env unlock → manual confirm → symbol allowlist) required before action |
+| **kill-switch** | `QQ_NO_*` env var that unconditionally blocks an action regardless of other layers |
+| **schema drift** | Producer output diverging from schema-required keys; caught by contract tests |
+| **guard report** | Structured dict emitted per action, validated against schema before output |
+| **HIGH_RISK_WRITE** | Scripts that submit/cancel/flatten orders (frozen until Phase3) |
+| **HIGH_RISK_RUNTIME** | Long-running orchestrators that may trigger actions (frozen until Phase4) |
+
 ## 1. dry_run OK
 
 ```json
@@ -31,6 +43,7 @@
 {
   "status": "BLOCKED",
   "reason": "LIVE_MODE_NOT_ALLOWED",
+  "mode": "live",
   "action": "submit",
   "symbol": "BTCUSDT",
   "env_overrides": {
@@ -74,6 +87,7 @@
 {
   "status": "BLOCKED",
   "reason": "FAIL_CLOSED",
+  "mode": "",
   "action": "submit",
   "symbol": "BTCUSDT",
   "env_overrides": {
