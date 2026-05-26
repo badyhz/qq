@@ -27,7 +27,7 @@ QQ_REQUIRE_DRY_RUN=1
 - No live/testnet order submission without explicit unlock
 - Layered unlock (layers 0-5) enforced per action
 - Guard report emitted at startup showing all layers
-- Fail-closed: unknown mode halts runtime
+- fail-closed: unknown mode halts runtime
 
 ---
 
