@@ -1,0 +1,11 @@
+{
+  "symbol": "BTCUSDT",
+  "timeframe": "5m",
+  "total_rows": 30,
+  "valid_rows": 30,
+  "duplicate_count": 0,
+  "gap_count": 0,
+  "invalid_ohlcv_count": 0,
+  "is_clean": true,
+  "issue_count": 0
+}

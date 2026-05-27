@@ -1,0 +1,14 @@
+{
+  "matrix_id": "test_matrix",
+  "cell_count": 1,
+  "split_mode": "walk_forward",
+  "cells": [
+    {
+      "cell_id": "cell_0000",
+      "symbol": "BTCUSDT",
+      "timeframe": "5m",
+      "param_label": "conservative",
+      "split_mode": "walk_forward"
+    }
+  ]
+}

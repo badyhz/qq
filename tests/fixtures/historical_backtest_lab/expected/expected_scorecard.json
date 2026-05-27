@@ -1,0 +1,22 @@
+{
+  "scorecard_id": "test_scorecard",
+  "cell_count": 1,
+  "pass_count": 0,
+  "watch_count": 0,
+  "reject_count": 1,
+  "cells": [
+    {
+      "cell_id": "cell_0000",
+      "symbol": "BTCUSDT",
+      "timeframe": "5m",
+      "param_label": "conservative",
+      "grade": "REJECT",
+      "reason_codes": [
+        "candidate_count=3<5"
+      ],
+      "blockers": [
+        "insufficient_candidates"
+      ]
+    }
+  ]
+}

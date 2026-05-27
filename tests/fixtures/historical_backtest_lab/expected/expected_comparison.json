@@ -1,0 +1,22 @@
+{
+  "comparison_id": "test_comparison",
+  "experiment_ids": [
+    "cell_0000"
+  ],
+  "metrics_compared": [
+    "expectancy_r",
+    "win_rate",
+    "avg_return_r",
+    "max_drawdown_r",
+    "sample_quality_score",
+    "profit_factor"
+  ],
+  "best_by_metric": {
+    "expectancy_r": "cell_0000",
+    "win_rate": "cell_0000",
+    "avg_return_r": "cell_0000",
+    "max_drawdown_r": "cell_0000",
+    "sample_quality_score": "cell_0000",
+    "profit_factor": "cell_0000"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "candidate_count": 3,
+  "win_count": 2,
+  "loss_count": 1,
+  "neutral_count": 0,
+  "win_rate": 0.666667,
+  "avg_return_r": 0.2,
+  "expectancy_r": 0.2,
+  "max_drawdown_r": -0.2,
+  "avg_mfe_r": 0.5,
+  "avg_mae_r": -0.333333,
+  "profit_factor": 4.0,
+  "sample_quality_score": 0.655556,
+  "coverage_status": "full"
+}

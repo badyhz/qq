@@ -1,0 +1,15 @@
+{
+  "release_hold": "HOLD",
+  "no_live": true,
+  "no_submit": true,
+  "no_exchange": true,
+  "generated_by": "offline_backtest_bundle_builder",
+  "artifact_count": 1,
+  "artifacts": [
+    {
+      "name": "a.json",
+      "sha256": "aaa",
+      "size_bytes": 10
+    }
+  ]
+}
