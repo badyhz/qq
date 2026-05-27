@@ -47,6 +47,19 @@ PRD control-plane setup. Not runtime integration. Not live trading.
 - No live trading, no exchange connectors, no secret management, no runtime execution
 - Hard stop: T1160
 
+## T1161-T1260 Untracked-Freeze Governance Layer
+
+- 40 documentation files (governance summary, acceptance commands, safety boundaries, untracked freeze, medium-risk review, no-submit release gate, next-wave recommendation, final closeout)
+- 40 model modules (governance summary packet, acceptance command packet, safety boundary packet, untracked freeze packet, medium-risk review packet, no-submit release gate packet, next-wave recommendation, final closeout report, and supporting models)
+- 4 renderer modules (markdown, JSON, summary, closeout renderers)
+- 6 test files (governance model, freeze inventory, release gate test groups)
+- Release hold: HOLD
+- No live trading, no exchange connectors, no secret management, no runtime execution
+- 9 HIGH-risk files frozen (live_runner, single_call_recorder, evidence_recorder, testnet/submission scripts)
+- 22 MEDIUM-risk files governed by medium-risk policy (operational, verification, shadow scripts)
+- No-submit gate enforced: zero order submissions, zero exchange connections, zero credential access
+- Hard stop: T1260
+
 ## Next Safe Phase
 
-PRD-driven task automation only. Read-only hook implementation still requires human review. T1161+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.
+PRD-driven task automation only. Read-only hook implementation still requires human review. T1261+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.

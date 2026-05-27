@@ -210,3 +210,49 @@ Each task includes:
 - T1180: T1161-T1180 final closeout report — HUMAN_REVIEW_REQUIRED
 
 **Important:** T1161-T1200 all require human review. No autonomous progression beyond T1160.
+
+## Completed Ranges (continued)
+
+- T1161-T1260: untracked-freeze governance layer — completed
+  - T1161-T1200: human review gate runtime wiring, dirty workspace auto-classification, freeze-aware queue admission
+  - T1201-T1240: freeze inventory docs, medium-risk review docs, no-submit release gate docs
+  - T1241-T1250: model modules (governance summary, acceptance, safety, freeze, medium-risk, release gate, next-wave, closeout)
+  - T1251-T1260: governance closeout packets (summary, acceptance, safety, untracked freeze, medium-risk review, no-submit gate, next-wave recommendation, final closeout)
+  - 40 docs, 40 models, 4 renderers, 6 tests
+  - Release hold: HOLD
+  - No live trading authorization
+  - 9 HIGH-risk files frozen
+
+## Current Phase (updated)
+
+- Hard stop: T1260
+- T1161-T1260 untracked-freeze governance layer complete
+- 40 docs, 40 models, 4 renderers, 6 tests
+- Release hold: HOLD
+- No live trading authorization
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+
+## Next Proposed Queue (T1261-T1300 / HUMAN_REVIEW_REQUIRED)
+
+- T1261: untracked freeze automation design — HUMAN_REVIEW_REQUIRED
+- T1262: untracked freeze checker model — HUMAN_REVIEW_REQUIRED
+- T1263: untracked freeze pre-commit hook design — HUMAN_REVIEW_REQUIRED
+- T1264: untracked freeze violation report — HUMAN_REVIEW_REQUIRED
+- T1265: untracked freeze enforcement tests — HUMAN_REVIEW_REQUIRED
+- T1266: medium-risk promotion checklist validator — HUMAN_REVIEW_REQUIRED
+- T1267: medium-risk import boundary verifier — HUMAN_REVIEW_REQUIRED
+- T1268: medium-risk promotion readiness scorer — HUMAN_REVIEW_REQUIRED
+- T1269: medium-risk promotion tracker — HUMAN_REVIEW_REQUIRED
+- T1270: medium-risk promotion workflow tests — HUMAN_REVIEW_REQUIRED
+- T1271: no-submit gate static analysis rules — HUMAN_REVIEW_REQUIRED
+- T1272: no-submit gate denied-operation detector — HUMAN_REVIEW_REQUIRED
+- T1273: no-submit gate compliance reporter — HUMAN_REVIEW_REQUIRED
+- T1274: no-submit gate acceptance pipeline — HUMAN_REVIEW_REQUIRED
+- T1275: no-submit gate enforcement tests — HUMAN_REVIEW_REQUIRED
+- T1276: readiness scoring dimension definition — HUMAN_REVIEW_REQUIRED
+- T1277: readiness scoring model — HUMAN_REVIEW_REQUIRED
+- T1278: readiness scoring dashboard — HUMAN_REVIEW_REQUIRED
+- T1279: readiness scoring trend tracker — HUMAN_REVIEW_REQUIRED
+- T1280: readiness scoring closeout — HUMAN_REVIEW_REQUIRED
+
+**Important:** T1261-T1300 all require human review. No autonomous progression beyond T1260.
