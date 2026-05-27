@@ -50,12 +50,20 @@ Each task includes:
 - T894: backlog execution prompt pack generator — completed
 - T895-T900: backlog seed closeout / queue updates — completed
 
+## Completed Ranges (continued)
+
+- T900R: repair T881-T900 acceptance gap — completed
+  - Added 4 test files (62 tests total)
+  - Added acceptance doc
+
 ## Current Phase
 
-- Hard stop: T900
-- T881-T900 backlog seed materializer complete
+- Hard stop: T900R
+- T881-T900 backlog seed materializer complete with repair
 - 14 new source modules + 7 milestone seeds
-- Materialization: 71 tasks, 7 milestones, frozen guard PASS
+- Materialization: 71 tasks, 7 milestones (not 500+ — see acceptance doc)
+- Frozen guard PASS
+- 62 pytest acceptance tests pass
 - Next task requires human approval
 
 ## Next Proposed Queue (NOT_STARTED / HUMAN_REVIEW_REQUIRED)
