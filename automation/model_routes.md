@@ -6,6 +6,7 @@
 - Flash full/bypass route: `cc-deep-flash-full`
 - Flash full aliases: `cc-deep-flash-bypass`, `cc-deep-flash-unsafe`
 - MiMo full route: `cc-mimo-full`
+- MiMo Pro full route: `cc-mimo-pro-full`
 - Backward compatible Pro alias: `cc-deep`
 
 ## Actual model mapping
@@ -13,10 +14,13 @@
 - Flash (non-thinking): `deepseek-v4-flash`
 - Flash Full / Bypass (non-thinking): `deepseek-v4-flash`
 - MiMo Full / Bypass: `mimo-v2.5`
+- MiMo Pro Full / Bypass: `mimo-v2.5-pro`
 
 ## Usage guidance
 - Use `cc-deep-flash` for batch coding, quick edits, repetitive tasks, low-risk refactors.
 - Use `cc-deep-pro` for trading execution chain, submit/flatten, position logic, and risk-sensitive changes.
+- Use `cc-mimo-full` (mimo-v2.5) for bulk execution worker tasks.
+- Use `cc-mimo-pro-full` (mimo-v2.5-pro) for harder reasoning / complex coding worker tasks.
 
 ## DeepSeek Flash Full / Bypass Route
 - Command: `cc-deep-flash-full`
@@ -45,17 +49,29 @@
 - API key env: `MIMO_API_KEY`
 - Model: `mimo-v2.5`
 - Permissions: Claude Code bypass permissions via `--dangerously-skip-permissions`
+- Use case: bulk execution worker tasks
+
+## Xiaomi MiMo Pro Full Route
+- Command: `cc-mimo-pro-full`
+- Claude Code endpoint type: Anthropic-compatible API
+- Anthropic base URL env: `MIMO_ANTHROPIC_BASE_URL` (default `https://token-plan-cn.xiaomimimo.com/anthropic`)
+- OpenAI base URL env (model discovery/OpenAI clients): `MIMO_BASE_URL` (default `https://token-plan-cn.xiaomimimo.com/v1`)
+- API key env: `MIMO_API_KEY`
+- Model: `mimo-v2.5-pro`
+- Permissions: Claude Code bypass permissions via `--dangerously-skip-permissions`
+- Use case: harder reasoning / complex coding worker tasks
 
 ## Recommended task header
 `Use cc-deep-flash-full only inside /Users/winnie/Documents/trae_projects/qq. Do not touch live trading commands. Do not read large CSV/JSONL/logs fully. Output only FILES / TESTS / RESULT / NOTES.`
 
 ## Verification commands
 ```bash
-zsh -ic 'type cc-deep-flash-full; type cc-deep-flash; type cc-deep-pro; type cc-mimo-full || true'
+zsh -ic 'type cc-deep-flash-full; type cc-deep-flash; type cc-deep-pro; type cc-mimo-full; type cc-mimo-pro-full || true'
 zsh -ic 'cc-deep-flash-full -p "Reply with exactly: FLASH_FULL_OK"'
 zsh -ic 'cc-deep-flash -p "Reply with exactly: FLASH_OK"'
 zsh -ic 'cc-deep-pro -p "Reply with exactly: PRO_OK"'
 zsh -ic 'cc-mimo-full -p "Reply with exactly: MIMO_FULL_OK"'
+zsh -ic 'cc-mimo-pro-full -p "Reply with exactly: MIMO_PRO_FULL_OK"'
 ```
 
 ## Rollback
@@ -68,6 +84,7 @@ cp deploy-routes.sh.bak.<timestamp> deploy-routes.sh
 cp install-routes.sh.bak.<timestamp> install-routes.sh
 cp claude-use-deepseek-flash.sh.bak.<timestamp> claude-use-deepseek-flash.sh
 cp claude-use-mimo-full.sh.bak.<timestamp> claude-use-mimo-full.sh
+cp claude-use-mimo-pro-full.sh.bak.<timestamp> claude-use-mimo-pro-full.sh
 cp automation/model_routes.md.bak.<timestamp> automation/model_routes.md
 
 # Reload shell

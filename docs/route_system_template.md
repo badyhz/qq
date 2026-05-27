@@ -124,6 +124,82 @@ AUDIT periodically (integrity check, coverage report)
 - Verification is explicit
 - Audit is periodic
 
+### 5. Closeout Mode
+
+Standardized phase/milestone closure with git integrity verification.
+
+**When to use:**
+- Phase completion
+- Milestone tag creation
+- Release closure
+- Any state that needs git-level integrity
+
+**Pattern:**
+```
+PRE_CLOSEOUT → SCOPED_CLASSIFY → FROZEN_EXCLUSION → SCOPED_STAGE → COMMIT → TAG → VERIFY
+```
+
+**Stages:**
+
+| Stage | Action | Gate |
+|-------|--------|------|
+| PRE_CLOSEOUT | Verify repo, HEAD, tags | All checks pass |
+| SCOPED_CLASSIFY | Categorize dirty tree | Know what to stage/exclude |
+| FROZEN_EXCLUSION | Check no frozen files staged | Empty frozen list |
+| SCOPED_STAGE | Explicit file staging | No `git add .` |
+| COMMIT | Descriptive closure commit | Clean message with metrics |
+| TAG | Delete + recreate tag | Tag points to HEAD |
+| VERIFY | Integrity checks | All pass |
+
+**Rules:**
+- NEVER use `git add .` or `git add -A`
+- ALWAYS verify no frozen files staged
+- ALWAYS delete + recreate tag (not force move)
+- ALWAYS verify tag points to HEAD after tagging
+- Classify dirty tree BEFORE staging
+
+**Example:**
+```bash
+# PRE_CLOSEOUT
+git rev-parse --is-inside-work-tree
+git log --oneline -1
+git tag -l 'phase2*'
+
+# SCOPED_CLASSIFY
+git status --short
+
+# FROZEN_EXCLUSION
+git diff --cached --name-only | grep -E "$FROZEN_PATTERNS"
+
+# SCOPED_STAGE
+git add scripts/{files}.py tests/unit/test_{files}_guard.py docs/{files}.md
+
+# COMMIT
+git commit -m "feat: complete {phase} ({count}/{total}, {coverage}%)"
+
+# TAG
+git tag -d {phase}-complete 2>/dev/null
+git tag {phase}-complete
+
+# VERIFY
+git show {phase}-complete --quiet --format="%H"
+git rev-parse HEAD  # must match
+git status --short  # only frozen/junk remaining
+```
+
+**Failure modes:**
+| Failure | Fix |
+|---------|-----|
+| Tag exists | Delete + recreate |
+| Frozen staged | Unstage |
+| Dirty after closeout | Add missing files |
+| Tag wrong target | Delete + recreate |
+
+**Closeout verification command:**
+```bash
+QQ_RUNTIME_MODE=dry_run python scripts/verify_engineering_closeout_state.py --tag {phase}-complete
+```
+
 ---
 
 ## Hybrid Approach
@@ -138,6 +214,7 @@ Use the right mode for each task type:
 | Testing | Queue | Sequential validation |
 | Governance | Governance | Policy enforcement |
 | Repetitive tasks | Autopilot | State-driven |
+| Phase/milestone close | Closeout | Git-integrity closure |
 
 ---
 
