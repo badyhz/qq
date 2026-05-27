@@ -268,26 +268,32 @@ def _step_scorecard(results: list[dict]) -> dict:
 
 def _step_comparison(scorecard: dict) -> dict:
     """Compare cells side-by-side using comparison engine."""
-    experiment_results = []
-    for cell in scorecard["cells"]:
-        experiment_results.append({
-            "experiment_id": cell["cell_id"],
-            "symbol": cell["symbol"],
-            "timeframe": cell["timeframe"],
-            "param_label": cell["param_label"],
-            "expectancy_r": 0.0,
-            "win_rate": 0.0,
-            "avg_return_r": 0.0,
-            "max_drawdown_r": 0.0,
-            "sample_quality_score": 0.0,
-            "profit_factor": 0.0,
-        })
-    comparison = compare_experiments(experiment_results)
+    cells = scorecard["cells"]
+    experiment_ids = [c["cell_id"] for c in cells]
+    comparisons = []
+    if len(cells) >= 2:
+        # Wrap cells as experiment result dicts with runs
+        def _wrap(cell):
+            return {
+                "experiment_id": cell["cell_id"],
+                "runs": [{"run_id": "r1", "metrics": {
+                    "candidate_count": cell.get("trade_count", 0),
+                    "win_count": 0, "loss_count": 0,
+                    "expectancy_r": cell.get("expectancy_r", 0.0),
+                    "max_drawdown_r": cell.get("max_drawdown_r", 0.0),
+                    "sample_quality_score": 0.0,
+                    "profit_factor": 0.0,
+                    "coverage_status": "full",
+                }}],
+            }
+        for i in range(len(cells)):
+            for j in range(i + 1, len(cells)):
+                comparisons.append(compare_experiments(_wrap(cells[i]), _wrap(cells[j])))
     return {
         "comparison_id": "backtest_comparison",
-        "experiment_ids": list(comparison.experiment_ids),
-        "metrics_compared": list(comparison.metrics_compared),
-        "best_by_metric": comparison.best_by_metric,
+        "experiment_ids": experiment_ids,
+        "pair_count": len(comparisons),
+        "comparisons": comparisons,
     }
 
 

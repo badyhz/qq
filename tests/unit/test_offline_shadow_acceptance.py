@@ -57,7 +57,7 @@ class TestCoreModulesImportable:
         assert grade_run is not None
 
     def test_import_comparison(self):
-        from core.offline_shadow_comparison import compare_experiments, ComparisonResult
+        from core.offline_shadow_comparison import compare_experiments
         assert compare_experiments is not None
 
     def test_import_report_renderer(self):
@@ -156,14 +156,20 @@ class TestEndToEndPipeline:
                 "scorecard": grade_info,
             })
 
-        comparison = compare_experiments(results)
+        if len(results) >= 2:
+            comparison = compare_experiments(results[0], results[1])
+        else:
+            comparison = compare_experiments(
+                {"experiment_id": "a", "runs": []},
+                {"experiment_id": "b", "runs": []},
+            )
         recs = generate_recommendations(
             [{"experiment_id": r["experiment_id"], **r["metrics"]} for r in results]
         )
 
         assert len(results) >= 1
         assert len(recs) >= 1
-        assert comparison.experiment_ids
+        assert "deltas" in comparison
 
         report_md = render_report_markdown(results)
         report_json_data = render_report_json(results)

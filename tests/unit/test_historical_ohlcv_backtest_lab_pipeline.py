@@ -198,7 +198,8 @@ class TestStepComparison:
         }
         result = _step_comparison(scorecard)
         assert "comparison_id" in result
-        assert "best_by_metric" in result
+        assert "experiment_ids" in result
+        assert "pair_count" in result
 
 
 # ---------------------------------------------------------------------------

@@ -58,7 +58,7 @@ from core.offline_shadow_metric_engine import (
     compute_run_metrics as shadow_run_metrics,
 )
 from core.offline_shadow_scorecard import grade_experiment, grade_run
-from core.offline_shadow_comparison import ComparisonResult, compare_experiments
+from core.offline_shadow_comparison import compare_experiments
 from core.offline_shadow_report_renderer import (
     render_report_html,
     render_report_json,
@@ -354,21 +354,25 @@ class TestScorecardGrading:
 
 class TestComparison:
     def test_compare_two_experiments(self):
-        results = [
-            {"experiment_id": "exp1", "expectancy_r": 0.5, "win_rate": 0.6,
-             "avg_return_r": 0.5, "max_drawdown_r": -1.0,
-             "sample_quality_score": 0.5, "profit_factor": 1.5},
-            {"experiment_id": "exp2", "expectancy_r": 0.3, "win_rate": 0.55,
-             "avg_return_r": 0.3, "max_drawdown_r": -0.5,
-             "sample_quality_score": 0.6, "profit_factor": 1.2},
-        ]
-        result = compare_experiments(results)
-        assert isinstance(result, ComparisonResult)
-        assert len(result.experiment_ids) == 2
+        a = {"experiment_id": "exp1", "runs": [{"run_id": "r1", "metrics": {
+            "candidate_count": 10, "win_count": 6, "loss_count": 4,
+            "expectancy_r": 0.5, "max_drawdown_r": -1.0,
+            "sample_quality_score": 0.5, "profit_factor": 1.5,
+            "coverage_status": "full"}}]}
+        b = {"experiment_id": "exp2", "runs": [{"run_id": "r1", "metrics": {
+            "candidate_count": 10, "win_count": 5, "loss_count": 5,
+            "expectancy_r": 0.3, "max_drawdown_r": -0.5,
+            "sample_quality_score": 0.6, "profit_factor": 1.2,
+            "coverage_status": "full"}}]}
+        result = compare_experiments(a, b)
+        assert isinstance(result, dict)
+        assert "deltas" in result
 
     def test_compare_empty(self):
-        result = compare_experiments([])
-        assert len(result.experiment_ids) == 0
+        a = {"experiment_id": "a", "runs": []}
+        b = {"experiment_id": "b", "runs": []}
+        result = compare_experiments(a, b)
+        assert result["improved"] is False
 
 
 # ── Test: Report renderers produce output ─────────────────────────────────
