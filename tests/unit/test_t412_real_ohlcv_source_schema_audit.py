@@ -86,11 +86,13 @@ def test_json_flag_works(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     
+    project_root = str(Path(__file__).parent.parent.parent)
     proc = subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent.parent.parent / "scripts" / "audit_real_ohlcv_source_schema.py"), "--json"],
+        [sys.executable, str(Path(project_root) / "scripts" / "audit_real_ohlcv_source_schema.py"), "--json"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        cwd=str(tmp_path)
+        cwd=project_root,
+        env={**os.environ, "QQ_RUNTIME_MODE": "dry-run", "PYTHONPATH": project_root}
     )
     stdout, stderr = proc.communicate()
     

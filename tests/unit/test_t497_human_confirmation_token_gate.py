@@ -67,10 +67,13 @@ def test_t497_cli_smoke(tmp_path):
     write_json(str(p1), phase_pass())
     write_json(str(p2), invariant_pass())
     write_json(str(p3), delta_pass())
+    project_root = str(SCRIPT.parent.parent)
     proc = subprocess.Popen(
         [sys.executable, str(SCRIPT), "--inputs", str(p1), str(p2), str(p3), "--output", str(out), "--json"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        cwd=project_root,
+        env={**os.environ, "QQ_RUNTIME_MODE": "dry-run", "PYTHONPATH": project_root}
     )
     proc.communicate()
     assert proc.returncode in [0, 1]

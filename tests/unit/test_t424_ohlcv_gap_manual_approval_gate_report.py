@@ -1,5 +1,6 @@
 import pytest
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -136,11 +137,13 @@ def test_archive_task_range(tmp_path):
 
 
 def test_json_flag_works(tmp_path):
+    project_root = str(Path(__file__).parent.parent.parent)
     proc = subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent.parent.parent / "scripts" / "generate_ohlcv_gap_manual_approval_gate_report_v1.py"), "--json"],
+        [sys.executable, str(Path(project_root) / "scripts" / "generate_ohlcv_gap_manual_approval_gate_report_v1.py"), "--json"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        cwd=str(tmp_path)
+        cwd=project_root,
+        env={**os.environ, "QQ_RUNTIME_MODE": "dry-run", "PYTHONPATH": project_root}
     )
     stdout, stderr = proc.communicate()
 

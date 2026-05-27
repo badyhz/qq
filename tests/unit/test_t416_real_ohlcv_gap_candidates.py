@@ -176,11 +176,13 @@ def test_safety_flags(tmp_path):
 
 
 def test_json_flag_works(tmp_path):
+    project_root = str(Path(__file__).parent.parent.parent)
     proc = subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent.parent.parent / "scripts" / "validate_real_ohlcv_gap_candidates.py"), "--json"],
+        [sys.executable, str(Path(project_root) / "scripts" / "validate_real_ohlcv_gap_candidates.py"), "--json"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        cwd=str(tmp_path)
+        cwd=project_root,
+        env={**os.environ, "QQ_RUNTIME_MODE": "dry-run", "PYTHONPATH": project_root}
     )
     stdout, stderr = proc.communicate()
 
