@@ -1,0 +1,10 @@
+{
+  "blockers": [
+    "insufficient_candidates"
+  ],
+  "grade": "REJECT",
+  "reason_codes": [
+    "candidate_count=2<5",
+    "non_positive_expectancy=-0.4000"
+  ]
+}

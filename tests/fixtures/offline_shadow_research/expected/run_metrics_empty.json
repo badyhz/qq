@@ -1,0 +1,15 @@
+{
+  "avg_mae_r": 0.0,
+  "avg_mfe_r": 0.0,
+  "avg_return_r": 0.0,
+  "candidate_count": 0,
+  "coverage_status": "empty",
+  "expectancy_r": 0.0,
+  "loss_count": 0,
+  "max_drawdown_r": 0.0,
+  "neutral_count": 0,
+  "profit_factor": 0.0,
+  "sample_quality_score": 0.0,
+  "win_count": 0,
+  "win_rate": 0.0
+}

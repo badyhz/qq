@@ -146,3 +146,57 @@ def artifact_index_to_dict(index: ArtifactIndex) -> Dict[str, Any]:
 def artifact_index_to_json(index: ArtifactIndex, indent: int = 2) -> str:
     """Serialize to JSON."""
     return json.dumps(artifact_index_to_dict(index), sort_keys=True, indent=indent)
+
+
+def build_quality_artifact_index(
+    output_dir: Path,
+    required_artifacts: Tuple[str, ...],
+    generated_at: str = None,
+) -> Dict[str, Any]:
+    """Build artifact index for quality gate artifacts."""
+    from datetime import datetime, timezone
+    from core.research_quality_contract import RELEASE_HOLD_VALUE
+    from core.research_artifact_hashing import hash_artifact_content
+
+    entries = []
+    for name in sorted(required_artifacts):
+        p = output_dir / name
+        if p.exists():
+            data = p.read_bytes()
+            # Use content-based hashing for JSON (strips timestamps) for determinism
+            if p.suffix == ".json":
+                try:
+                    json_data = json.loads(p.read_text())
+                    sha = hash_artifact_content(json_data)
+                except (json.JSONDecodeError, ValueError):
+                    sha = hashlib.sha256(data).hexdigest()
+            else:
+                sha = hashlib.sha256(data).hexdigest()
+            entries.append({
+                "artifact_id": name,
+                "path": name,
+                "sha256": sha,
+                "size_bytes": len(data),
+                "exists": True,
+            })
+        else:
+            entries.append({
+                "artifact_id": name,
+                "path": name,
+                "sha256": "",
+                "size_bytes": 0,
+                "exists": False,
+            })
+
+    return {
+        "schema_version": "1.0.0",
+        "generated_by": "research_artifact_index",
+        "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
+        "release_hold": RELEASE_HOLD_VALUE,
+        "advisory_only": True,
+        "human_review_required": True,
+        "artifacts": entries,
+        "total_artifacts": len(entries),
+        "present_count": sum(1 for e in entries if e["exists"]),
+        "missing_count": sum(1 for e in entries if not e["exists"]),
+    }

@@ -1,0 +1,15 @@
+{
+  "avg_mae_r": -0.0825,
+  "avg_mfe_r": 0.59375,
+  "avg_return_r": 0.475,
+  "candidate_count": 8,
+  "coverage_status": "full",
+  "expectancy_r": 0.475,
+  "loss_count": 2,
+  "max_drawdown_r": -0.15,
+  "neutral_count": 0,
+  "profit_factor": 16.2,
+  "sample_quality_score": 0.766667,
+  "win_count": 6,
+  "win_rate": 0.75
+}

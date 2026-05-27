@@ -1,0 +1,13 @@
+{
+  "artifact_count": 1,
+  "artifacts": [
+    {
+      "name": "a.json",
+      "sha256": "abc123"
+    }
+  ],
+  "no_exchange": true,
+  "no_live": true,
+  "no_submit": true,
+  "release_hold": "HOLD"
+}

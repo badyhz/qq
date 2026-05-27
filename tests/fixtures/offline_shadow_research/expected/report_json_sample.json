@@ -1,0 +1,44 @@
+{
+  "experiment_count": 1,
+  "experiments": [
+    {
+      "experiment_id": "exp_0000",
+      "metrics": {
+        "avg_mae_r": -0.136,
+        "avg_mfe_r": 0.47,
+        "avg_return_r": 0.3,
+        "candidate_count": 5,
+        "coverage_status": "full",
+        "expectancy_r": 0.3,
+        "loss_count": 2,
+        "max_drawdown_r": -0.2,
+        "neutral_count": 0,
+        "profit_factor": 6.0,
+        "sample_quality_score": 0.766667,
+        "win_count": 3,
+        "win_rate": 0.6
+      },
+      "param_label": "conservative",
+      "scorecard": {
+        "blockers": [],
+        "grade": "PASS",
+        "reason_codes": []
+      },
+      "symbol": "BTCUSDT",
+      "timeframe": "5m",
+      "window_id": "w_train"
+    }
+  ],
+  "release_hold": "HOLD",
+  "summary": {
+    "avg_expectancy_r": 0.3,
+    "avg_profit_factor": 6.0,
+    "avg_win_rate": 0.6,
+    "best_experiment_id": "exp_0000",
+    "experiment_count": 1,
+    "total_candidates": 5,
+    "total_losses": 2,
+    "total_wins": 3,
+    "worst_experiment_id": "exp_0000"
+  }
+}

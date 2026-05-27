@@ -1,0 +1,9 @@
+{
+  "experiment_count": 1,
+  "first_experiment_id": "exp_0000",
+  "plan_id": "golden_test",
+  "safety_policy": {
+    "no_live": true,
+    "release_hold": "HOLD"
+  }
+}
