@@ -400,7 +400,31 @@ Each task includes:
 - No live trading authorization
 - 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
 
-## Next Proposed Queue (T1601+ / HUMAN_REVIEW_REQUIRED)
+## Completed Ranges (continued)
 
-- T1601+: next governance expansion requires human approval
+- T1601-T1800: frozen backlog review automation suite — completed
+  - T1681: frozen backlog report validator doc
+  - T1682: frozen backlog report snapshot system doc
+  - T1683: frozen backlog report diff system doc
+  - T1684: frozen backlog review audit orchestrator CLI doc
+  - T1685: T1601-T1800 acceptance command packet
+  - T1686: T1601-T1800 safety boundary packet
+  - T1687: T1601-T1800 final closeout report
+  - T1688: T1681-T1800 compatibility test (5 tests)
+  - 7 new docs, 2 updated docs, 1 test file
+  - Release hold: HOLD
+  - No live trading authorization
+
+## Current Phase (updated)
+
+- Hard stop: T1800
+- T1601-T1800 frozen backlog review automation suite complete
+- 7 new docs, 2 updated docs, 1 test file
+- Release hold: HOLD
+- No live trading authorization
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+
+## Next Proposed Queue (T1801+ / HUMAN_REVIEW_REQUIRED)
+
+- T1801+: next governance expansion requires human approval
 - Runtime integration requires explicit human authorization
