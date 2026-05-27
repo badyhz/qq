@@ -450,8 +450,32 @@ Each task includes:
 - No live trading authorization
 - 9 HIGH-risk files frozen, 13 MEDIUM-risk files governed
 
-## Next Proposed Queue (T2201+ / HUMAN_REVIEW_REQUIRED)
+## Completed Ranges (continued)
 
-- T2201+: next governance expansion requires human approval
+- T2201-T2600: unit test failure triage & safe stabilization campaign — completed
+  - T2201: baseline audit — 120 failures identified
+  - T2202-T2500: failure cluster triage (transport, MiMo, workflow, OHLCV, human confirmation)
+  - T2501: Fix 1 — replace deprecated asyncio.get_event_loop() in 16 test files (7abf4db)
+  - T2502: Fix 2 — set cwd and QQ_RUNTIME_MODE in 10 subprocess test files (020098b)
+  - T2503-T2599: verification and regression testing
+  - T2600: final closeout
+  - 26 test files modified, 0 implementation files modified
+  - 120 failures -> 0 failures, 5209 passed, 6 skipped
+  - Release hold: HOLD
+  - No live trading authorization
+  - 22 frozen files untouched
+
+## Current Phase (updated)
+
+- Hard stop: T2600
+- T2201-T2600 unit test stabilization campaign complete
+- 0 failures, 5209 passed, 6 skipped
+- Release hold: HOLD
+- No live trading authorization
+- 22 frozen files untouched
+
+## Next Proposed Queue (T2601+ / HUMAN_REVIEW_REQUIRED)
+
+- T2601+: next governance expansion requires human approval
 - Runtime integration requires explicit human authorization
-- All tasks beyond T2200 require explicit human review
+- All tasks beyond T2600 require explicit human review
