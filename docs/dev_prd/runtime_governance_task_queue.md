@@ -479,3 +479,33 @@ Each task includes:
 - T2601+: next governance expansion requires human approval
 - Runtime integration requires explicit human authorization
 - All tasks beyond T2600 require explicit human review
+
+## Completed Ranges (continued)
+
+- T3201-T4200: Historical OHLCV Offline Backtest Lab — completed
+  - T3201-T3420: Waves 1-4 parallel build (schema, reader, splits, metrics, signals, simulator, scorecard, comparison, renderers, bundle, orchestrator)
+  - T3421-T3430: Phase 23 — Documentation (9 docs)
+  - T3431-T3440: Phase 24 — Governance updates (2 docs)
+  - T3441-T3450: Phase 25 — Acceptance tests (20+ tests)
+  - T3451-T3460: Phase 26 — Verification script (1 script + 8+ tests)
+  - T3461-T3470: Phase 27 — Final closeout report
+  - 13 core modules, 9 docs, 2 test files, 1 verification script, 2 CSV fixtures
+  - 126+ tests total
+  - Release hold: HOLD
+  - No live trading authorization
+  - 22 frozen files untouched
+
+## Current Phase (updated)
+
+- Hard stop: T4200
+- T3201-T4200 Historical OHLCV Offline Backtest Lab complete
+- 13 core modules, 126+ tests, 9 docs
+- Release hold: HOLD
+- No live trading authorization
+- 22 frozen files untouched
+
+## Next Proposed Queue (T4201+ / HUMAN_REVIEW_REQUIRED)
+
+- T4201+: next phase requires human review
+- Runtime integration requires explicit human authorization
+- All tasks beyond T4200 require explicit human review before execution

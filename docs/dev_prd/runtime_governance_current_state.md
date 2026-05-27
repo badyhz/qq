@@ -156,3 +156,20 @@ PRD control-plane setup. Not runtime integration. Not live trading.
 ## Next Safe Phase
 
 PRD-driven task automation only. Read-only hook implementation still requires human review. T2601+ governance expansion requires explicit human approval. Runtime integration requires explicit human authorization. All tasks beyond T2600 are HUMAN_REVIEW_REQUIRED.
+
+## T3201-T4200 Historical OHLCV Offline Backtest Lab
+
+- 13 core modules (schema, chunked reader, walk-forward split, breakout signal engine, trade simulator, metrics engine, shadow metric engine, scorecard, comparison, report renderers, bundle builder, parameter set, orchestrator)
+- 9 documentation files (architecture, chunked reader, walk-forward, breakout engine, scorecard, bundle, acceptance, safety boundary, closeout)
+- 2 test files (acceptance 20+ tests, verification 8+ tests)
+- 1 verification script
+- 2 CSV fixture files (BTCUSDT_5m, ETHUSDT_5m)
+- Total: 126+ tests across backtest lab
+- Release hold: HOLD
+- No live trading authorization
+- 22 frozen files untouched
+- Hard stop: T4200
+
+## Next Safe Phase (updated)
+
+All tasks beyond T4200 are HUMAN_REVIEW_REQUIRED. Runtime integration requires explicit human authorization.
