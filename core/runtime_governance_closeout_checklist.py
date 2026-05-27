@@ -5,122 +5,117 @@ Pure. No I/O. No network. No random. Deterministic.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 
 @dataclass(frozen=True)
-class RuntimeGovernanceCloseoutChecklistItem:
+class RuntimeGovernanceCloseoutItem:
     """Single closeout checklist item."""
-
     item_id: str
     description: str
-    status: str  # "PASS" / "WARN" / "FAIL"
+    status: str  # "complete" / "incomplete"
+    required: bool
+    evidence: str
 
 
-@dataclass(frozen=True)
-class RuntimeGovernanceCloseoutChecklist:
-    """Immutable closeout checklist for runtime governance."""
-
-    title: str
-    items: List[RuntimeGovernanceCloseoutChecklistItem]
-    verdict: str  # "PASS" / "WARN" / "FAIL"
-    notes: List[str] = field(default_factory=list)
-
-
-_DEFAULT_ITEMS: List[Dict[str, str]] = [
-    {"item_id": "C1", "description": "all_tests_passing", "status": "PASS"},
-    {"item_id": "C2", "description": "no_hardcoded_secrets", "status": "PASS"},
-    {"item_id": "C3", "description": "dry_run_default", "status": "PASS"},
-    {"item_id": "C4", "description": "risk_controls_verified", "status": "PASS"},
-    {"item_id": "C5", "description": "documentation_complete", "status": "PASS"},
+_ITEMS = [
+    RuntimeGovernanceCloseoutItem(
+        item_id="tests_pass",
+        description="All runtime governance tests pass",
+        status="complete",
+        required=True,
+        evidence="pytest runtime_governance_*.py all green",
+    ),
+    RuntimeGovernanceCloseoutItem(
+        item_id="no_submit_evidence",
+        description="No-submit evidence verified",
+        status="complete",
+        required=True,
+        evidence="T812 no-submit evidence packet PASS",
+    ),
+    RuntimeGovernanceCloseoutItem(
+        item_id="docs_present",
+        description="All module docs present",
+        status="complete",
+        required=True,
+        evidence="docs/runtime_governance_*.md present",
+    ),
+    RuntimeGovernanceCloseoutItem(
+        item_id="frozen_boundaries",
+        description="Frozen boundaries documented",
+        status="complete",
+        required=True,
+        evidence="T817 frozen boundary map",
+    ),
+    RuntimeGovernanceCloseoutItem(
+        item_id="future_tasks_hold",
+        description="High-risk future tasks marked HOLD",
+        status="complete",
+        required=True,
+        evidence="T818 future task planner",
+    ),
+    RuntimeGovernanceCloseoutItem(
+        item_id="no_runtime_integration",
+        description="No runtime integration performed",
+        status="complete",
+        required=True,
+        evidence="no live_runner or submit imports",
+    ),
 ]
 
 
-def build_runtime_governance_closeout_checklist(
-    *,
-    title: str = "Runtime Governance Closeout Checklist",
-    items: List[RuntimeGovernanceCloseoutChecklistItem] | None = None,
-    verdict: str | None = None,
-    notes: List[str] | None = None,
-) -> RuntimeGovernanceCloseoutChecklist:
-    """Build closeout checklist. Pure. No I/O.
-
-    Defaults produce a checklist with all items passing (PASS).
-    """
-    if items is None:
-        items = [
-            RuntimeGovernanceCloseoutChecklistItem(**spec)
-            for spec in _DEFAULT_ITEMS
-        ]
-
-    eff_verdict = verdict if verdict is not None else _compute_verdict(items)
-
-    return RuntimeGovernanceCloseoutChecklist(
-        title=title,
-        items=items,
-        verdict=eff_verdict,
-        notes=list(notes) if notes else [],
-    )
+def build_runtime_governance_closeout_checklist() -> List[RuntimeGovernanceCloseoutItem]:
+    """Build closeout checklist. Deterministic."""
+    return list(_ITEMS)
 
 
-def summarize_closeout_checklist(checklist: RuntimeGovernanceCloseoutChecklist) -> Dict[str, Any]:
-    """Summarize closeout checklist counts. Deterministic."""
-    by_status: Dict[str, int] = {}
-    for item in checklist.items:
-        by_status[item.status] = by_status.get(item.status, 0) + 1
-
-    return {
-        "total": len(checklist.items),
-        "by_status": dict(sorted(by_status.items())),
-        "verdict": checklist.verdict,
-    }
-
-
-def closeout_checklist_to_dict(checklist: RuntimeGovernanceCloseoutChecklist) -> Dict[str, Any]:
-    """Serialize to dict. Pure."""
-    return {
-        "title": checklist.title,
-        "items": [
-            {
-                "item_id": item.item_id,
-                "description": item.description,
-                "status": item.status,
-            }
-            for item in checklist.items
-        ],
-        "verdict": checklist.verdict,
-        "notes": list(checklist.notes),
-    }
+def closeout_checklist_to_dict(checklist: List[RuntimeGovernanceCloseoutItem]) -> List[Dict[str, Any]]:
+    """Serialize checklist to list of dicts."""
+    return [
+        {
+            "item_id": c.item_id,
+            "description": c.description,
+            "status": c.status,
+            "required": c.required,
+            "evidence": c.evidence,
+        }
+        for c in checklist
+    ]
 
 
-def closeout_checklist_to_markdown(checklist: RuntimeGovernanceCloseoutChecklist) -> str:
-    """Render as deterministic markdown. No timestamps."""
-    lines: List[str] = [f"# {checklist.title}", ""]
-    lines.append(f"**Verdict:** {checklist.verdict}")
+def closeout_checklist_to_markdown(checklist: List[RuntimeGovernanceCloseoutItem]) -> str:
+    """Render checklist as deterministic markdown."""
+    lines = [
+        "# Runtime Governance Closeout Checklist",
+        "",
+        "| # | item_id | description | status |",
+        "|---|---------|-------------|--------|",
+    ]
+    for i, c in enumerate(checklist, 1):
+        mark = "[x]" if c.status == "complete" else "[ ]"
+        lines.append(f"| {i} | {c.item_id} | {c.description} | {mark} |")
     lines.append("")
-    lines.append("| Item | Description | Status |")
-    lines.append("|------|-------------|--------|")
-    for item in checklist.items:
-        lines.append(f"| {item.item_id} | {item.description} | {item.status} |")
-    lines.append("")
-    if checklist.notes:
-        lines.append("## Notes")
-        lines.append("")
-        for note in checklist.notes:
-            lines.append(f"- {note}")
-        lines.append("")
     return "\n".join(lines)
 
 
-# ── internal ───────────────────────────────────────────────────────
+def summarize_closeout_checklist(checklist: List[RuntimeGovernanceCloseoutItem]) -> Dict[str, Any]:
+    """Summarize checklist. Deterministic."""
+    total = len(checklist)
+    required_count = sum(1 for c in checklist if c.required)
+    complete_count = sum(1 for c in checklist if c.status == "complete")
+    incomplete_count = sum(1 for c in checklist if c.status == "incomplete")
+    incomplete_ids = [c.item_id for c in checklist if c.status == "incomplete"]
 
+    verdict = "PASS"
+    if incomplete_count > 0:
+        verdict = "FAIL"
 
-def _compute_verdict(items: List[RuntimeGovernanceCloseoutChecklistItem]) -> str:
-    has_fail = any(item.status == "FAIL" for item in items)
-    has_warn = any(item.status == "WARN" for item in items)
-    if has_fail:
-        return "FAIL"
-    if has_warn:
-        return "WARN"
-    return "PASS"
+    return {
+        "verdict": verdict,
+        "total": total,
+        "required_count": required_count,
+        "complete_count": complete_count,
+        "incomplete_count": incomplete_count,
+        "incomplete_ids": incomplete_ids,
+    }

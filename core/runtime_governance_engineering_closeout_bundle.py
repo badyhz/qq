@@ -146,9 +146,8 @@ def build_runtime_governance_engineering_closeout_bundle(
     notes: List[str] = []
     notes.extend(phase_control.notes)
     notes.extend(manual_scope.notes)
-    notes.extend(risk_register.notes)
-    notes.extend(artifact_index.notes)
-    notes.extend(closeout_checklist.notes)
+    if hasattr(risk_register, 'notes'):
+        notes.extend(risk_register.notes)
 
     # resolve final status
     all_summaries = [
@@ -261,8 +260,8 @@ def engineering_closeout_bundle_to_markdown(
     lines.append("")
     ai = bundle.artifact_index_summary
     lines.append(f"- **Total Artifacts:** {ai.get('total', 'N/A')}")
-    lines.append(f"- **By Status:** {ai.get('by_status', {})}")
-    lines.append(f"- **Verdict:** {ai.get('verdict', 'N/A')}")
+    lines.append(f"- **Tasks:** {ai.get('tasks', 'N/A')}")
+    lines.append(f"- **By Type:** {ai.get('by_type', {})}")
     lines.append("")
 
     # closeout checklist
@@ -270,7 +269,6 @@ def engineering_closeout_bundle_to_markdown(
     lines.append("")
     cs = bundle.closeout_summary
     lines.append(f"- **Total Items:** {cs.get('total', 'N/A')}")
-    lines.append(f"- **By Status:** {cs.get('by_status', {})}")
     lines.append(f"- **Verdict:** {cs.get('verdict', 'N/A')}")
     lines.append("")
 
