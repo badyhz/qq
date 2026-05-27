@@ -167,3 +167,46 @@ Each task includes:
 - T1080: go/no-go decision — HUMAN_REVIEW_REQUIRED
 
 **Important:** T1061-T1080 all require human review. No autonomous progression.
+
+## Completed Ranges (continued)
+
+- T1061-T1160: freeze-aware governance layer — completed
+  - T1061-T1080: 30 governance docs (freeze-aware queue, dirty workspace, human review gate)
+  - T1081-T1110: 30 model modules
+  - T1111-T1120: 10 renderer modules
+  - T1121-T1140: 20 test files
+  - T1141-T1160: governance closeout packets (summary, acceptance, safety, human review, dirty workspace, freeze-aware queue, next wave, final closeout)
+
+## Current Phase (updated again)
+
+- Hard stop: T1160
+- T1061-T1160 freeze-aware governance layer complete
+- 30 docs, 30 models, 10 renderers, 20 tests
+- Release hold: HOLD
+- No live trading authorization
+- 9 HIGH-risk files frozen
+
+## Next Proposed Queue (T1161-T1200 / HUMAN_REVIEW_REQUIRED)
+
+- T1161: human review gate runtime wiring — HUMAN_REVIEW_REQUIRED
+- T1162: human review gate state persistence — HUMAN_REVIEW_REQUIRED
+- T1163: human review gate escalation automation — HUMAN_REVIEW_REQUIRED
+- T1164: dirty workspace auto-classification — HUMAN_REVIEW_REQUIRED
+- T1165: dirty workspace git hook integration — HUMAN_REVIEW_REQUIRED
+- T1166: dirty workspace freeze detection — HUMAN_REVIEW_REQUIRED
+- T1167: freeze-aware queue admission engine — HUMAN_REVIEW_REQUIRED
+- T1168: freeze-aware queue transition guard wiring — HUMAN_REVIEW_REQUIRED
+- T1169: freeze-aware queue dependency resolver — HUMAN_REVIEW_REQUIRED
+- T1170: freeze-aware queue runtime tests — HUMAN_REVIEW_REQUIRED
+- T1171: governance layer integration tests — HUMAN_REVIEW_REQUIRED
+- T1172: governance layer acceptance closeout — HUMAN_REVIEW_REQUIRED
+- T1173: runtime integration feasibility assessment — HUMAN_REVIEW_REQUIRED
+- T1174: runtime integration risk assessment — HUMAN_REVIEW_REQUIRED
+- T1175: runtime integration human decision packet — HUMAN_REVIEW_REQUIRED
+- T1176: runtime boundary definition — HUMAN_REVIEW_REQUIRED
+- T1177: runtime safety constraints — HUMAN_REVIEW_REQUIRED
+- T1178: runtime test harness design — HUMAN_REVIEW_REQUIRED
+- T1179: runtime closeout packet — HUMAN_REVIEW_REQUIRED
+- T1180: T1161-T1180 final closeout report — HUMAN_REVIEW_REQUIRED
+
+**Important:** T1161-T1200 all require human review. No autonomous progression beyond T1160.

@@ -34,6 +34,19 @@ PRD control-plane setup. Not runtime integration. Not live trading.
 - Release hold: HOLD
 - No live trading authorization
 
+## T1061-T1160 Freeze-Aware Governance Layer
+
+- 30 governance docs (freeze-aware queue policy, dirty workspace classification, human review gate)
+- 30 model modules (queue models, workspace models, review gate models)
+- 10 renderer modules (markdown, JSON, summary packets)
+- 20 test files (queue tests, workspace tests, review gate tests)
+- 9 HIGH-risk files frozen, classification complete, governance policies defined
+- Freeze-aware queue model complete with admission/denial rules and transition guards
+- Human review gate model complete with approval/rejection/escalation states
+- Release hold: HOLD
+- No live trading, no exchange connectors, no secret management, no runtime execution
+- Hard stop: T1160
+
 ## Next Safe Phase
 
-PRD-driven task automation only. Read-only hook implementation still requires human review.
+PRD-driven task automation only. Read-only hook implementation still requires human review. T1161+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.
