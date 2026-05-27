@@ -27,11 +27,11 @@ and produces graded scorecards — all offline, all pure functions, no live trad
 
 | Commit | Message | Tasks |
 |--------|---------|-------|
-| (pending) | docs: T3421-T3430 historical backtest lab documentation | Phase 23 |
-| (pending) | docs: T3431-T3440 governance updates for T3201-T4200 | Phase 24 |
-| (pending) | feat: T3441-T3450 acceptance tests for historical backtest lab | Phase 25 |
-| (pending) | feat: T3451-T3460 verification script for historical backtest lab | Phase 26 |
-| (pending) | docs: T3461-T3470 T3201-T4200 final closeout report | Phase 27 |
+| 38ef04d | docs: T3421-T3430 historical backtest lab documentation | Phase 23 |
+| 63fef12 | docs: T3431-T3440 governance updates for T3201-T4200 | Phase 24 |
+| b8424ca | feat: T3441-T3450 acceptance tests for historical backtest lab | Phase 25 |
+| 632ede1 | feat: T3451-T3460 verification script for historical backtest lab | Phase 26 |
+| 38ef04d | docs: T3461-T3470 T3201-T4200 final closeout report (in Phase 23 commit) | Phase 27 |
 
 ## Test Counts
 
@@ -44,9 +44,9 @@ and produces graded scorecards — all offline, all pure functions, no live trad
 | test_offline_shadow_bundle_builder.py | 8+ |
 | test_offline_shadow_comparison.py | 6+ |
 | test_offline_shadow_report_renderer.py | 10+ |
-| test_historical_backtest_acceptance.py | 20+ |
-| test_verify_historical_backtest_lab.py | 8+ |
-| **Total** | **126+** |
+| test_historical_backtest_acceptance.py | 47 |
+| test_verify_historical_backtest_lab.py | 8 |
+| **Total** | **207** |
 
 ## Artifact Verification
 
