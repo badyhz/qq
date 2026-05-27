@@ -189,17 +189,10 @@ def main() -> int:
     promo_path = output_dir / "promotion_recommendations.json"
     promo_path.write_text(json.dumps(recommendations, sort_keys=True, indent=2))
 
-    # Step 9: Bundle (index, manifest, reports)
+    # Step 9: Bundle (reports first, then index + manifest)
     print("[9/10] Building bundle...")
-    index = build_artifact_index(output_dir)
-    index_path = output_dir / "artifact_index.json"
-    index_path.write_text(artifact_index_to_json(index))
 
-    manifest = build_manifest(output_dir)
-    manifest_path = output_dir / "manifest.json"
-    manifest_path.write_text(manifest_to_json(manifest))
-
-    # Reports
+    # Write reports first so manifest can index them
     report_data = {
         "strategy_count": len(strategy_ids),
         "total_rows": matrix.total_rows,
@@ -209,10 +202,18 @@ def main() -> int:
         "portfolio_summary": portfolio_to_dict(portfolio),
         "comparison": comparison_to_dict(comp),
         "promotion_recommendations": recommendations,
-        "manifest": manifest_to_dict(manifest),
     }
     (output_dir / "report.md").write_text(render_markdown_report(report_data))
     (output_dir / "report.html").write_text(render_html_report(report_data))
+
+    # Build index and manifest after reports exist
+    index = build_artifact_index(output_dir)
+    index_path = output_dir / "artifact_index.json"
+    index_path.write_text(artifact_index_to_json(index))
+
+    manifest = build_manifest(output_dir)
+    manifest_path = output_dir / "manifest.json"
+    manifest_path.write_text(manifest_to_json(manifest))
 
     # Step 10: Verify
     print("[10/10] Verifying...")
