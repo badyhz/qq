@@ -29,21 +29,42 @@ Each task includes:
 - T870: PRD execution report parser — completed
 - T871: PRD queue closeout packet — completed
 - T872: PRD control plane final status report — completed
+- T873: backlog schema for 500+ tasks — completed
+- T874: milestone planner — completed
+- T875: wave planner — completed
+- T876: batch planner — completed
+- T877: dependency graph validator — completed
+- T878: task risk classifier — completed
+- T879: agent execution window recommender — completed
+- T880: 500-task backlog seed packet — completed
 
 ## Current Phase
 
-- Hard stop: T872
+- Hard stop: T880
+- T873-T880 planning layer complete
 - Next task requires human approval
 
 ## Next Proposed Queue (NOT_STARTED / HUMAN_REVIEW_REQUIRED)
 
-- T873: backlog schema for 500+ tasks
-- T874: milestone planner
-- T875: wave planner
-- T876: batch planner
-- T877: dependency graph validator
-- T878: task risk classifier
-- T879: agent execution window recommender
-- T880: 500-task backlog seed packet
+- T881: backlog milestone M1 seed tasks
+- T882: backlog milestone M2 seed tasks
+- T883: backlog milestone M3 seed tasks
+- T884: backlog milestone M4 seed tasks
+- T885: backlog milestone M5 seed tasks
+- T886: backlog milestone M6 seed tasks
+- T887: backlog milestone M7 seed tasks
+- T888: frozen live execution milestone guard
+- T889: 500-task backlog materializer
+- T890: backlog markdown renderer
+- T891: backlog JSON serializer
+- T892: backlog dependency density scorer
+- T893: backlog risk heatmap packet
+- T894: backlog execution prompt pack generator
+- T895: backlog milestone closeout packet
+- T896: backlog final verification plan
+- T897: backlog human approval checklist
+- T898: backlog release hold packet
+- T899: backlog route recommendation packet
+- T900: backlog seed closeout report
 
-**Important:** T873-T880 require human review before execution.
+**Important:** T881-T900 require human review before execution. No live trading authorization.
