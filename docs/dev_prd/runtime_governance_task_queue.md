@@ -56,27 +56,60 @@ Each task includes:
   - Added 4 test files (62 tests total)
   - Added acceptance doc
 
+## Completed Ranges (continued)
+
+- T901: 500 backlog domain catalog — completed
+- T902: 500 backlog task factory — completed
+- T903: 500 backlog materializer — completed
+- T904: 500 backlog validator — completed
+- T905: 500 backlog milestone map — completed
+- T906: 500 backlog wave map — completed
+- T907: 500 backlog batch map — completed
+- T908: 500 backlog dependency map — completed
+- T909: 500 backlog risk map — completed
+- T910: 500 backlog execution windows — completed
+- T911: 500 backlog prompt packs — completed
+- T912: 500 backlog markdown pack — completed
+- T913: 500 backlog JSON pack — completed
+- T914: 500 backlog human gate pack — completed
+- T915: 500 backlog release hold — completed
+- T916: 500 backlog closeout — completed
+- T917-T940: queue/materialization/update tasks — completed
+- T941-T950: verification/closeout tasks — completed
+- T951-T960: hard-stop/final packaging tasks — completed
+
 ## Current Phase
 
-- Hard stop: T900R
-- T881-T900 backlog seed materializer complete with repair
-- 14 new source modules + 7 milestone seeds
-- Materialization: 71 tasks, 7 milestones (not 500+ — see acceptance doc)
-- Frozen guard PASS
-- 62 pytest acceptance tests pass
+- Hard stop: T960
+- T901-T960 true 500+ backlog expansion complete
+- 16 new source modules (prd_500_backlog_*)
+- Materialization: 550 tasks, 10 milestones, 25 waves, 55 batches, 22 prompt packs
+- Validation: WARN (HIGH risk tasks exist, human review present)
+- Release hold: HOLD
+- 133 pytest acceptance tests pass
 - Next task requires human approval
 
 ## Next Proposed Queue (NOT_STARTED / HUMAN_REVIEW_REQUIRED)
 
-- T901: read-only hook prototype design seed
-- T902: offline evidence writer design seed
-- T903: manual review CLI design seed
-- T904: read-only hook implementation review seed
-- T905: runtime integration review seed
-- T906: backlog expansion to 500 tasks
-- T907: backlog verification report
-- T908: backlog human approval gate
-- T909: backlog release hold decision
-- T910: backlog final closeout report
+- T961: read-only hook design input contract
+- T962: read-only hook design output contract
+- T963: read-only hook permission adapter design
+- T964: read-only hook sanitized payload design
+- T965: read-only hook invariant plan
+- T966: read-only hook no-side-effect proof packet
+- T967: read-only hook failure taxonomy bridge
+- T968: read-only hook evidence model
+- T969: read-only hook regression packet design
+- T970: read-only hook manual review checklist
+- T971: read-only hook rollout hold packet
+- T972: read-only hook rollback plan
+- T973: read-only hook observability design
+- T974: read-only hook threat model
+- T975: read-only hook implementation boundary map
+- T976: read-only hook test matrix
+- T977: read-only hook prompt pack
+- T978: read-only hook closeout bundle
+- T979: read-only hook route recommendation
+- T980: read-only hook design closeout report
 
-**Important:** T901+ require human review before execution. No live trading authorization.
+**Important:** T961-T980 require human review before execution. No live trading authorization.
