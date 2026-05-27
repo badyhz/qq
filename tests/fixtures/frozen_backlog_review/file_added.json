@@ -1,0 +1,28 @@
+{
+  "summary": {
+    "summary_id": "summary-test-batch",
+    "total_files": 23,
+    "high_risk_count": 10,
+    "medium_risk_count": 13,
+    "release_hold": "HOLD",
+    "no_live": true,
+    "no_submit": true,
+    "no_exchange": true,
+    "no_runtime_integration": true,
+    "no_planner_integration": true
+  },
+  "records": [
+    {
+      "record_id": "report-0000",
+      "file_path": "core/live_runner.py",
+      "risk_class": "HIGH",
+      "category": "LIVE_RUNNER",
+      "allowed_actions": ["review", "read", "lint", "typecheck"],
+      "forbidden_actions": ["execute", "import_runtime", "submit", "modify"],
+      "required_evidence": ["dry_run_log", "risk_review", "human_approval"],
+      "readiness_score": 0.0,
+      "unlock_recommendation": "HOLD",
+      "release_hold": "HOLD"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "diff_id": "diff-0001",
+  "before_snapshot_id": "snapshot-0001",
+  "after_snapshot_id": "snapshot-0001",
+  "added_files": [],
+  "removed_files": [],
+  "risk_class_changes": [],
+  "category_changes": [],
+  "recommendation_changes": [],
+  "safety_flag_changes": [],
+  "hold_changes": []
+}

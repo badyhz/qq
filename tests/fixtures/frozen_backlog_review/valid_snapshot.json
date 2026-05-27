@@ -1,0 +1,20 @@
+{
+  "snapshot_id": "snapshot-0001",
+  "report_data": {
+    "summary": {
+      "summary_id": "summary-test-batch",
+      "total_files": 22,
+      "high_risk_count": 9,
+      "medium_risk_count": 13,
+      "release_hold": "HOLD",
+      "no_live": true,
+      "no_submit": true,
+      "no_exchange": true,
+      "no_runtime_integration": true,
+      "no_planner_integration": true
+    },
+    "records": []
+  },
+  "created_at_iso": "2026-01-01T00:00:00Z",
+  "version": "1.0.0"
+}
