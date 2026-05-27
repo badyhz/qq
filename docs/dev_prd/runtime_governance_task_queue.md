@@ -377,7 +377,30 @@ Each task includes:
 - No live trading authorization
 - 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
 
-## Next Proposed Queue (T1521+ / HUMAN_REVIEW_REQUIRED)
+## Completed Ranges (continued)
 
-- T1521+: next governance expansion requires human approval
+- T1521-T1600: frozen backlog review report CLI — completed
+  - T1561: frozen backlog review report CLI usage doc
+  - T1562: frozen backlog review report materializer doc
+  - T1563: T1521-T1600 acceptance command packet
+  - T1564: T1521-T1600 safety boundary packet
+  - T1565: T1521-T1600 final closeout report
+  - T1566: T1561-T1600 compatibility test
+  - T1567-T1600: reserved for future CLI/materializer expansion
+  - 5 new docs, 2 updated docs, 1 test file
+  - Release hold: HOLD
+  - No live trading authorization
+
+## Current Phase (updated)
+
+- Hard stop: T1600
+- T1521-T1600 frozen backlog review report CLI complete
+- 5 new docs, 2 updated docs, 1 test file
+- Release hold: HOLD
+- No live trading authorization
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+
+## Next Proposed Queue (T1601+ / HUMAN_REVIEW_REQUIRED)
+
+- T1601+: next governance expansion requires human approval
 - Runtime integration requires explicit human authorization

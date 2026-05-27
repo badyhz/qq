@@ -101,6 +101,19 @@ PRD control-plane setup. Not runtime integration. Not live trading.
 - All models are advisory. No autonomous decisions.
 - Hard stop: T1520
 
+## T1521-T1600 Frozen Backlog Review Report CLI
+
+- 5 new docs (CLI usage, materializer, acceptance, safety, closeout)
+- 2 updated docs (task queue, current state)
+- 1 compatibility test file (4+ tests)
+- CLI spec: read-only report generation for frozen backlog review
+- Materializer spec: pure functions bridging governance models to CLI output
+- All models advisory, no autonomous decisions
+- Release hold: HOLD
+- No live trading, no exchange connectors, no secret management, no runtime execution
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+- Hard stop: T1600
+
 ## Next Safe Phase
 
-PRD-driven task automation only. Read-only hook implementation still requires human review. T1521+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.
+PRD-driven task automation only. Read-only hook implementation still requires human review. T1601+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.
