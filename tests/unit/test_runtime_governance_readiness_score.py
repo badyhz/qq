@@ -35,6 +35,7 @@ def _build_packet(
 ) -> RuntimeGovernanceRegressionPacket:
     """Construct a regression packet directly with given parameters."""
     return RuntimeGovernanceRegressionPacket(
+        title="Test Regression",
         final_verdict=final_verdict,
         scenario_count=scenario_count,
         scenario_pass_count=scenario_pass_count,

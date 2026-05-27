@@ -1,137 +1,145 @@
-"""Runtime governance integration risk register — track integration risks.
+"""Runtime governance integration risk register — pure risk data.
 
 Pure. No I/O. No network. No random. Deterministic.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 
 @dataclass(frozen=True)
 class RuntimeGovernanceIntegrationRisk:
-    """Single integration risk entry."""
-
+    """Single risk entry."""
     risk_id: str
-    description: str
-    severity: str  # "LOW" / "MEDIUM" / "HIGH" / "CRITICAL"
-    status: str  # "OPEN" / "MITIGATED" / "CLOSED"
-
-
-@dataclass(frozen=True)
-class RuntimeGovernanceIntegrationRiskRegister:
-    """Immutable integration risk register for runtime governance."""
-
     title: str
-    risks: List[RuntimeGovernanceIntegrationRisk]
-    verdict: str  # "PASS" / "WARN" / "FAIL"
-    notes: List[str] = field(default_factory=list)
+    severity: str  # "low", "medium", "high", "critical"
+    likelihood: str  # "low", "medium", "high"
+    mitigation: str
+    status: str  # "open", "mitigated", "accepted"
 
 
-_DEFAULT_RISKS: List[Dict[str, str]] = [
-    {"risk_id": "R1", "description": "network_partition", "severity": "LOW", "status": "MITIGATED"},
-    {"risk_id": "R2", "description": "rate_limit_exceeded", "severity": "LOW", "status": "MITIGATED"},
-    {"risk_id": "R3", "description": "config_drift", "severity": "LOW", "status": "MITIGATED"},
+_RISKS = [
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="accidental_submit",
+        title="Accidental submit to live exchange",
+        severity="critical",
+        likelihood="high",
+        mitigation="No-submit guard, frozen boundaries, manual approval gate",
+        status="open",
+    ),
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="network_permission_leak",
+        title="Network permission leak outside governance",
+        severity="high",
+        likelihood="high",
+        mitigation="Network blocked without explicit mode, invariant checker",
+        status="open",
+    ),
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="stale_governance_verdict",
+        title="Stale governance verdict used for decision",
+        severity="medium",
+        likelihood="medium",
+        mitigation="Deterministic re-evaluation, no caching of verdicts",
+        status="open",
+    ),
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="missing_manual_approval",
+        title="Missing manual approval before phase advance",
+        severity="high",
+        likelihood="high",
+        mitigation="Approval gate spec, transition checklist, phase control report",
+        status="open",
+    ),
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="planner_bypass",
+        title="Planner bypasses governance checks",
+        severity="critical",
+        likelihood="high",
+        mitigation="Planner integration frozen, no autonomous planner mode",
+        status="open",
+    ),
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="secret_exposure",
+        title="Secret or credential exposure",
+        severity="critical",
+        likelihood="medium",
+        mitigation="No secret access in governance layer, frozen boundary",
+        status="open",
+    ),
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="untracked_file_io",
+        title="Untracked file I/O in governance modules",
+        severity="medium",
+        likelihood="medium",
+        mitigation="All modules declared pure, no-submit evidence packet",
+        status="open",
+    ),
+    RuntimeGovernanceIntegrationRisk(
+        risk_id="nondeterministic_evidence",
+        title="Nondeterministic evidence invalidates audit",
+        severity="low",
+        likelihood="medium",
+        mitigation="Deterministic builders, no timestamps, no random",
+        status="open",
+    ),
 ]
 
 
-def build_runtime_governance_integration_risk_register(
-    *,
-    title: str = "Runtime Governance Integration Risk Register",
-    risks: List[RuntimeGovernanceIntegrationRisk] | None = None,
-    verdict: str | None = None,
-    notes: List[str] | None = None,
-) -> RuntimeGovernanceIntegrationRiskRegister:
-    """Build integration risk register. Pure. No I/O.
-
-    Defaults produce a register with all risks mitigated (PASS).
-    """
-    if risks is None:
-        risks = [
-            RuntimeGovernanceIntegrationRisk(**spec)
-            for spec in _DEFAULT_RISKS
-        ]
-
-    eff_verdict = verdict if verdict is not None else _compute_verdict(risks)
-
-    return RuntimeGovernanceIntegrationRiskRegister(
-        title=title,
-        risks=risks,
-        verdict=eff_verdict,
-        notes=list(notes) if notes else [],
-    )
+def build_runtime_governance_integration_risk_register() -> List[RuntimeGovernanceIntegrationRisk]:
+    """Build risk register. Deterministic."""
+    return list(_RISKS)
 
 
-def summarize_risk_register(register: RuntimeGovernanceIntegrationRiskRegister) -> Dict[str, Any]:
-    """Summarize risk register counts. Deterministic."""
-    by_severity: Dict[str, int] = {}
-    by_status: Dict[str, int] = {}
-    for r in register.risks:
-        by_severity[r.severity] = by_severity.get(r.severity, 0) + 1
-        by_status[r.status] = by_status.get(r.status, 0) + 1
-
-    return {
-        "total": len(register.risks),
-        "by_status": dict(sorted(by_status.items())),
-        "by_severity": dict(sorted(by_severity.items())),
-        "verdict": register.verdict,
-    }
-
-
-def risk_register_to_dict(register: RuntimeGovernanceIntegrationRiskRegister) -> Dict[str, Any]:
-    """Serialize to dict. Pure."""
-    return {
-        "title": register.title,
-        "risks": [
-            {
-                "risk_id": r.risk_id,
-                "description": r.description,
-                "severity": r.severity,
-                "status": r.status,
-            }
-            for r in register.risks
-        ],
-        "verdict": register.verdict,
-        "notes": list(register.notes),
-    }
+def risk_register_to_dict(register: List[RuntimeGovernanceIntegrationRisk]) -> List[Dict[str, Any]]:
+    """Serialize to list of dicts."""
+    return [
+        {
+            "risk_id": r.risk_id,
+            "title": r.title,
+            "severity": r.severity,
+            "likelihood": r.likelihood,
+            "mitigation": r.mitigation,
+            "status": r.status,
+        }
+        for r in register
+    ]
 
 
-def risk_register_to_markdown(register: RuntimeGovernanceIntegrationRiskRegister) -> str:
-    """Render as deterministic markdown. No timestamps."""
-    lines: List[str] = [f"# {register.title}", ""]
-    lines.append(f"**Verdict:** {register.verdict}")
+def risk_register_to_markdown(register: List[RuntimeGovernanceIntegrationRisk]) -> str:
+    """Render as deterministic markdown."""
+    lines = [
+        "# Runtime Governance Integration Risk Register",
+        "",
+        "| Risk ID | Title | Severity | Likelihood | Status |",
+        "|---------|-------|----------|------------|--------|",
+    ]
+    for r in register:
+        lines.append(f"| {r.risk_id} | {r.title} | {r.severity} | {r.likelihood} | {r.status} |")
     lines.append("")
-    lines.append("| Risk ID | Description | Severity | Status |")
-    lines.append("|---------|-------------|----------|--------|")
-    for r in register.risks:
-        lines.append(f"| {r.risk_id} | {r.description} | {r.severity} | {r.status} |")
-    lines.append("")
-    if register.notes:
-        lines.append("## Notes")
+    if register:
+        lines.append("## Mitigations")
         lines.append("")
-        for note in register.notes:
-            lines.append(f"- {note}")
+        for r in register:
+            lines.append(f"- **{r.risk_id}:** {r.mitigation}")
         lines.append("")
     return "\n".join(lines)
 
 
-# ── internal ───────────────────────────────────────────────────────
-
-
-def _compute_verdict(risks: List[RuntimeGovernanceIntegrationRisk]) -> str:
-    has_open_critical = any(
-        r.severity == "CRITICAL" and r.status == "OPEN" for r in risks
-    )
-    has_open_high = any(
-        r.severity == "HIGH" and r.status == "OPEN" for r in risks
-    )
-    has_open = any(r.status == "OPEN" for r in risks)
-
-    if has_open_critical:
-        return "FAIL"
-    if has_open_high:
-        return "WARN"
-    if has_open:
-        return "WARN"
-    return "PASS"
+def summarize_risk_register(register: List[RuntimeGovernanceIntegrationRisk]) -> Dict[str, Any]:
+    """Summarize risk register. Deterministic."""
+    by_severity: Dict[str, int] = {}
+    by_likelihood: Dict[str, int] = {}
+    by_status: Dict[str, int] = {}
+    for r in register:
+        by_severity[r.severity] = by_severity.get(r.severity, 0) + 1
+        by_likelihood[r.likelihood] = by_likelihood.get(r.likelihood, 0) + 1
+        by_status[r.status] = by_status.get(r.status, 0) + 1
+    return {
+        "total": len(register),
+        "by_severity": dict(sorted(by_severity.items())),
+        "by_likelihood": dict(sorted(by_likelihood.items())),
+        "by_status": dict(sorted(by_status.items())),
+    }
