@@ -20,20 +20,30 @@ Each task includes:
 - T794-T797: runtime governance pre-live audit layer — completed
 - T798-T825: runtime governance expansion and closeout — completed
 - T826-T857: read-only integration design layer — completed
+- T858-T864: PRD control plane setup — completed
+- T865: PRD-driven task loader spec — completed
+- T866: PRD task queue validator — completed
+- T867: agent prompt generator from PRD — completed
+- T868: PRD acceptance command registry — completed
+- T869: PRD safety boundary checker — completed
+- T870: PRD execution report parser — completed
+- T871: PRD queue closeout packet — completed
+- T872: PRD control plane final status report — completed
 
 ## Current Phase
 
-- T858-T864: PRD control plane setup — in_progress
+- Hard stop: T872
+- Next task requires human approval
 
 ## Next Proposed Queue (NOT_STARTED / HUMAN_REVIEW_REQUIRED)
 
-- T865: PRD-driven task loader spec
-- T866: PRD task queue validator
-- T867: agent prompt generator from PRD
-- T868: PRD acceptance command registry
-- T869: PRD safety boundary checker
-- T870: PRD execution report parser
-- T871: PRD queue closeout packet
-- T872: PRD control plane final status report
+- T873: backlog schema for 500+ tasks
+- T874: milestone planner
+- T875: wave planner
+- T876: batch planner
+- T877: dependency graph validator
+- T878: task risk classifier
+- T879: agent execution window recommender
+- T880: 500-task backlog seed packet
 
-**Important:** Do not authorize T865-T872 execution in this task. Only document them as future tasks.
+**Important:** T873-T880 require human review before execution.
