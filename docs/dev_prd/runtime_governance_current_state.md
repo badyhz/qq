@@ -75,6 +75,18 @@ PRD control-plane setup. Not runtime integration. Not live trading.
 - Human approval evidence pack complete: required fields, timestamp policy, reviewer identity, risk acknowledgement
 - Hard stop: T1360
 
+## T1361-T1440 Governance Operating Layer
+
+- 8 core modules (agent handoff envelope, safety rule, test spec, commit rule, verdict, renderer, release hold dashboard, dashboard renderer)
+- 2 test files (26 tests total)
+- 5 new docs (overview, envelope spec, dashboard spec, summary packet, closeout report)
+- 2 updated docs (task queue, current state)
+- All models are frozen dataclasses, all functions are pure
+- Release hold: HOLD
+- No live trading, no exchange connectors, no secret management, no runtime execution
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+- Hard stop: T1440
+
 ## Next Safe Phase
 
-PRD-driven task automation only. Read-only hook implementation still requires human review. T1361+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.
+PRD-driven task automation only. Read-only hook implementation still requires human review. T1441+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.

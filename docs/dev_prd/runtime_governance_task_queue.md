@@ -323,3 +323,37 @@ Each task includes:
 - T1400: T1361-T1400 final closeout report — HUMAN_REVIEW_REQUIRED
 
 **Important:** T1361-T1400 all require human review. No autonomous progression beyond T1360.
+
+## Completed Ranges (continued)
+
+- T1361-T1440: governance operating layer — completed
+  - T1391: AgentHandoffEnvelope frozen dataclass
+  - T1392: AgentHandoffSafetyRule frozen dataclass
+  - T1393: AgentHandoffTestSpec frozen dataclass
+  - T1394: AgentHandoffCommitRule frozen dataclass
+  - T1395: AgentHandoffVerdict + build_verdict pure function
+  - T1396: agent handoff renderer (5 pure functions)
+  - T1397: ReleaseHoldDashboard frozen dataclass
+  - T1398: release hold dashboard renderer (2 pure functions)
+  - T1399: agent handoff tests (17 tests)
+  - T1400: release hold dashboard tests (9 tests)
+  - T1401-T1403: governance operating layer docs
+  - T1404-T1405: task queue + current state updates
+  - T1406-T1407: summary packet + final closeout
+  - 8 core modules, 2 test files, 5 new docs, 2 updated docs
+  - Release hold: HOLD
+  - No live trading authorization
+
+## Current Phase (updated)
+
+- Hard stop: T1440
+- T1361-T1440 governance operating layer complete
+- 8 core modules, 2 test files, 26 tests
+- Release hold: HOLD
+- No live trading authorization
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+
+## Next Proposed Queue (T1441+ / HUMAN_REVIEW_REQUIRED)
+
+- T1441+: next governance expansion requires human approval
+- Runtime integration requires explicit human authorization
