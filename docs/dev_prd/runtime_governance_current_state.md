@@ -22,6 +22,18 @@ There are pre-existing modified/untracked files outside this PRD task. Do not in
 
 PRD control-plane setup. Not runtime integration. Not live trading.
 
+## T961-T1060 Read-Only Hook Design Layer
+
+- 20 design contract docs
+- 13 model modules
+- 2 renderer/serializer modules
+- 1 acceptance module
+- 1 governance module
+- 15 test files
+- Total: 73 hook tests + 490 PRD tests
+- Release hold: HOLD
+- No live trading authorization
+
 ## Next Safe Phase
 
 PRD-driven task automation only. Read-only hook implementation still requires human review.

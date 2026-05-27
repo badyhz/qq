@@ -125,3 +125,45 @@ Each task includes:
 - T980: read-only hook design closeout report
 
 **Important:** T961-T980 require human review before execution. No live trading authorization.
+
+## Completed Ranges (continued)
+
+- T961-T980: read-only hook design layer — completed
+- T981-T1000: read-only hook model layer — completed
+- T1001-T1020: read-only hook renderer layer — completed
+- T1021-T1040: read-only hook acceptance layer — completed
+- T1041-T1060: read-only hook governance closeout layer — completed
+
+## Current Phase (updated)
+
+- Hard stop: T1060
+- T961-T1060 read-only hook governance layer complete
+- 20 design docs, 13 model modules, 2 renderer modules, 1 acceptance module, 1 governance module
+- 15 test files, 73 hook tests
+- Release hold: HOLD
+- No live trading authorization
+
+## Next Proposed Queue (NOT_STARTED / HUMAN_REVIEW_REQUIRED)
+
+- T1061: runtime integration review — HUMAN_REVIEW_REQUIRED
+- T1062: frozen component assessment — HUMAN_REVIEW_REQUIRED
+- T1063: risk heatmap human review — HUMAN_REVIEW_REQUIRED
+- T1064: release hold human decision — HUMAN_REVIEW_REQUIRED
+- T1065: live trading authorization gate — HUMAN_REVIEW_REQUIRED
+- T1066: hook implementation review — HUMAN_REVIEW_REQUIRED
+- T1067: runtime integration design — HUMAN_REVIEW_REQUIRED
+- T1068: exchange connector review — HUMAN_REVIEW_REQUIRED
+- T1069: order manager review — HUMAN_REVIEW_REQUIRED
+- T1070: planner review — HUMAN_REVIEW_REQUIRED
+- T1071: secrets management review — HUMAN_REVIEW_REQUIRED
+- T1072: live runner review — HUMAN_REVIEW_REQUIRED
+- T1073: integration test plan — HUMAN_REVIEW_REQUIRED
+- T1074: deployment checklist — HUMAN_REVIEW_REQUIRED
+- T1075: rollback plan review — HUMAN_REVIEW_REQUIRED
+- T1076: monitoring setup — HUMAN_REVIEW_REQUIRED
+- T1077: alerting configuration — HUMAN_REVIEW_REQUIRED
+- T1078: final human sign-off — HUMAN_REVIEW_REQUIRED
+- T1079: production readiness review — HUMAN_REVIEW_REQUIRED
+- T1080: go/no-go decision — HUMAN_REVIEW_REQUIRED
+
+**Important:** T1061-T1080 all require human review. No autonomous progression.
