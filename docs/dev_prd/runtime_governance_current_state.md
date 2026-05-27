@@ -60,6 +60,21 @@ PRD control-plane setup. Not runtime integration. Not live trading.
 - No-submit gate enforced: zero order submissions, zero exchange connections, zero credential access
 - Hard stop: T1260
 
+## T1261-T1360 Frozen-Backlog-Review Governance Layer
+
+- 40 documentation files (frozen backlog review, medium operational review, verification script review, human approval evidence)
+- 40 model modules (frozen backlog models, medium operational models, verification models, human approval models)
+- 4 renderer modules (markdown, JSON, summary, closeout renderers)
+- 6 test files (governance model tests, frozen backlog tests, medium operational tests, human approval tests)
+- Release hold: HOLD
+- No live trading, no exchange connectors, no secret management, no runtime execution
+- 9 HIGH-risk files frozen (live_runner, single_call_recorder, evidence_recorder, testnet/submission scripts)
+- 22 MEDIUM-risk files governed by medium-risk policy (operational, verification, shadow scripts)
+- Frozen backlog review complete: all 9 HIGH-risk files inspected, evidence recorded, human approval policies defined
+- Medium operational review complete: all 11 operational scripts + 2 verification scripts governed
+- Human approval evidence pack complete: required fields, timestamp policy, reviewer identity, risk acknowledgement
+- Hard stop: T1360
+
 ## Next Safe Phase
 
-PRD-driven task automation only. Read-only hook implementation still requires human review. T1261+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.
+PRD-driven task automation only. Read-only hook implementation still requires human review. T1361+ governance expansion is safe if it remains documentation/model/test only. Runtime integration requires explicit human authorization.

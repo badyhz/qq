@@ -256,3 +256,70 @@ Each task includes:
 - T1280: readiness scoring closeout — HUMAN_REVIEW_REQUIRED
 
 **Important:** T1261-T1300 all require human review. No autonomous progression beyond T1260.
+
+## Completed Ranges (continued)
+
+- T1261-T1360: frozen-backlog-review governance layer — completed
+  - T1261-T1300: frozen backlog review docs, medium operational review docs, verification script review docs, human approval evidence docs
+  - T1301-T1340: 40 model modules (frozen backlog review models, medium operational models, verification models, human approval models)
+  - T1341-T1344: 4 renderer modules (markdown, JSON, summary, closeout renderers)
+  - T1345-T1350: 6 test files (governance model tests, frozen backlog tests, medium operational tests, human approval tests)
+  - T1351-T1360: governance closeout packets (task queue update, current state update, summary, acceptance, safety, frozen backlog, medium operational, human approval, next wave, final closeout)
+  - 40 docs, 40 models, 4 renderers, 6 tests
+  - Release hold: HOLD
+  - No live trading authorization
+  - 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+
+## Current Phase (updated)
+
+- Hard stop: T1360
+- T1261-T1360 frozen-backlog-review governance layer complete
+- 40 docs, 40 models, 4 renderers, 6 tests
+- Release hold: HOLD
+- No live trading authorization
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+
+## Next Proposed Queue (T1361-T1400 / HUMAN_REVIEW_REQUIRED)
+
+- T1361: frozen backlog automation enforcement — HUMAN_REVIEW_REQUIRED
+- T1362: frozen backlog pre-commit guard — HUMAN_REVIEW_REQUIRED
+- T1363: frozen backlog violation report automation — HUMAN_REVIEW_REQUIRED
+- T1364: frozen backlog rollback trigger design — HUMAN_REVIEW_REQUIRED
+- T1365: frozen backlog enforcement tests — HUMAN_REVIEW_REQUIRED
+- T1366: medium operational promotion gate — HUMAN_REVIEW_REQUIRED
+- T1367: medium operational import boundary automation — HUMAN_REVIEW_REQUIRED
+- T1368: medium operational commit isolation automation — HUMAN_REVIEW_REQUIRED
+- T1369: medium operational dry-run enforcement — HUMAN_REVIEW_REQUIRED
+- T1370: medium operational promotion tests — HUMAN_REVIEW_REQUIRED
+- T1371: human approval evidence automation — HUMAN_REVIEW_REQUIRED
+- T1372: human approval timestamp validator — HUMAN_REVIEW_REQUIRED
+- T1373: human approval reviewer identity verifier — HUMAN_REVIEW_REQUIRED
+- T1374: human approval risk acknowledgement checker — HUMAN_REVIEW_REQUIRED
+- T1375: human approval evidence tests — HUMAN_REVIEW_REQUIRED
+- T1376: verification script promotion gate — HUMAN_REVIEW_REQUIRED
+- T1377: verification script side-effect proof — HUMAN_REVIEW_REQUIRED
+- T1378: verification script mock dependency validator — HUMAN_REVIEW_REQUIRED
+- T1379: verification script promotion tests — HUMAN_REVIEW_REQUIRED
+- T1380: verification script closeout — HUMAN_REVIEW_REQUIRED
+- T1381: readiness scoring v2 dimensions — HUMAN_REVIEW_REQUIRED
+- T1382: readiness scoring v2 model — HUMAN_REVIEW_REQUIRED
+- T1383: readiness scoring v2 dashboard — HUMAN_REVIEW_REQUIRED
+- T1384: readiness scoring v2 trend analysis — HUMAN_REVIEW_REQUIRED
+- T1385: readiness scoring v2 closeout — HUMAN_REVIEW_REQUIRED
+- T1386: governance layer cross-reference map — HUMAN_REVIEW_REQUIRED
+- T1387: governance layer dependency audit — HUMAN_REVIEW_REQUIRED
+- T1388: governance layer completeness validator — HUMAN_REVIEW_REQUIRED
+- T1389: governance layer regression test suite — HUMAN_REVIEW_REQUIRED
+- T1390: governance layer closeout — HUMAN_REVIEW_REQUIRED
+- T1391: runtime feasibility assessment update — HUMAN_REVIEW_REQUIRED
+- T1392: runtime risk assessment update — HUMAN_REVIEW_REQUIRED
+- T1393: runtime human decision packet update — HUMAN_REVIEW_REQUIRED
+- T1394: runtime boundary definition update — HUMAN_REVIEW_REQUIRED
+- T1395: runtime safety constraints update — HUMAN_REVIEW_REQUIRED
+- T1396: integration test plan draft — HUMAN_REVIEW_REQUIRED
+- T1397: deployment checklist draft — HUMAN_REVIEW_REQUIRED
+- T1398: rollback plan draft — HUMAN_REVIEW_REQUIRED
+- T1399: go/no-go decision framework — HUMAN_REVIEW_REQUIRED
+- T1400: T1361-T1400 final closeout report — HUMAN_REVIEW_REQUIRED
+
+**Important:** T1361-T1400 all require human review. No autonomous progression beyond T1360.
