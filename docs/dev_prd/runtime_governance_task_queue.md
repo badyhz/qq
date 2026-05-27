@@ -353,7 +353,31 @@ Each task includes:
 - No live trading authorization
 - 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
 
-## Next Proposed Queue (T1441+ / HUMAN_REVIEW_REQUIRED)
+## Completed Ranges (continued)
 
-- T1441+: next governance expansion requires human approval
+- T1441-T1520: review-to-decision operating system — completed
+  - T1468: review-to-decision overview
+  - T1469: frozen file review packet spec
+  - T1470: promotion readiness scoring spec
+  - T1471: human approval transcript spec
+  - T1472: unlock recommendation spec
+  - T1473: hold decision report spec
+  - T1474: review-to-decision closeout
+  - T1475-T1520: model, renderer, test, and closeout tasks
+  - 7 new docs, 2 updated docs, 2 closeout packets, 1 test file
+  - Release hold: HOLD
+  - No live trading authorization
+
+## Current Phase (updated)
+
+- Hard stop: T1520
+- T1441-T1520 review-to-decision operating system complete
+- 7 new docs, 2 updated docs, 2 closeout packets, 1 test file
+- Release hold: HOLD
+- No live trading authorization
+- 9 HIGH-risk files frozen, 22 MEDIUM-risk files governed
+
+## Next Proposed Queue (T1521+ / HUMAN_REVIEW_REQUIRED)
+
+- T1521+: next governance expansion requires human approval
 - Runtime integration requires explicit human authorization
