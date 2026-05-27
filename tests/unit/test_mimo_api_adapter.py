@@ -6,7 +6,7 @@ from core.async_agent_adapter import AsyncAdapterStatus
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 @pytest.fixture

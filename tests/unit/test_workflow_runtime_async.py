@@ -37,7 +37,7 @@ def test_run_async_completes_all_tasks():
         result = await rt.run_async(AsyncMockAdapter())
         assert result["is_complete"]
         assert result["completed"] == 2
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_run_async_with_custom_adapter():
@@ -53,7 +53,7 @@ def test_run_async_with_custom_adapter():
         assert adapter.adapter_id() == "custom_v2"
         status = await adapter.status()
         assert status["submitted"] >= 2
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_run_async_emits_workflow_events():
@@ -70,7 +70,7 @@ def test_run_async_emits_workflow_events():
         assert counts.get("workflow_completed", 0) >= 1
         assert counts.get("task_started", 0) >= 2
         assert counts.get("task_completed", 0) >= 2
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_run_async_records_execution_log():
@@ -90,4 +90,4 @@ def test_run_async_records_execution_log():
         assert len(completed_events) == 2
         completed_ids = {e.task_id for e in completed_events}
         assert completed_ids == {"L1", "L2"}
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())

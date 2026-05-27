@@ -24,7 +24,7 @@ def test_async_submit_task():
         assert req_id is not None
         result = await a.poll(req_id)
         assert result.status == AsyncAdapterStatus.COMPLETED
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_async_poll_completed():
@@ -36,7 +36,7 @@ def test_async_poll_completed():
         assert result.task_id == "T2"
         assert result.output == "mock output"
         assert result.duration_ms >= 0
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_async_cancel():
@@ -47,7 +47,7 @@ def test_async_cancel():
         assert cancelled is True
         result = await a.poll(req_id)
         assert result.status == AsyncAdapterStatus.CANCELLED
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_async_status():
@@ -57,7 +57,7 @@ def test_async_status():
         s = await a.status()
         assert s["adapter_id"] == "async_mock"
         assert s["submitted"] == 1
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_sync_to_async_adapter_wraps():
@@ -70,7 +70,7 @@ def test_sync_to_async_adapter_wraps():
         result = await a.poll(req_id)
         assert result.status == AsyncAdapterStatus.COMPLETED
         assert result.adapter_id == "sync_mock"
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_task_result_fields():
@@ -84,7 +84,7 @@ def test_task_result_fields():
         assert hasattr(result, "output")
         assert hasattr(result, "duration_ms")
         assert isinstance(result, AsyncTaskResult)
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_adapter_id_unique_per_instance():
@@ -99,7 +99,7 @@ def test_async_mock_failure_mode():
         req_id = await a.submit_task("T7", "will fail")
         result = await a.poll(req_id)
         assert result.status == AsyncAdapterStatus.FAILED
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())
 
 
 def test_async_lifecycle_full():
@@ -132,4 +132,4 @@ def test_async_lifecycle_full():
         s = await a.status()
         assert s["submitted"] == 2
         assert s["cancelled"] == 1
-    asyncio.get_event_loop().run_until_complete(_test())
+    asyncio.run(_test())

@@ -27,7 +27,7 @@ class CountingTransport(HTTPTransport):
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def test_dedup_coalesces_concurrent_requests():

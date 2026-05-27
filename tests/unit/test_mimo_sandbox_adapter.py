@@ -1,4 +1,5 @@
 import asyncio
+import time
 import pytest
 
 from adapters.mimo_sandbox_adapter import MiMoSandboxAdapter
@@ -6,7 +7,7 @@ from core.async_agent_adapter import AsyncAdapterStatus
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 @pytest.fixture
@@ -39,9 +40,9 @@ class TestSubmit:
 
     def test_latency_configurable(self):
         fast = MiMoSandboxAdapter(latency_ms=0.0)
-        start = asyncio.get_event_loop().time()
+        start = time.monotonic()
         _run(fast.submit_task("t1", "hi"))
-        elapsed = asyncio.get_event_loop().time() - start
+        elapsed = time.monotonic() - start
         assert elapsed < 0.1
 
 
