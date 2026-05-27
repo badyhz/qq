@@ -1,0 +1,4 @@
+[
+  {"symbol": "BTCUSDT", "base_asset": "BTC", "quote_asset": "USDT", "exchange": "binance"},
+  {"symbol": "ETHUSDT", "base_asset": "ETH", "quote_asset": "USDT", "exchange": "binance"}
+]

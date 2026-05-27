@@ -1,0 +1,22 @@
+[
+  {"timestamp_index": 0, "open": 67000.0, "high": 67300.0, "low": 66800.0, "close": 67200.0, "volume": 350.0},
+  {"timestamp_index": 1, "open": 67200.0, "high": 67500.0, "low": 67100.0, "close": 67400.0, "volume": 410.5},
+  {"timestamp_index": 2, "open": 67400.0, "high": 67450.0, "low": 67000.0, "close": 67100.0, "volume": 380.2},
+  {"timestamp_index": 3, "open": 67100.0, "high": 67200.0, "low": 66800.0, "close": 66900.0, "volume": 320.8},
+  {"timestamp_index": 4, "open": 66900.0, "high": 67300.0, "low": 66850.0, "close": 67250.0, "volume": 395.0},
+  {"timestamp_index": 5, "open": 67250.0, "high": 67600.0, "low": 67200.0, "close": 67550.0, "volume": 450.3},
+  {"timestamp_index": 6, "open": 67550.0, "high": 67700.0, "low": 67400.0, "close": 67600.0, "volume": 420.7},
+  {"timestamp_index": 7, "open": 67600.0, "high": 67650.0, "low": 67200.0, "close": 67250.0, "volume": 375.1},
+  {"timestamp_index": 8, "open": 67250.0, "high": 67400.0, "low": 67100.0, "close": 67350.0, "volume": 340.4},
+  {"timestamp_index": 9, "open": 67350.0, "high": 67700.0, "low": 67300.0, "close": 67650.0, "volume": 465.2},
+  {"timestamp_index": 10, "open": 67650.0, "high": 67800.0, "low": 67500.0, "close": 67750.0, "volume": 430.9},
+  {"timestamp_index": 11, "open": 67750.0, "high": 67780.0, "low": 67300.0, "close": 67350.0, "volume": 390.0},
+  {"timestamp_index": 12, "open": 67350.0, "high": 67500.0, "low": 67200.0, "close": 67450.0, "volume": 355.5},
+  {"timestamp_index": 13, "open": 67450.0, "high": 67700.0, "low": 67400.0, "close": 67680.0, "volume": 425.3},
+  {"timestamp_index": 14, "open": 67680.0, "high": 68000.0, "low": 67600.0, "close": 67950.0, "volume": 510.8},
+  {"timestamp_index": 15, "open": 67950.0, "high": 68100.0, "low": 67800.0, "close": 67900.0, "volume": 475.4},
+  {"timestamp_index": 16, "open": 67900.0, "high": 67950.0, "low": 67500.0, "close": 67550.0, "volume": 385.7},
+  {"timestamp_index": 17, "open": 67550.0, "high": 67700.0, "low": 67450.0, "close": 67650.0, "volume": 360.0},
+  {"timestamp_index": 18, "open": 67650.0, "high": 67900.0, "low": 67600.0, "close": 67850.0, "volume": 445.2},
+  {"timestamp_index": 19, "open": 67850.0, "high": 68100.0, "low": 67800.0, "close": 68050.0, "volume": 520.5}
+]

@@ -1,0 +1,10 @@
+[
+  {"timestamp_index": 1, "direction": "long", "strength": 0.79, "entry_price": 3530.0},
+  {"timestamp_index": 4, "direction": "long", "strength": 0.76, "entry_price": 3490.0},
+  {"timestamp_index": 7, "direction": "short", "strength": 0.72, "entry_price": 3600.0},
+  {"timestamp_index": 9, "direction": "long", "strength": 0.84, "entry_price": 3550.0},
+  {"timestamp_index": 11, "direction": "short", "strength": 0.74, "entry_price": 3630.0},
+  {"timestamp_index": 14, "direction": "long", "strength": 0.86, "entry_price": 3615.0},
+  {"timestamp_index": 16, "direction": "short", "strength": 0.68, "entry_price": 3650.0},
+  {"timestamp_index": 18, "direction": "long", "strength": 0.81, "entry_price": 3610.0}
+]

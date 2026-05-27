@@ -1,0 +1,10 @@
+[
+  {"timestamp_index": 2, "exit_price": 3500.0, "return_r": -0.15, "hold_bars": 2, "mfe_r": 0.03, "mae_r": -0.18},
+  {"timestamp_index": 4, "exit_price": 3550.0, "return_r": 0.90, "hold_bars": 5, "mfe_r": 1.05, "mae_r": -0.04},
+  {"timestamp_index": 7, "exit_price": 3535.0, "return_r": 0.40, "hold_bars": 3, "mfe_r": 0.45, "mae_r": -0.10},
+  {"timestamp_index": 9, "exit_price": 3580.0, "return_r": 1.10, "hold_bars": 6, "mfe_r": 1.25, "mae_r": -0.03},
+  {"timestamp_index": 11, "exit_price": 3545.0, "return_r": 0.50, "hold_bars": 4, "mfe_r": 0.55, "mae_r": -0.12},
+  {"timestamp_index": 14, "exit_price": 3590.0, "return_r": -0.10, "hold_bars": 2, "mfe_r": 0.08, "mae_r": -0.15},
+  {"timestamp_index": 16, "exit_price": 3560.0, "return_r": 0.35, "hold_bars": 2, "mfe_r": 0.40, "mae_r": -0.07},
+  {"timestamp_index": 18, "exit_price": 3615.0, "return_r": 0.75, "hold_bars": 2, "mfe_r": 0.85, "mae_r": -0.02}
+]
