@@ -29,18 +29,25 @@ Each task includes:
 - T870: PRD execution report parser — completed
 - T871: PRD queue closeout packet — completed
 - T872: PRD control plane final status report — completed
-- T873: backlog schema for 500+ tasks — completed
-- T874: milestone planner — completed
-- T875: wave planner — completed
-- T876: batch planner — completed
-- T877: dependency graph validator — completed
-- T878: task risk classifier — completed
-- T879: agent execution window recommender — completed
-- T880: 500-task backlog seed packet — completed
+- T873-T880: 500-task backlog planning layer — completed
+  - T873: backlog schema for 500+ tasks
+  - T874: milestone planner
+  - T875: wave planner
+  - T876: batch planner
+  - T877: dependency graph validator
+  - T878: task risk classifier
+  - T879: agent execution window recommender
+  - T880: 500-task backlog seed packet
 
 ## Completed Ranges (continued)
 
-- T881-T887: backlog milestone M1-M7 seed tasks — completed
+- T881: backlog milestone M1 seed tasks — completed
+- T882: backlog milestone M2 seed tasks — completed
+- T883: backlog milestone M3 seed tasks — completed
+- T884: backlog milestone M4 seed tasks — completed
+- T885: backlog milestone M5 seed tasks — completed
+- T886: backlog milestone M6 seed tasks — completed
+- T887: backlog milestone M7 seed tasks — completed
 - T888: frozen live execution milestone guard — completed
 - T889: 500-task backlog materializer — completed
 - T890: backlog markdown renderer — completed
@@ -48,7 +55,12 @@ Each task includes:
 - T892: backlog dependency density scorer — completed
 - T893: backlog risk heatmap packet — completed
 - T894: backlog execution prompt pack generator — completed
-- T895-T900: backlog seed closeout / queue updates — completed
+- T895: backlog milestone closeout packet — completed
+- T896: backlog final verification plan — completed
+- T897: backlog human approval checklist — completed
+- T898: backlog release hold packet — completed
+- T899: backlog route recommendation packet — completed
+- T900: backlog seed closeout report — completed
 
 ## Completed Ranges (continued)
 
