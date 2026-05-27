@@ -1,0 +1,29 @@
+{
+  "experiment_id": "exp_btc_5m_conservative",
+  "symbol": {
+    "symbol": "BTCUSDT",
+    "base_asset": "BTC",
+    "quote_asset": "USDT",
+    "exchange": "binance"
+  },
+  "timeframe": {
+    "label": "5m",
+    "minutes": 5
+  },
+  "window": {
+    "window_id": "w_train_001",
+    "window_type": "train",
+    "start_index": 0,
+    "end_index": 500
+  },
+  "parameter_set": {
+    "param_id": "p_conservative",
+    "label": "conservative",
+    "entry_threshold": 0.7,
+    "exit_threshold": 0.3,
+    "stop_loss_r": 1.5,
+    "take_profit_r": 3.0,
+    "max_hold_bars": 20,
+    "min_sample_quality": 0.8
+  }
+}

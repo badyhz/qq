@@ -1,0 +1,29 @@
+{
+  "experiment_id": "exp_eth_15m_aggressive",
+  "symbol": {
+    "symbol": "ETHUSDT",
+    "base_asset": "ETH",
+    "quote_asset": "USDT",
+    "exchange": "binance"
+  },
+  "timeframe": {
+    "label": "15m",
+    "minutes": 15
+  },
+  "window": {
+    "window_id": "w_train_002",
+    "window_type": "train",
+    "start_index": 0,
+    "end_index": 500
+  },
+  "parameter_set": {
+    "param_id": "p_aggressive",
+    "label": "aggressive",
+    "entry_threshold": 0.5,
+    "exit_threshold": 0.2,
+    "stop_loss_r": 2.0,
+    "take_profit_r": 5.0,
+    "max_hold_bars": 30,
+    "min_sample_quality": 0.6
+  }
+}
