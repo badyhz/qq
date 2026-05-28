@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_negative_control",
+  "description": "Expected negative control report when strategy beats all controls",
+  "strategy_score": 0.50,
+  "control_scores": {"random_strategy": 0.05, "shuffled_returns": 0.02, "inverted_signal": -0.03},
+  "min_margin": 0.10,
+  "expected_passes_all_controls": true,
+  "expected_hard_blocks": [],
+  "expected_verdict": "PASS"
+}

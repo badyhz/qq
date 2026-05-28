@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_data_quality",
+  "description": "Expected data quality audit result for clean OHLCV data",
+  "input_bars_count": 10,
+  "expected_findings_count": 0,
+  "expected_hard_blocks": [],
+  "expected_warnings": [],
+  "expected_verdict": "PASS",
+  "expected_total_rows_audited": 10,
+  "expected_total_findings": 0
+}

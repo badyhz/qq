@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "empty_train_range",
+  "description": "Rolling split with empty train range (train_start >= train_end)",
+  "splits": [
+    {"split_id": "split_0", "train_start": 50, "train_end": 50, "test_start": 50, "test_end": 100}
+  ],
+  "expected_valid_count": 0,
+  "expected_invalid_count": 1,
+  "expected_verdict": "FAIL"
+}

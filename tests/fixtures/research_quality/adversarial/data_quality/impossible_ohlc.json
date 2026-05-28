@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "impossible_ohlc",
+  "description": "OHLCV bars with impossible OHLC relationships (low > high)",
+  "bars": [
+    {"timestamp": 1700000000, "open": 42000.0, "high": 42100.0, "low": 41900.0, "close": 42050.0, "volume": 100.5},
+    {"timestamp": 1700000300, "open": 42050.0, "high": 42000.0, "low": 42100.0, "close": 42150.0, "volume": 120.3},
+    {"timestamp": 1700000600, "open": 42150.0, "high": 42300.0, "low": 42100.0, "close": 42250.0, "volume": 95.7},
+    {"timestamp": 1700000900, "open": 42250.0, "high": 42200.0, "low": 42350.0, "close": 42300.0, "volume": 110.2}
+  ],
+  "expected_reason_codes": ["IMPOSSIBLE_OHLC"],
+  "expected_verdict": "FAIL",
+  "expected_block_promotion": true
+}

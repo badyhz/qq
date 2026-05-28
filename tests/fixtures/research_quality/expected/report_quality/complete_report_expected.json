@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_report_quality",
+  "description": "Expected report quality check result for a complete report",
+  "report_sections": ["summary", "data_quality", "split_leakage", "oos_validation", "parameter_robustness", "strategy_robustness", "portfolio_robustness", "negative_controls", "bootstrap", "regime", "promotion_gate"],
+  "expected_complete": true,
+  "expected_missing_sections": [],
+  "expected_verdict": "PASS"
+}

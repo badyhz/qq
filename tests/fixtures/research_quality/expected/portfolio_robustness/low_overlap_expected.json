@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_portfolio_robustness",
+  "description": "Expected portfolio overlap risk result for low-overlap strategies",
+  "max_overlap_risk": 0.70,
+  "expected_high_overlap_count": 0,
+  "expected_hard_blocks": [],
+  "expected_verdict": "PASS"
+}

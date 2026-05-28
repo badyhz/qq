@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "correlated_loss_pair",
+  "description": "Two strategies that both lose in the same bars — correlated drawdown risk",
+  "strategy_a_signals": [1, 1, -1, 1, -1, 1, 1, -1, 1, -1],
+  "strategy_b_signals": [1, 1, -1, 1, -1, 1, 1, -1, 1, -1],
+  "strategy_a_returns": [0.01, -0.02, -0.01, 0.015, -0.01, 0.005, -0.02, -0.01, 0.01, -0.015],
+  "strategy_b_returns": [0.01, -0.02, -0.01, 0.015, -0.01, 0.005, -0.02, -0.01, 0.01, -0.015],
+  "expected_correlation": 1.0,
+  "expected_verdict": "FAIL"
+}

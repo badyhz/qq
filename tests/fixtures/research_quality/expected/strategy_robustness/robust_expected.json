@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_strategy_robustness",
+  "description": "Expected strategy robustness result for a robust strategy",
+  "strategy_id": "breakout",
+  "results_count": 5,
+  "avg_score": 0.45,
+  "avg_trade_count": 25,
+  "expected_is_robust": true,
+  "expected_verdict": "PASS"
+}

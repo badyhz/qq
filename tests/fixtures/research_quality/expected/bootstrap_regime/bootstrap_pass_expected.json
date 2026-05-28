@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_bootstrap",
+  "description": "Expected bootstrap report for returns above safety threshold",
+  "returns": [0.05, -0.02, 0.03, -0.01, 0.04, -0.03, 0.02, -0.04, 0.01, -0.05],
+  "n_iterations": 200,
+  "seed": 424242,
+  "safety_threshold": -0.10,
+  "expected_hard_blocks": [],
+  "expected_verdict": "PASS"
+}

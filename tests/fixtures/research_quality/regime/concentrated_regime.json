@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "concentrated_regime",
+  "description": "Regime data with extreme concentration in one regime",
+  "regime_scores": {"TREND": 0.90, "CHOP": 0.05, "VOLATILE": 0.05},
+  "concentration_threshold": 0.80,
+  "expected_concentration_warning": true,
+  "expected_dominant_regime": "TREND",
+  "expected_verdict": "PASS"
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_split_oos",
+  "description": "Expected rolling split validation result for clean splits",
+  "input_splits_count": 3,
+  "expected_valid_count": 3,
+  "expected_invalid_count": 0,
+  "expected_verdict": "PASS"
+}

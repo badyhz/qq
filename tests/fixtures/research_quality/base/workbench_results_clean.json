@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "workbench_results",
+  "results": [
+    {"strategy_id": "breakout", "symbol": "BTCUSDT", "timeframe": "5m", "score": 0.45, "trade_count": 25, "parameter_set_id": "p1"},
+    {"strategy_id": "breakout", "symbol": "BTCUSDT", "timeframe": "5m", "score": 0.50, "trade_count": 28, "parameter_set_id": "p2"},
+    {"strategy_id": "breakout", "symbol": "BTCUSDT", "timeframe": "5m", "score": 0.42, "trade_count": 22, "parameter_set_id": "p3"},
+    {"strategy_id": "mean_reversion", "symbol": "ETHUSDT", "timeframe": "15m", "score": 0.35, "trade_count": 30, "parameter_set_id": "p4"},
+    {"strategy_id": "mean_reversion", "symbol": "ETHUSDT", "timeframe": "15m", "score": 0.38, "trade_count": 32, "parameter_set_id": "p5"},
+    {"strategy_id": "momentum", "symbol": "BTCUSDT", "timeframe": "5m", "score": 0.55, "trade_count": 18, "parameter_set_id": "p6"},
+    {"strategy_id": "momentum", "symbol": "BTCUSDT", "timeframe": "5m", "score": 0.52, "trade_count": 20, "parameter_set_id": "p7"},
+    {"strategy_id": "volatility_compression", "symbol": "ETHUSDT", "timeframe": "15m", "score": 0.28, "trade_count": 15, "parameter_set_id": "p8"}
+  ],
+  "total_rows": 8,
+  "evaluated_rows": 8,
+  "skipped_rows": 0,
+  "warnings": []
+}

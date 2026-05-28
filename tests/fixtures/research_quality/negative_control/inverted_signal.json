@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "inverted_signal",
+  "description": "Pre-generated inverted signal baseline for deterministic testing",
+  "signals": [1, 1, -1, 1, -1, 1, 1, -1, 1, -1],
+  "returns": [0.05, -0.02, 0.03, -0.01, 0.04, -0.03, 0.02, -0.04, 0.01, -0.05],
+  "seed": 424242,
+  "expected_baseline_type": "inverted_signal",
+  "expected_total_bars": 10
+}

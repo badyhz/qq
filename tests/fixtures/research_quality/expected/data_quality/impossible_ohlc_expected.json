@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_data_quality_impossible_ohlc",
+  "description": "Expected data quality audit result for impossible OHLC data",
+  "input_bars_count": 4,
+  "expected_findings_count": 1,
+  "expected_hard_blocks": ["IMPOSSIBLE_OHLC"],
+  "expected_warnings": [],
+  "expected_verdict": "FAIL",
+  "expected_block_promotion": true
+}

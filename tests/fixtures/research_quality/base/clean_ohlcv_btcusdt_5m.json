@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "clean_ohlcv",
+  "symbol": "BTCUSDT",
+  "timeframe": "5m",
+  "bars": [
+    {"timestamp": 1700000000, "open": 42000.0, "high": 42100.0, "low": 41900.0, "close": 42050.0, "volume": 100.5},
+    {"timestamp": 1700000300, "open": 42050.0, "high": 42200.0, "low": 42000.0, "close": 42150.0, "volume": 120.3},
+    {"timestamp": 1700000600, "open": 42150.0, "high": 42300.0, "low": 42100.0, "close": 42250.0, "volume": 95.7},
+    {"timestamp": 1700000900, "open": 42250.0, "high": 42350.0, "low": 42200.0, "close": 42300.0, "volume": 110.2},
+    {"timestamp": 1700001200, "open": 42300.0, "high": 42400.0, "low": 42250.0, "close": 42350.0, "volume": 88.9},
+    {"timestamp": 1700001500, "open": 42350.0, "high": 42450.0, "low": 42300.0, "close": 42400.0, "volume": 105.1},
+    {"timestamp": 1700001800, "open": 42400.0, "high": 42500.0, "low": 42350.0, "close": 42450.0, "volume": 99.4},
+    {"timestamp": 1700002100, "open": 42450.0, "high": 42550.0, "low": 42400.0, "close": 42500.0, "volume": 115.8},
+    {"timestamp": 1700002400, "open": 42500.0, "high": 42600.0, "low": 42450.0, "close": 42550.0, "volume": 92.3},
+    {"timestamp": 1700002700, "open": 42550.0, "high": 42650.0, "low": 42500.0, "close": 42600.0, "volume": 108.6}
+  ],
+  "expected_findings": [],
+  "expected_verdict": "PASS"
+}

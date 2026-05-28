@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "bootstrap_seed_expected",
+  "description": "Expected bootstrap output for a known seed — used to verify determinism",
+  "returns": [0.05, -0.02, 0.03, -0.01, 0.04, -0.03, 0.02, -0.04, 0.01, -0.05],
+  "n_iterations": 100,
+  "seed": 424242,
+  "expected_worst_case_5pct_range": [-0.05, 0.05],
+  "expected_stability_cv_range": [0.0, 1.0],
+  "expected_verdict": "PASS"
+}

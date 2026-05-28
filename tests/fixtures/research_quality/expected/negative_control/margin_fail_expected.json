@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "expected_negative_control_fail",
+  "description": "Expected negative control report when strategy fails margin check",
+  "strategy_score": 0.10,
+  "control_scores": {"random_strategy": 0.05, "shuffled_returns": 0.02, "inverted_signal": -0.03},
+  "min_margin": 0.10,
+  "expected_passes_all_controls": false,
+  "expected_hard_blocks": ["INSUFFICIENT_NEGATIVE_CONTROL_MARGIN"],
+  "expected_verdict": "FAIL"
+}

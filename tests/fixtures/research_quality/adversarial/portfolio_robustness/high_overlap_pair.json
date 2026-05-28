@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_type": "high_overlap_pair",
+  "description": "Two strategies with near-identical signals causing portfolio crowding",
+  "strategy_a_signals": [1, 1, 1, 1, 1, -1, -1, -1, 1, 1],
+  "strategy_b_signals": [1, 1, 1, 1, 1, -1, -1, -1, 1, 1],
+  "strategy_a": "breakout_v1",
+  "strategy_b": "breakout_v2",
+  "max_overlap_risk": 0.70,
+  "expected_overlap_score": 1.0,
+  "expected_verdict": "FAIL",
+  "expected_block": true
+}
