@@ -1,0 +1,21 @@
+{
+  "experiment_id": "invalid_missing_safety",
+  "label": "Invalid: Missing Safety Flags",
+  "description": "Missing required safety flags.",
+  "strategy_set": ["breakout"],
+  "symbols": ["BTCUSDT"],
+  "timeframes": ["5m"],
+  "split_mode": "rolling",
+  "search_budget": 100,
+  "chunk_size": 25,
+  "deterministic_seed": 999999,
+  "expected_artifact_set": ["workbench_results.json"],
+  "safety_flags": {
+    "release_hold": "HOLD",
+    "advisory_only": true
+  },
+  "allowed_commands": ["run_workbench"],
+  "forbidden_commands": ["submit_order"],
+  "expected_review_path": "research_human_review/",
+  "notes": "Invalid: missing human_review_required and other safety flags."
+}

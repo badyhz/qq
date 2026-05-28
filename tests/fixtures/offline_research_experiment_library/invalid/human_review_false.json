@@ -1,0 +1,28 @@
+{
+  "experiment_id": "invalid_human_review_false",
+  "label": "Invalid: human_review_required false",
+  "description": "human_review_required is false.",
+  "strategy_set": ["breakout"],
+  "symbols": ["BTCUSDT"],
+  "timeframes": ["5m"],
+  "split_mode": "rolling",
+  "search_budget": 100,
+  "chunk_size": 25,
+  "deterministic_seed": 999995,
+  "expected_artifact_set": ["workbench_results.json"],
+  "safety_flags": {
+    "release_hold": "HOLD",
+    "advisory_only": true,
+    "human_review_required": false,
+    "no_live": true,
+    "no_submit": true,
+    "no_exchange": true,
+    "no_network": true,
+    "no_runtime_integration": true,
+    "no_planner_integration": true
+  },
+  "allowed_commands": ["run_workbench"],
+  "forbidden_commands": ["submit_order"],
+  "expected_review_path": "research_human_review/",
+  "notes": "Invalid: human_review_required must be true."
+}
