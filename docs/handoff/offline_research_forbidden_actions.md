@@ -56,6 +56,15 @@
 - Executing rollback commands
 - Automated restore operations
 
+## Forbidden Approval Actions (T16001+)
+
+- Granting actual approval from forms
+- Auto-approving any form
+- Overriding release_hold=HOLD
+- Approving immediate backup/archive/delete/move/copy
+- Approving live/testnet/runtime activation
+- Using completed forms to trigger automated actions
+
 ## Consequences of Violation
 
 Any violation of these rules may result in:

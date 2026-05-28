@@ -43,8 +43,16 @@ T15501-T16000 additions:
 - All proposed paths hypothetical (archive_simulation/ prefix)
 - 67 targeted tests pass, full suite 7733 passed
 
-Next phase: T16001-T16500 Offline Frozen File Backup Evidence Checklist / Manual Approval Forms
-Still no actual move/delete.
+T16001-T16500 additions:
+- Evidence checklist built (25 items, all PENDING)
+- Manual approval forms built (25 forms, all placeholders)
+- Approval validator: 150 checks, all pass
+- Evidence packet rendered (17 sections, JSON/MD/HTML)
+- No actual backup/archive/delete/move/copy performed
+- 57 targeted tests pass, full suite 7790 passed
+
+Next phase: T16501-T17000 Offline Backup Approval Dry-Run Validator / Completed Form Simulation
+Still no actual backup/copy/move/delete.
 
 Do NOT:
 - Activate live/testnet/runtime
