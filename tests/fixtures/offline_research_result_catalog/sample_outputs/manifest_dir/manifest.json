@@ -1,0 +1,10 @@
+{
+  "release_hold": "HOLD",
+  "advisory_only": true,
+  "human_review_required": true,
+  "no_live": true,
+  "no_submit": true,
+  "no_network": true,
+  "no_execution": true,
+  "no_import": true
+}

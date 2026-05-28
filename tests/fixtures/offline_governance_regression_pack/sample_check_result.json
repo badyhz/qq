@@ -1,0 +1,51 @@
+{
+  "manifest": {
+    "release_hold": "HOLD",
+    "advisory_only": true,
+    "human_review_required": true,
+    "no_live": true,
+    "no_submit": true,
+    "no_network": true,
+    "no_execution": true,
+    "no_import": true,
+    "no_frozen_file_execution": true,
+    "final_verdict": "PASS",
+    "total_checks": 3,
+    "status_counts": {"PASS": 3}
+  },
+  "checks": [
+    {
+      "name": "test_check_pass",
+      "command": ["echo", "ok"],
+      "status": "PASS",
+      "duration_seconds": 0.1,
+      "safety_flags": {"command_safety": true, "no_shell_true": true, "no_network": true},
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "test_check_fail",
+      "command": ["false"],
+      "status": "FAIL",
+      "duration_seconds": 0.05,
+      "safety_flags": {"command_safety": true, "no_shell_true": true, "no_network": true},
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "errors": ["exit code: 1"],
+      "warnings": []
+    },
+    {
+      "name": "test_check_skip",
+      "command": ["echo", "skip"],
+      "status": "SKIPPED",
+      "duration_seconds": 0.0,
+      "safety_flags": {"command_safety": true},
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "errors": [],
+      "warnings": ["skipped by user"]
+    }
+  ]
+}

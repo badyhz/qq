@@ -1,0 +1,33 @@
+{
+  "current_head": "abc123",
+  "current_tags": ["tag1", "tag2"],
+  "completed_stages": ["stage1", "stage2"],
+  "known_test_results": {"total": 100, "passed": 100},
+  "known_clis": ["cmd1", "cmd2"],
+  "safety_boundaries": {
+    "release_hold": true,
+    "advisory_only": true,
+    "no_live": true,
+    "no_submit": true,
+    "no_network": true,
+    "human_review_required": true
+  },
+  "frozen_file_list": ["file1.py", "file2.py"],
+  "frozen_decision_matrix_status": "complete",
+  "archive_plan_status": "complete",
+  "experiment_library_status": "complete",
+  "result_catalog_status": "complete",
+  "governance_regression_status": "complete",
+  "next_window_prompt": "Continue offline research governance. No live. No testnet.",
+  "no_touch_warning": "Do not touch frozen files.",
+  "command_cheatsheet": ["cmd1", "cmd2"],
+  "recovery_instructions": ["instruction1"],
+  "what_to_do_next": ["run regression pack"],
+  "what_not_to_do_next": ["do not activate live"],
+  "manifest": {
+    "release_hold": "HOLD",
+    "advisory_only": true,
+    "no_live": true,
+    "no_activation_recommendation": true
+  }
+}

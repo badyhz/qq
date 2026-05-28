@@ -1,0 +1,104 @@
+{
+  "manifest": {
+    "release_hold": "HOLD",
+    "advisory_only": true,
+    "human_review_required": true,
+    "no_live": true,
+    "no_submit": true,
+    "no_exchange": true,
+    "no_network": true,
+    "audit_only": true,
+    "no_execution": true,
+    "no_import": true
+  },
+  "files": [
+    {
+      "path": "scripts/live_playbook.py",
+      "exists": true,
+      "git_status": "untracked",
+      "size_bytes": 1234,
+      "line_count": 50,
+      "sha256": "abc123",
+      "risk_keywords": ["live", "binance", "fapi", "requests"],
+      "category": "LIVE",
+      "skip_reason": null
+    },
+    {
+      "path": "scripts/run_testnet_order_smoke.py",
+      "exists": true,
+      "git_status": "untracked",
+      "size_bytes": 2345,
+      "line_count": 80,
+      "sha256": "def456",
+      "risk_keywords": ["testnet", "order", "requests", "binance"],
+      "category": "TESTNET",
+      "skip_reason": null
+    },
+    {
+      "path": "scripts/submit_approved_candidates.py",
+      "exists": true,
+      "git_status": "untracked",
+      "size_bytes": 3456,
+      "line_count": 100,
+      "sha256": "ghi789",
+      "risk_keywords": ["submit", "order", "binance"],
+      "category": "SUBMIT",
+      "skip_reason": null
+    },
+    {
+      "path": "scripts/safe_flatten_testnet_symbol.py",
+      "exists": true,
+      "git_status": "untracked",
+      "size_bytes": 4567,
+      "line_count": 120,
+      "sha256": "jkl012",
+      "risk_keywords": ["flatten", "testnet", "cancel", "binance"],
+      "category": "FLATTEN",
+      "skip_reason": null
+    },
+    {
+      "path": "core/live_runner.py",
+      "exists": true,
+      "git_status": "untracked",
+      "size_bytes": 5678,
+      "line_count": 200,
+      "sha256": "mno345",
+      "risk_keywords": ["live", "runtime", "binance", "fapi"],
+      "category": "LIVE",
+      "skip_reason": null
+    },
+    {
+      "path": "scripts/run_shadow_observation_experiments.py",
+      "exists": true,
+      "git_status": "untracked",
+      "size_bytes": 6789,
+      "line_count": 150,
+      "sha256": "pqr678",
+      "risk_keywords": ["shadow", "observation"],
+      "category": "SHADOW",
+      "skip_reason": null
+    },
+    {
+      "path": "docs/some_safe_doc.md",
+      "exists": true,
+      "git_status": "tracked",
+      "size_bytes": 500,
+      "line_count": 30,
+      "sha256": "stu901",
+      "risk_keywords": [],
+      "category": "UNKNOWN",
+      "skip_reason": null
+    },
+    {
+      "path": "nonexistent_file.py",
+      "exists": false,
+      "git_status": "missing",
+      "size_bytes": null,
+      "line_count": null,
+      "sha256": null,
+      "risk_keywords": [],
+      "category": "UNKNOWN",
+      "skip_reason": null
+    }
+  ]
+}
