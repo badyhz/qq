@@ -38,7 +38,7 @@ def main() -> int:
         help="Expected release_hold value (must be HOLD)"
     )
     parser.add_argument(
-        "--min-experiments", default=20, type=int,
+        "--min-experiments", default=60, type=int,
         help="Minimum number of experiments required"
     )
     args = parser.parse_args()
@@ -79,6 +79,12 @@ def main() -> int:
 
     if result["valid"]:
         print(f"PASS: {result['total_experiments']} experiments validated")
+        print(f"  Valid: {result['valid_experiments']}")
+        print(f"  Invalid: {result['invalid_experiments']}")
+        print(f"  Categories: {len(result.get('category_counts', {}))}")
+        if result.get("warnings"):
+            for w in result["warnings"]:
+                print(f"  WARNING: {w}")
         return 0
     else:
         print(f"FAIL: {len(result['errors'])} errors found", file=sys.stderr)

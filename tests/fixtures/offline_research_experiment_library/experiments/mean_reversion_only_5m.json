@@ -1,0 +1,47 @@
+{
+  "experiment_id": "mean_reversion_only_5m",
+  "label": "Mean Reversion Only 5m",
+  "description": "Isolate mean reversion strategy on 5m timeframe.",
+  "strategy_set": [
+    "mean_reversion"
+  ],
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT"
+  ],
+  "timeframes": [
+    "5m"
+  ],
+  "split_mode": "rolling",
+  "search_budget": 100,
+  "chunk_size": 25,
+  "deterministic_seed": 424245,
+  "expected_artifact_set": [
+    "workbench_results.json",
+    "quality_gate.json"
+  ],
+  "safety_flags": {
+    "release_hold": "HOLD",
+    "advisory_only": true,
+    "human_review_required": true,
+    "no_live": true,
+    "no_submit": true,
+    "no_exchange": true,
+    "no_network": true,
+    "no_runtime_integration": true,
+    "no_planner_integration": true
+  },
+  "allowed_commands": [
+    "run_workbench",
+    "run_quality_gate"
+  ],
+  "forbidden_commands": [
+    "submit_order",
+    "cancel_order",
+    "flatten_position",
+    "live_trading"
+  ],
+  "expected_review_path": "research_human_review/",
+  "notes": "Strategy isolation experiment.",
+  "category": "strategy_specific"
+}

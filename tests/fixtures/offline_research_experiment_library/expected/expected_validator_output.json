@@ -1,0 +1,18 @@
+{
+  "required_keys": [
+    "valid",
+    "errors",
+    "warnings",
+    "total_experiments",
+    "valid_experiments",
+    "invalid_experiments",
+    "category_counts",
+    "release_hold",
+    "advisory_only",
+    "human_review_required",
+    "generated_by",
+    "experiment_library_version",
+    "output_hashes"
+  ],
+  "release_hold": "HOLD"
+}

@@ -69,6 +69,33 @@ FORBIDDEN_COMMANDS = (
     "binance_client",
 )
 
+VALID_SPLIT_MODES = ("rolling", "anchored", "walk_forward", "expanding")
+
+REQUIRED_CATEGORIES = (
+    "baseline",
+    "strategy_specific",
+    "symbol_universe",
+    "timeframe",
+    "split_mode",
+    "search_budget",
+    "robustness",
+    "negative_control",
+    "bootstrap",
+    "regime",
+    "portfolio_risk",
+    "reproducibility",
+    "report_quality",
+    "human_review",
+    "smoke_test",
+    "stress_test",
+    "sparse_signal",
+    "noisy_fixture",
+    "adverse_fixture",
+    "comparison_analytics",
+)
+
+EXPERIMENT_LIBRARY_VERSION = "2.0.0"
+
 
 def load_experiment_catalog(catalog_path: Path) -> Dict[str, Any]:
     """Load experiment catalog from JSON file."""
@@ -101,6 +128,56 @@ def validate_experiment(experiment: Dict[str, Any]) -> List[str]:
             errors.append("advisory_only must be True")
         if sf.get("human_review_required") is not True:
             errors.append("human_review_required must be True")
+        if sf.get("no_network") is not True:
+            errors.append("no_network must be True")
+
+    # Validate field types and values
+    if "strategy_set" in experiment:
+        ss = experiment["strategy_set"]
+        if not isinstance(ss, list) or len(ss) == 0:
+            errors.append("strategy_set must be non-empty list")
+
+    if "symbols" in experiment:
+        syms = experiment["symbols"]
+        if not isinstance(syms, list) or len(syms) == 0:
+            errors.append("symbols must be non-empty list")
+
+    if "timeframes" in experiment:
+        tfs = experiment["timeframes"]
+        if not isinstance(tfs, list) or len(tfs) == 0:
+            errors.append("timeframes must be non-empty list")
+
+    if "split_mode" in experiment:
+        sm = experiment["split_mode"]
+        if sm not in VALID_SPLIT_MODES:
+            errors.append(f"invalid_split_mode: {sm} (valid: {VALID_SPLIT_MODES})")
+
+    if "search_budget" in experiment:
+        sb = experiment["search_budget"]
+        if not isinstance(sb, (int, float)) or sb <= 0:
+            errors.append("search_budget must be positive number")
+
+    if "chunk_size" in experiment:
+        cs = experiment["chunk_size"]
+        if not isinstance(cs, (int, float)) or cs <= 0:
+            errors.append("chunk_size must be positive number")
+
+    if "deterministic_seed" in experiment:
+        ds = experiment["deterministic_seed"]
+        if ds is None:
+            errors.append("deterministic_seed must not be None")
+        elif not isinstance(ds, (int, float)):
+            errors.append("deterministic_seed must be numeric")
+
+    if "expected_artifact_set" in experiment:
+        eas = experiment["expected_artifact_set"]
+        if not isinstance(eas, list) or len(eas) == 0:
+            errors.append("expected_artifact_set must be non-empty list")
+
+    if "expected_review_path" in experiment:
+        erp = experiment["expected_review_path"]
+        if not isinstance(erp, str) or len(erp) == 0:
+            errors.append("expected_review_path must be non-empty string")
 
     forbidden_found = check_forbidden_strings(experiment)
     errors.extend(forbidden_found)
@@ -152,10 +229,10 @@ def build_experiment_manifest(experiments: List[Dict[str, Any]]) -> Dict[str, An
             "safety_flags": exp["safety_flags"],
         })
     return {
-        "version": "1.0.0",
+        "version": "2.0.0",
         "generated_by": "offline_research_experiment_library",
         "count": len(entries),
-        "entries": entries,
+        "entries": sorted(entries, key=lambda e: e["experiment_id"]),
         "release_hold": "HOLD",
         "advisory_only": True,
         "human_review_required": True,

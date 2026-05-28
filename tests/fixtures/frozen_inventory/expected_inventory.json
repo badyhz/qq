@@ -1,0 +1,75 @@
+{
+  "files": [
+    {
+      "category": "LIVE",
+      "exists": true,
+      "path": "tests/fixtures/frozen_inventory/sample_live.py",
+      "risk_keywords": [
+        "api_key",
+        "binance",
+        "exchange",
+        "fapi",
+        "live",
+        "order",
+        "requests",
+        "secret"
+      ],
+      "skip_reason": null
+    },
+    {
+      "category": "SUBMIT",
+      "exists": true,
+      "path": "tests/fixtures/frozen_inventory/sample_testnet_submit.py",
+      "risk_keywords": [
+        "api_key",
+        "binance",
+        "fapi",
+        "positionRisk",
+        "requests",
+        "secret",
+        "testnet"
+      ],
+      "skip_reason": null
+    },
+    {
+      "category": "SHADOW",
+      "exists": true,
+      "path": "tests/fixtures/frozen_inventory/sample_shadow.py",
+      "risk_keywords": [
+        "approve",
+        "observation",
+        "runtime",
+        "shadow"
+      ],
+      "skip_reason": null
+    },
+    {
+      "category": "UNKNOWN",
+      "exists": true,
+      "path": "tests/fixtures/frozen_inventory/sample_safe_doc.md",
+      "risk_keywords": [],
+      "skip_reason": null
+    }
+  ],
+  "manifest": {
+    "advisory_only": true,
+    "audit_only": true,
+    "generated_by": "frozen_inventory_audit.py",
+    "human_review_required": true,
+    "input_paths": [
+      "tests/fixtures/frozen_inventory/sample_live.py",
+      "tests/fixtures/frozen_inventory/sample_testnet_submit.py",
+      "tests/fixtures/frozen_inventory/sample_shadow.py",
+      "tests/fixtures/frozen_inventory/sample_safe_doc.md"
+    ],
+    "no_exchange": true,
+    "no_execution": true,
+    "no_import": true,
+    "no_live": true,
+    "no_network": true,
+    "no_planner_integration": true,
+    "no_runtime_integration": true,
+    "no_submit": true,
+    "release_hold": "HOLD"
+  }
+}

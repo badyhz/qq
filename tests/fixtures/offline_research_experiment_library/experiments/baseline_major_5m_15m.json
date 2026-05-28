@@ -1,0 +1,54 @@
+{
+  "experiment_id": "baseline_major_5m_15m",
+  "label": "Baseline Major Pairs 5m/15m",
+  "description": "Baseline configuration: BTC/ETH on 5m and 15m timeframes with all four strategies. Standard entry point for offline research.",
+  "strategy_set": [
+    "breakout",
+    "mean_reversion",
+    "momentum",
+    "volatility_compression"
+  ],
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT"
+  ],
+  "timeframes": [
+    "5m",
+    "15m"
+  ],
+  "split_mode": "rolling",
+  "search_budget": 200,
+  "chunk_size": 50,
+  "deterministic_seed": 424242,
+  "expected_artifact_set": [
+    "workbench_results.json",
+    "quality_gate.json",
+    "manifest.json"
+  ],
+  "safety_flags": {
+    "release_hold": "HOLD",
+    "advisory_only": true,
+    "human_review_required": true,
+    "no_live": true,
+    "no_submit": true,
+    "no_exchange": true,
+    "no_network": true,
+    "no_runtime_integration": true,
+    "no_planner_integration": true
+  },
+  "allowed_commands": [
+    "run_workbench",
+    "run_quality_gate",
+    "build_browser",
+    "build_comparison"
+  ],
+  "forbidden_commands": [
+    "submit_order",
+    "cancel_order",
+    "flatten_position",
+    "live_trading"
+  ],
+  "expected_review_path": "research_human_review/",
+  "notes": "Baseline experiment. Use as reference for other experiments.",
+  "category": "baseline"
+}

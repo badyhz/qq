@@ -1,20 +1,37 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "generated_by": "offline_research_experiment_library",
   "description": "Offline research experiment catalog. All experiments are offline/advisory only. release_hold=HOLD.",
+  "experiment_library_version": "2.0.0",
+  "total_categories": 20,
   "experiments": [
     {
       "experiment_id": "baseline_major_5m_15m",
       "label": "Baseline Major Pairs 5m/15m",
       "description": "Baseline configuration: BTC/ETH on 5m and 15m timeframes with all four strategies. Standard entry point for offline research.",
-      "strategy_set": ["breakout", "mean_reversion", "momentum", "volatility_compression"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424242,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json", "manifest.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -26,23 +43,44 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate", "build_browser", "build_comparison"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Baseline experiment. Use as reference for other experiments."
+      "notes": "Baseline experiment. Use as reference for other experiments.",
+      "category": "baseline"
     },
     {
       "experiment_id": "breakout_only_5m",
       "label": "Breakout Only 5m",
       "description": "Isolate breakout strategy on 5m timeframe. No other strategies active.",
-      "strategy_set": ["breakout"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m"],
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
       "split_mode": "rolling",
       "search_budget": 100,
       "chunk_size": 25,
       "deterministic_seed": 424243,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -54,23 +92,42 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Strategy isolation experiment."
+      "notes": "Strategy isolation experiment.",
+      "category": "strategy_specific"
     },
     {
       "experiment_id": "momentum_only_15m",
       "label": "Momentum Only 15m",
       "description": "Isolate momentum strategy on 15m timeframe.",
-      "strategy_set": ["momentum"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["15m"],
+      "strategy_set": [
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 100,
       "chunk_size": 25,
       "deterministic_seed": 424244,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -82,23 +139,42 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Strategy isolation experiment."
+      "notes": "Strategy isolation experiment.",
+      "category": "strategy_specific"
     },
     {
       "experiment_id": "mean_reversion_only_5m",
       "label": "Mean Reversion Only 5m",
       "description": "Isolate mean reversion strategy on 5m timeframe.",
-      "strategy_set": ["mean_reversion"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m"],
+      "strategy_set": [
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
       "split_mode": "rolling",
       "search_budget": 100,
       "chunk_size": 25,
       "deterministic_seed": 424245,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -110,23 +186,42 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Strategy isolation experiment."
+      "notes": "Strategy isolation experiment.",
+      "category": "strategy_specific"
     },
     {
       "experiment_id": "volatility_compression_only_15m",
       "label": "Volatility Compression Only 15m",
       "description": "Isolate volatility compression strategy on 15m timeframe.",
-      "strategy_set": ["volatility_compression"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["15m"],
+      "strategy_set": [
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 100,
       "chunk_size": 25,
       "deterministic_seed": 424246,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -138,23 +233,41 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Strategy isolation experiment."
+      "notes": "Strategy isolation experiment.",
+      "category": "strategy_specific"
     },
     {
       "experiment_id": "low_budget_smoke",
       "label": "Low Budget Smoke Test",
       "description": "Minimal budget smoke test for pipeline validation. Fast run, low fidelity.",
-      "strategy_set": ["breakout", "momentum"],
-      "symbols": ["BTCUSDT"],
-      "timeframes": ["5m"],
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
       "split_mode": "rolling",
       "search_budget": 30,
       "chunk_size": 10,
       "deterministic_seed": 424247,
-      "expected_artifact_set": ["workbench_results.json"],
+      "expected_artifact_set": [
+        "workbench_results.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -166,23 +279,45 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Smoke test only. Not for research decisions."
+      "notes": "Smoke test only. Not for research decisions.",
+      "category": "smoke_test"
     },
     {
       "experiment_id": "medium_budget_review",
       "label": "Medium Budget Review",
       "description": "Medium budget for preliminary review. Balanced speed and fidelity.",
-      "strategy_set": ["breakout", "mean_reversion", "momentum"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 150,
       "chunk_size": 30,
       "deterministic_seed": 424248,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json", "manifest.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -194,23 +329,49 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate", "build_browser"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Preliminary review experiment."
+      "notes": "Preliminary review experiment.",
+      "category": "search_budget"
     },
     {
       "experiment_id": "high_budget_offline_review",
       "label": "High Budget Offline Review",
       "description": "High budget comprehensive offline review. Full fidelity, longer runtime.",
-      "strategy_set": ["breakout", "mean_reversion", "momentum", "volatility_compression"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 500,
       "chunk_size": 100,
       "deterministic_seed": 424249,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json", "manifest.json", "comparison.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "comparison.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -222,23 +383,49 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate", "build_browser", "build_comparison", "build_review_packet"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison",
+        "build_review_packet"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Comprehensive offline review."
+      "notes": "Comprehensive offline review.",
+      "category": "search_budget"
     },
     {
       "experiment_id": "btc_eth_only",
       "label": "BTC/ETH Only",
       "description": "Restricted to BTC and ETH symbols only. Tests major pair focus.",
-      "strategy_set": ["breakout", "mean_reversion", "momentum", "volatility_compression"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424250,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -250,23 +437,44 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Major pair focus experiment."
+      "notes": "Major pair focus experiment.",
+      "category": "symbol_universe"
     },
     {
       "experiment_id": "multi_timeframe_focus",
       "label": "Multi-Timeframe Focus",
       "description": "Test across multiple timeframes with emphasis on timeframe diversity.",
-      "strategy_set": ["breakout", "momentum"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424251,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -278,23 +486,44 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Timeframe diversity experiment."
+      "notes": "Timeframe diversity experiment.",
+      "category": "timeframe"
     },
     {
       "experiment_id": "rolling_split_focus",
       "label": "Rolling Split Focus",
       "description": "Test rolling split mode in depth. Validates temporal consistency.",
-      "strategy_set": ["breakout", "mean_reversion"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424252,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -306,23 +535,44 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Split mode focus experiment."
+      "notes": "Split mode focus experiment.",
+      "category": "split_mode"
     },
     {
       "experiment_id": "anchored_split_focus",
       "label": "Anchored Split Focus",
       "description": "Test anchored split mode. Validates fixed-origin temporal analysis.",
-      "strategy_set": ["breakout", "mean_reversion"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "anchored",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424253,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -334,23 +584,42 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Anchored split experiment."
+      "notes": "Anchored split experiment.",
+      "category": "split_mode"
     },
     {
       "experiment_id": "negative_control_focus",
       "label": "Negative Control Focus",
-      "description": "Focus on negative control validation. Tests that strategies don't overfit to noise.",
-      "strategy_set": ["breakout", "momentum"],
-      "symbols": ["BTCUSDT"],
-      "timeframes": ["5m"],
+      "description": "Focus on negative control validation. Tests that strategies do not overfit to noise.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
       "split_mode": "rolling",
       "search_budget": 100,
       "chunk_size": 25,
       "deterministic_seed": 424254,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -362,23 +631,43 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Negative control validation experiment."
+      "notes": "Negative control validation experiment.",
+      "category": "negative_control"
     },
     {
       "experiment_id": "bootstrap_focus",
       "label": "Bootstrap Confidence Focus",
       "description": "Focus on bootstrap confidence interval estimation. Higher iteration count.",
-      "strategy_set": ["breakout", "mean_reversion"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
       "split_mode": "rolling",
       "search_budget": 100,
       "chunk_size": 25,
       "deterministic_seed": 424255,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -390,23 +679,45 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Bootstrap confidence estimation experiment."
+      "notes": "Bootstrap confidence estimation experiment.",
+      "category": "bootstrap"
     },
     {
       "experiment_id": "regime_focus",
       "label": "Regime Breakdown Focus",
       "description": "Focus on regime-based performance breakdown. Tests stability across market regimes.",
-      "strategy_set": ["breakout", "momentum", "volatility_compression"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424256,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -418,23 +729,45 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Regime analysis experiment."
+      "notes": "Regime analysis experiment.",
+      "category": "regime"
     },
     {
       "experiment_id": "portfolio_overlap_focus",
       "label": "Portfolio Overlap Focus",
       "description": "Focus on portfolio overlap risk measurement. Tests strategy correlation.",
-      "strategy_set": ["breakout", "mean_reversion", "momentum"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424257,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -446,23 +779,41 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Portfolio overlap risk experiment."
+      "notes": "Portfolio overlap risk experiment.",
+      "category": "portfolio_risk"
     },
     {
       "experiment_id": "parameter_fragility_focus",
       "label": "Parameter Fragility Focus",
       "description": "Focus on parameter fragility assessment. Tests sensitivity to parameter changes.",
-      "strategy_set": ["breakout"],
-      "symbols": ["BTCUSDT"],
-      "timeframes": ["5m"],
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
       "split_mode": "rolling",
       "search_budget": 150,
       "chunk_size": 30,
       "deterministic_seed": 424258,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -474,23 +825,44 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Parameter fragility experiment."
+      "notes": "Parameter fragility experiment.",
+      "category": "robustness"
     },
     {
       "experiment_id": "reproducibility_focus",
       "label": "Reproducibility Focus",
       "description": "Focus on reproducibility verification. Runs identical config twice and compares.",
-      "strategy_set": ["breakout", "momentum"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m"],
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
       "split_mode": "rolling",
       "search_budget": 100,
       "chunk_size": 25,
       "deterministic_seed": 424259,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json", "reproducibility_check.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "reproducibility_check.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -502,23 +874,48 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate", "rerun_reproducibility"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "rerun_reproducibility"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Reproducibility verification experiment."
+      "notes": "Reproducibility verification experiment.",
+      "category": "reproducibility"
     },
     {
       "experiment_id": "report_quality_focus",
       "label": "Report Quality Focus",
       "description": "Focus on output report quality and completeness. Validates all report sections.",
-      "strategy_set": ["breakout", "mean_reversion", "momentum"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424260,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json", "manifest.json", "report.html"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "report.html"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -530,23 +927,51 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate", "build_browser", "render_report"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "render_report"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Report quality validation experiment."
+      "notes": "Report quality validation experiment.",
+      "category": "report_quality"
     },
     {
       "experiment_id": "human_review_focus",
       "label": "Human Review Focus",
       "description": "Focus on human review packet completeness. Full pipeline including review packet generation.",
-      "strategy_set": ["breakout", "mean_reversion", "momentum", "volatility_compression"],
-      "symbols": ["BTCUSDT", "ETHUSDT"],
-      "timeframes": ["5m", "15m"],
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
       "split_mode": "rolling",
       "search_budget": 200,
       "chunk_size": 50,
       "deterministic_seed": 424261,
-      "expected_artifact_set": ["workbench_results.json", "quality_gate.json", "manifest.json", "review_packet.json", "review_checklist.json"],
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "review_packet.json",
+        "review_checklist.json"
+      ],
       "safety_flags": {
         "release_hold": "HOLD",
         "advisory_only": true,
@@ -558,10 +983,2035 @@
         "no_runtime_integration": true,
         "no_planner_integration": true
       },
-      "allowed_commands": ["run_workbench", "run_quality_gate", "build_browser", "build_comparison", "build_review_packet", "validate_review_packet"],
-      "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison",
+        "build_review_packet",
+        "validate_review_packet"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
       "expected_review_path": "research_human_review/",
-      "notes": "Full human review pipeline experiment."
+      "notes": "Full human review pipeline experiment.",
+      "category": "human_review"
+    },
+    {
+      "experiment_id": "altcoin_universe_5m",
+      "label": "Altcoin Universe 5m",
+      "description": "Test strategies on altcoin universe: SOL, ADA, DOT, LINK on 5m.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "SOLUSDT",
+        "ADAUSDT",
+        "DOTUSDT",
+        "LINKUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 150,
+      "chunk_size": 30,
+      "deterministic_seed": 424262,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Altcoin universe experiment.",
+      "category": "symbol_universe"
+    },
+    {
+      "experiment_id": "small_cap_universe_15m",
+      "label": "Small Cap Universe 15m",
+      "description": "Test strategies on smaller-cap symbols on 15m timeframe.",
+      "strategy_set": [
+        "mean_reversion",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "ADAUSDT",
+        "DOTUSDT",
+        "LINKUSDT",
+        "AVAXUSDT"
+      ],
+      "timeframes": [
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 150,
+      "chunk_size": 30,
+      "deterministic_seed": 424263,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Small cap universe experiment.",
+      "category": "symbol_universe"
+    },
+    {
+      "experiment_id": "wide_universe_5m_15m",
+      "label": "Wide Universe 5m/15m",
+      "description": "Test all strategies on wide symbol universe across 5m and 15m.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "ADAUSDT",
+        "DOTUSDT",
+        "LINKUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 300,
+      "chunk_size": 60,
+      "deterministic_seed": 424264,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "comparison.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Wide universe experiment.",
+      "category": "symbol_universe"
+    },
+    {
+      "experiment_id": "single_1m_focus",
+      "label": "Single 1m Focus",
+      "description": "Test strategies on 1-minute timeframe. High-frequency signal test.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "1m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 424265,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "High-frequency timeframe experiment.",
+      "category": "timeframe"
+    },
+    {
+      "experiment_id": "hourly_focus",
+      "label": "Hourly Focus",
+      "description": "Test strategies on 1-hour timeframe. Lower frequency signal test.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "1h"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 424266,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Hourly timeframe experiment.",
+      "category": "timeframe"
+    },
+    {
+      "experiment_id": "multi_tf_5m_15m_1h",
+      "label": "Multi-TF 5m/15m/1h",
+      "description": "Test strategies across three timeframes: 5m, 15m, 1h.",
+      "strategy_set": [
+        "breakout",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m",
+        "1h"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 250,
+      "chunk_size": 50,
+      "deterministic_seed": 424267,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Triple timeframe experiment.",
+      "category": "timeframe"
+    },
+    {
+      "experiment_id": "walk_forward_split_focus",
+      "label": "Walk Forward Split Focus",
+      "description": "Test walk-forward split mode. Validates forward-looking temporal analysis.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "walk_forward",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424268,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Walk-forward split experiment.",
+      "category": "split_mode"
+    },
+    {
+      "experiment_id": "expanding_split_focus",
+      "label": "Expanding Split Focus",
+      "description": "Test expanding split mode. Validates expanding window temporal analysis.",
+      "strategy_set": [
+        "mean_reversion",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "expanding",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424269,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Expanding split experiment.",
+      "category": "split_mode"
+    },
+    {
+      "experiment_id": "ultra_low_budget",
+      "label": "Ultra Low Budget",
+      "description": "Minimal search budget for fast pipeline smoke. Not for research decisions.",
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 10,
+      "chunk_size": 5,
+      "deterministic_seed": 424270,
+      "expected_artifact_set": [
+        "workbench_results.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Ultra-low budget smoke test.",
+      "category": "search_budget"
+    },
+    {
+      "experiment_id": "very_high_budget",
+      "label": "Very High Budget",
+      "description": "Very high search budget for maximum fidelity offline review.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 1000,
+      "chunk_size": 200,
+      "deterministic_seed": 424271,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "comparison.json",
+        "review_packet.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison",
+        "build_review_packet"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Maximum fidelity experiment.",
+      "category": "search_budget"
+    },
+    {
+      "experiment_id": "robustness_walk_forward",
+      "label": "Robustness Walk Forward",
+      "description": "Robustness test using walk-forward split. Tests stability under forward validation.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "walk_forward",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424272,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Robustness under walk-forward validation.",
+      "category": "robustness"
+    },
+    {
+      "experiment_id": "robustness_expanding",
+      "label": "Robustness Expanding",
+      "description": "Robustness test using expanding split. Tests stability under expanding window.",
+      "strategy_set": [
+        "mean_reversion",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "expanding",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424273,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Robustness under expanding window.",
+      "category": "robustness"
+    },
+    {
+      "experiment_id": "robustness_multi_seed",
+      "label": "Robustness Multi-Seed",
+      "description": "Robustness test with alternative deterministic seed. Tests seed independence.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 999999,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Seed independence robustness test.",
+      "category": "robustness"
+    },
+    {
+      "experiment_id": "negative_control_altcoin",
+      "label": "Negative Control Altcoin",
+      "description": "Negative control on altcoin universe. Tests overfit resistance on non-major pairs.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "SOLUSDT",
+        "ADAUSDT",
+        "DOTUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 424274,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Negative control on altcoins.",
+      "category": "negative_control"
+    },
+    {
+      "experiment_id": "negative_control_shuffled",
+      "label": "Negative Control Shuffled",
+      "description": "Negative control with shuffled data fixture. Tests strategy response to randomized input.",
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 424275,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Shuffled fixture negative control.",
+      "category": "negative_control"
+    },
+    {
+      "experiment_id": "bootstrap_high_iteration",
+      "label": "Bootstrap High Iteration",
+      "description": "Bootstrap confidence with high search budget. Tests convergence of confidence intervals.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 300,
+      "chunk_size": 50,
+      "deterministic_seed": 424276,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "High-iteration bootstrap experiment.",
+      "category": "bootstrap"
+    },
+    {
+      "experiment_id": "bootstrap_altcoin",
+      "label": "Bootstrap Altcoin",
+      "description": "Bootstrap confidence on altcoin universe. Tests confidence interval stability on altcoins.",
+      "strategy_set": [
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "SOLUSDT",
+        "ADAUSDT",
+        "LINKUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424277,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Bootstrap on altcoin universe.",
+      "category": "bootstrap"
+    },
+    {
+      "experiment_id": "regime_bull_bear",
+      "label": "Regime Bull/Bear",
+      "description": "Regime analysis focused on bull vs bear market breakdown. Tests directional regime stability.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424278,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Bull/bear regime analysis.",
+      "category": "regime"
+    },
+    {
+      "experiment_id": "regime_high_vol",
+      "label": "Regime High Volatility",
+      "description": "Regime analysis focused on high-volatility periods. Tests volatility regime stability.",
+      "strategy_set": [
+        "volatility_compression",
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424279,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "High-volatility regime analysis.",
+      "category": "regime"
+    },
+    {
+      "experiment_id": "portfolio_max_correlation",
+      "label": "Portfolio Max Correlation",
+      "description": "Portfolio risk test focused on maximum pairwise correlation measurement.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424280,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Maximum correlation measurement.",
+      "category": "portfolio_risk"
+    },
+    {
+      "experiment_id": "portfolio_sector_concentration",
+      "label": "Portfolio Sector Concentration",
+      "description": "Portfolio risk test focused on sector concentration limits.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "ADAUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424281,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Sector concentration risk experiment.",
+      "category": "portfolio_risk"
+    },
+    {
+      "experiment_id": "reproducibility_cross_run",
+      "label": "Reproducibility Cross-Run",
+      "description": "Reproducibility test across two identical runs with same seed. Validates bit-exact reproducibility.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 424282,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "reproducibility_check.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "rerun_reproducibility"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Cross-run reproducibility test.",
+      "category": "reproducibility"
+    },
+    {
+      "experiment_id": "reproducibility_seed_variation",
+      "label": "Reproducibility Seed Variation",
+      "description": "Reproducibility test comparing two different seeds. Validates that different seeds produce different results.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 777777,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "reproducibility_check.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "rerun_reproducibility"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Seed variation reproducibility test.",
+      "category": "reproducibility"
+    },
+    {
+      "experiment_id": "report_quality_full_pipeline",
+      "label": "Report Quality Full Pipeline",
+      "description": "Report quality test through full pipeline. Validates all report sections including review packet.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 250,
+      "chunk_size": 50,
+      "deterministic_seed": 424283,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "report.html",
+        "review_packet.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "render_report",
+        "build_review_packet"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Full pipeline report quality.",
+      "category": "report_quality"
+    },
+    {
+      "experiment_id": "report_quality_comparison",
+      "label": "Report Quality Comparison",
+      "description": "Report quality test for comparison analytics output. Validates comparison report sections.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424284,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "comparison.json",
+        "comparison_report.html"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison",
+        "render_comparison_report"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Comparison report quality.",
+      "category": "report_quality"
+    },
+    {
+      "experiment_id": "human_review_minimal",
+      "label": "Human Review Minimal",
+      "description": "Minimal human review packet. Tests that review packet is complete with minimal artifacts.",
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 50,
+      "chunk_size": 25,
+      "deterministic_seed": 424285,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "review_packet.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_review_packet"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Minimal review packet experiment.",
+      "category": "human_review"
+    },
+    {
+      "experiment_id": "human_review_comprehensive",
+      "label": "Human Review Comprehensive",
+      "description": "Comprehensive human review packet with all artifact types. Full checklist validation.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "ADAUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 300,
+      "chunk_size": 60,
+      "deterministic_seed": 424286,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "review_packet.json",
+        "review_checklist.json",
+        "comparison.json",
+        "report.html"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison",
+        "build_review_packet",
+        "validate_review_packet",
+        "render_report"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Comprehensive review packet experiment.",
+      "category": "human_review"
+    },
+    {
+      "experiment_id": "smoke_test_minimal",
+      "label": "Smoke Test Minimal",
+      "description": "Minimal smoke test. Single strategy, single symbol, single timeframe. Fastest possible run.",
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 10,
+      "chunk_size": 5,
+      "deterministic_seed": 424287,
+      "expected_artifact_set": [
+        "workbench_results.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Minimal smoke test.",
+      "category": "smoke_test"
+    },
+    {
+      "experiment_id": "smoke_test_pipeline",
+      "label": "Smoke Test Pipeline",
+      "description": "Pipeline smoke test. Tests full pipeline path with minimal data.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 20,
+      "chunk_size": 10,
+      "deterministic_seed": 424288,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Pipeline smoke test.",
+      "category": "smoke_test"
+    },
+    {
+      "experiment_id": "stress_test_high_volume",
+      "label": "Stress Test High Volume",
+      "description": "Stress test with high search budget and chunk size. Tests pipeline under load.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 800,
+      "chunk_size": 200,
+      "deterministic_seed": 424289,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "comparison.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "High volume stress test.",
+      "category": "stress_test"
+    },
+    {
+      "experiment_id": "stress_test_many_symbols",
+      "label": "Stress Test Many Symbols",
+      "description": "Stress test with many symbols. Tests pipeline with wide symbol universe.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "ADAUSDT",
+        "DOTUSDT",
+        "LINKUSDT",
+        "AVAXUSDT",
+        "MATICUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 400,
+      "chunk_size": 100,
+      "deterministic_seed": 424290,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Many symbols stress test.",
+      "category": "stress_test"
+    },
+    {
+      "experiment_id": "stress_test_long_timeframe",
+      "label": "Stress Test Long Timeframe",
+      "description": "Stress test with long timeframe. Tests pipeline with 4h and 1d data.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "4h",
+        "1d"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424291,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Long timeframe stress test.",
+      "category": "stress_test"
+    },
+    {
+      "experiment_id": "sparse_signal_low_freq",
+      "label": "Sparse Signal Low Frequency",
+      "description": "Sparse signal test on low-frequency timeframes. Tests strategy behavior with few signals.",
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "4h"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 424292,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Low-frequency sparse signal test.",
+      "category": "sparse_signal"
+    },
+    {
+      "experiment_id": "sparse_signal_single_symbol",
+      "label": "Sparse Signal Single Symbol",
+      "description": "Sparse signal test on single symbol. Tests strategy behavior with limited signal diversity.",
+      "strategy_set": [
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "LINKUSDT"
+      ],
+      "timeframes": [
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 424293,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Single symbol sparse signal test.",
+      "category": "sparse_signal"
+    },
+    {
+      "experiment_id": "noisy_fixture_random_seed",
+      "label": "Noisy Fixture Random Seed",
+      "description": "Noisy fixture test with alternative seed. Tests strategy response to seed variation.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 100,
+      "chunk_size": 25,
+      "deterministic_seed": 123456,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Random seed noise test.",
+      "category": "noisy_fixture"
+    },
+    {
+      "experiment_id": "noisy_fixture_corrupted",
+      "label": "Noisy Fixture Corrupted",
+      "description": "Noisy fixture test simulating corrupted data input. Tests pipeline resilience.",
+      "strategy_set": [
+        "breakout"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 50,
+      "chunk_size": 25,
+      "deterministic_seed": 654321,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Corrupted data resilience test.",
+      "category": "noisy_fixture"
+    },
+    {
+      "experiment_id": "adverse_fixture_bear_market",
+      "label": "Adverse Fixture Bear Market",
+      "description": "Adverse fixture simulating bear market conditions. Tests strategy drawdown behavior.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424294,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Bear market adverse fixture.",
+      "category": "adverse_fixture"
+    },
+    {
+      "experiment_id": "adverse_fixture_flash_crash",
+      "label": "Adverse Fixture Flash Crash",
+      "description": "Adverse fixture simulating flash crash conditions. Tests strategy recovery behavior.",
+      "strategy_set": [
+        "breakout",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424295,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Flash crash adverse fixture.",
+      "category": "adverse_fixture"
+    },
+    {
+      "experiment_id": "comparison_cross_strategy",
+      "label": "Comparison Cross-Strategy",
+      "description": "Cross-strategy comparison analytics. Compares all four strategies head-to-head.",
+      "strategy_set": [
+        "breakout",
+        "mean_reversion",
+        "momentum",
+        "volatility_compression"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": [
+        "5m",
+        "15m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424296,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "comparison.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Cross-strategy comparison.",
+      "category": "comparison_analytics"
+    },
+    {
+      "experiment_id": "comparison_cross_symbol",
+      "label": "Comparison Cross-Symbol",
+      "description": "Cross-symbol comparison analytics. Compares performance across symbol universe.",
+      "strategy_set": [
+        "breakout",
+        "momentum"
+      ],
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "ADAUSDT",
+        "DOTUSDT"
+      ],
+      "timeframes": [
+        "5m"
+      ],
+      "split_mode": "rolling",
+      "search_budget": 200,
+      "chunk_size": 50,
+      "deterministic_seed": 424297,
+      "expected_artifact_set": [
+        "workbench_results.json",
+        "quality_gate.json",
+        "manifest.json",
+        "comparison.json"
+      ],
+      "safety_flags": {
+        "release_hold": "HOLD",
+        "advisory_only": true,
+        "human_review_required": true,
+        "no_live": true,
+        "no_submit": true,
+        "no_exchange": true,
+        "no_network": true,
+        "no_runtime_integration": true,
+        "no_planner_integration": true
+      },
+      "allowed_commands": [
+        "run_workbench",
+        "run_quality_gate",
+        "build_browser",
+        "build_comparison"
+      ],
+      "forbidden_commands": [
+        "submit_order",
+        "cancel_order",
+        "flatten_position",
+        "live_trading"
+      ],
+      "expected_review_path": "research_human_review/",
+      "notes": "Cross-symbol comparison.",
+      "category": "comparison_analytics"
     }
   ]
 }

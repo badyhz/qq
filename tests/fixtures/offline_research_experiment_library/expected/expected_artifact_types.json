@@ -1,0 +1,13 @@
+{
+  "expected_artifact_types": [
+    "comparison.json",
+    "comparison_report.html",
+    "manifest.json",
+    "quality_gate.json",
+    "report.html",
+    "reproducibility_check.json",
+    "review_checklist.json",
+    "review_packet.json",
+    "workbench_results.json"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "forbidden_commands": [
+    "submit_order",
+    "cancel_order",
+    "flatten_position",
+    "place_order",
+    "testnet_submit",
+    "live_trading",
+    "runtime_start",
+    "planner_run",
+    "exchange_connect",
+    "binance_client"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "valid_split_modes": [
+    "rolling",
+    "anchored",
+    "walk_forward",
+    "expanding"
+  ]
+}
