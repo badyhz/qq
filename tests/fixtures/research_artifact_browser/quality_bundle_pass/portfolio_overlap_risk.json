@@ -1,0 +1,12 @@
+{
+  "advisory_only": true,
+  "deterministic_seed": 424242,
+  "generated_at": "seed_424242",
+  "hard_blocks": [],
+  "human_review_required": true,
+  "pairs": [],
+  "release_hold": "HOLD",
+  "schema_version": "1.0.0",
+  "verdict": "PASS",
+  "warnings": []
+}

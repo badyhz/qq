@@ -1,0 +1,19 @@
+{
+  "advisory_only": false,
+  "artifacts": [],
+  "deterministic_seed": 424242,
+  "generated_at": "seed_424242",
+  "generated_by": "research_quality_gate_v2",
+  "human_review_required": false,
+  "input_artifact_hashes": {},
+  "no_exchange": false,
+  "no_live": false,
+  "no_network": false,
+  "no_planner_integration": false,
+  "no_runtime_integration": false,
+  "no_submit": false,
+  "output_artifact_hashes": {},
+  "quality_gate_version": "v2.0.0",
+  "release_hold": "LIVE",
+  "strict_mode": true
+}

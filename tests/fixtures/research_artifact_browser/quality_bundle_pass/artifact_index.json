@@ -1,0 +1,12 @@
+{
+  "advisory_only": true,
+  "artifacts": [],
+  "generated_at": "seed_424242",
+  "generated_by": "research_artifact_index",
+  "human_review_required": true,
+  "missing_count": 0,
+  "present_count": 0,
+  "release_hold": "HOLD",
+  "schema_version": "1.0.0",
+  "total_artifacts": 0
+}
