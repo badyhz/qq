@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "reviewer_name": "Test Reviewer",
+  "reviewer_role": "Analyst",
+  "review_date": "2026-05-28",
+  "reviewed_packet_id": "test_packet",
+  "decision": "APPROVE_LIVE",
+  "decision_reason": "Looks good",
+  "unresolved_blockers": [],
+  "accepted_risks": [],
+  "rejected_promotions": [],
+  "confirmation_release_hold_remains_HOLD": true,
+  "confirmation_advisory_only": true,
+  "confirmation_no_live_testnet_runtime": true,
+  "signature_placeholder": "Test Reviewer"
+}

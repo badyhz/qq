@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "reviewer_name": "Test Reviewer",
+  "reviewer_role": "Analyst",
+  "review_date": "2026-05-28",
+  "reviewed_packet_id": "test_packet",
+  "decision": "ACCEPT_ADVISORY_RESEARCH_ONLY",
+  "decision_reason": "Looks fine",
+  "unresolved_blockers": [
+    {"blocker_id": "QUALITY_GATE_FAIL", "severity": "CRITICAL"}
+  ],
+  "accepted_risks": [],
+  "rejected_promotions": [],
+  "confirmation_release_hold_remains_HOLD": true,
+  "confirmation_advisory_only": true,
+  "confirmation_no_live_testnet_runtime": true,
+  "signature_placeholder": "Test Reviewer"
+}

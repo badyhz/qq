@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "deterministic",
+  "pair_count": 1,
+  "pairs": [],
+  "has_any_safety_regression": false
+}

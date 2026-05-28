@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "release_hold": "HOLD",
+  "advisory_only": true,
+  "human_review_required": true,
+  "no_live": true,
+  "no_submit": true,
+  "no_exchange": true,
+  "no_network": true,
+  "no_runtime_integration": true,
+  "no_planner_integration": true,
+  "generated_by": "research_comparison_analytics",
+  "generated_at": "deterministic"
+}

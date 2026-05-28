@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "reviewer_name": "Test Reviewer",
+  "reviewer_role": "Senior Analyst",
+  "review_date": "2026-05-28",
+  "reviewed_packet_id": "test_packet",
+  "decision": "REQUEST_MORE_RESEARCH",
+  "decision_reason": "Need more data on regime breakdown",
+  "unresolved_blockers": [
+    {"blocker_id": "REGIME_DATA_INSUFFICIENT", "severity": "WARNING"}
+  ],
+  "accepted_risks": [],
+  "rejected_promotions": ["APPROVE_LIVE", "APPROVE_TESTNET_SUBMIT"],
+  "confirmation_release_hold_remains_HOLD": true,
+  "confirmation_advisory_only": true,
+  "confirmation_no_live_testnet_runtime": true,
+  "signature_placeholder": "Test Reviewer"
+}

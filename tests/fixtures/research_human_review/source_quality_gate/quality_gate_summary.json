@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0.0",
+  "overall_verdict": "PASS",
+  "strategies": ["breakout", "mean_reversion"],
+  "generated_at": "deterministic"
+}

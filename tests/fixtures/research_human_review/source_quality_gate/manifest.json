@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "release_hold": "HOLD",
+  "advisory_only": true,
+  "human_review_required": true,
+  "no_live": true,
+  "no_submit": true,
+  "no_exchange": true,
+  "no_network": true,
+  "no_runtime_integration": true,
+  "no_planner_integration": true,
+  "quality_gate_version": "v2.0.0",
+  "generated_by": "research_quality_gate_v2",
+  "generated_at": "deterministic"
+}
