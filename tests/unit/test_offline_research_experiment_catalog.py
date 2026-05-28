@@ -29,11 +29,10 @@ class TestLoadAndValidateCatalog:
     def test_valid_catalog(self):
         result = load_and_validate_catalog(CATALOG_PATH)
         assert result["valid"] is True
-        assert result["total_experiments"] >= 20
+        assert result["total_experiments"] >= 60
         assert result["invalid_experiments"] == 0
 
     def test_invalid_catalog(self, tmp_path):
-        """Test with catalog containing an invalid experiment."""
         catalog = {
             "experiments": [
                 json.loads((INVALID_DIR / "missing_safety_flags.json").read_text())
@@ -49,7 +48,7 @@ class TestLoadAndValidateCatalog:
 class TestGetExperimentIds:
     def test_returns_all_ids(self):
         ids = get_experiment_ids(CATALOG_PATH)
-        assert len(ids) >= 20
+        assert len(ids) >= 60
         assert "baseline_major_5m_15m" in ids
         assert "human_review_focus" in ids
 
@@ -77,7 +76,6 @@ class TestCommandPreview:
         assert len(commands) > 0
         for cmd in commands:
             assert "python3 scripts/" in cmd
-            # No live/testnet/runtime commands
             for forbidden in ["submit_order", "cancel_order", "flatten", "live_trading"]:
                 assert forbidden not in cmd
 
@@ -85,7 +83,6 @@ class TestCommandPreview:
         catalog = json.loads(CATALOG_PATH.read_text())
         exp = catalog["experiments"][0]
         commands = build_command_preview(exp)
-        # Quality gate and browser commands should have --strict --release-hold HOLD
         for cmd in commands[1:]:
             assert "--strict" in cmd
             assert "--release-hold HOLD" in cmd

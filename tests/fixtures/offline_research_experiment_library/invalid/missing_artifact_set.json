@@ -1,0 +1,27 @@
+{
+  "experiment_id": "invalid_missing_artifact_set",
+  "label": "Invalid Missing Artifact Set",
+  "description": "Test fixture: missing expected_artifact_set field.",
+  "strategy_set": ["breakout"],
+  "symbols": ["BTCUSDT"],
+  "timeframes": ["5m"],
+  "split_mode": "rolling",
+  "search_budget": 100,
+  "chunk_size": 25,
+  "deterministic_seed": 999906,
+  "safety_flags": {
+    "release_hold": "HOLD",
+    "advisory_only": true,
+    "human_review_required": true,
+    "no_live": true,
+    "no_submit": true,
+    "no_exchange": true,
+    "no_network": true,
+    "no_runtime_integration": true,
+    "no_planner_integration": true
+  },
+  "allowed_commands": ["run_workbench"],
+  "forbidden_commands": ["submit_order", "cancel_order", "flatten_position", "live_trading"],
+  "expected_review_path": "research_human_review/",
+  "notes": "Invalid: missing expected_artifact_set."
+}

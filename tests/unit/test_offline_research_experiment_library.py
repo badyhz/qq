@@ -13,10 +13,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from core.offline_research_experiment_library import (
+    EXPERIMENT_LIBRARY_VERSION,
     FORBIDDEN_COMMANDS,
     FORBIDDEN_LIVE_STRINGS,
+    REQUIRED_CATEGORIES,
     REQUIRED_EXPERIMENT_FIELDS,
     REQUIRED_SAFETY_FLAGS,
+    VALID_SPLIT_MODES,
     build_experiment_manifest,
     check_forbidden_strings,
     compute_experiment_hash,
@@ -63,9 +66,9 @@ class TestValidateExperiment:
         errors = validate_experiment(exp)
         assert errors == []
 
-    def test_all_20_experiments_valid(self):
+    def test_all_60_experiments_valid(self):
         catalog = load_experiment_catalog(CATALOG_PATH)
-        assert len(catalog["experiments"]) >= 20
+        assert len(catalog["experiments"]) >= 60
         for exp in catalog["experiments"]:
             errors = validate_experiment(exp)
             assert errors == [], f"{exp['experiment_id']}: {errors}"
@@ -99,16 +102,46 @@ class TestValidateExperiment:
         errors = validate_experiment(exp)
         assert any("human_review_required must be True" in e for e in errors)
 
+    def test_no_network_false(self):
+        with open(INVALID_DIR / "no_network_false.json") as f:
+            exp = json.load(f)
+        errors = validate_experiment(exp)
+        assert any("no_network must be True" in e for e in errors)
+
     def test_forbidden_live_string_detected(self):
         with open(INVALID_DIR / "forbidden_live_string.json") as f:
             exp = json.load(f)
         errors = check_forbidden_strings(exp)
         assert len(errors) > 0
 
+    def test_empty_strategy_set_fails(self):
+        with open(INVALID_DIR / "empty_strategy_set.json") as f:
+            exp = json.load(f)
+        errors = validate_experiment(exp)
+        assert any("strategy_set must be non-empty" in e for e in errors)
+
+    def test_missing_artifact_set_fails(self):
+        with open(INVALID_DIR / "missing_artifact_set.json") as f:
+            exp = json.load(f)
+        errors = validate_experiment(exp)
+        assert any("missing_required_field: expected_artifact_set" in e for e in errors)
+
 
 class TestForbiddenCommands:
     def test_forbidden_command_in_allowed(self):
         with open(INVALID_DIR / "forbidden_command.json") as f:
+            exp = json.load(f)
+        errors = validate_forbidden_commands(exp)
+        assert any("forbidden_command_in_allowed" in e for e in errors)
+
+    def test_forbidden_cancel_command(self):
+        with open(INVALID_DIR / "forbidden_cancel_command.json") as f:
+            exp = json.load(f)
+        errors = validate_forbidden_commands(exp)
+        assert any("forbidden_command_in_allowed" in e for e in errors)
+
+    def test_forbidden_flatten_command(self):
+        with open(INVALID_DIR / "forbidden_flatten_command.json") as f:
             exp = json.load(f)
         errors = validate_forbidden_commands(exp)
         assert any("forbidden_command_in_allowed" in e for e in errors)
@@ -142,7 +175,7 @@ class TestManifest:
         assert manifest["release_hold"] == "HOLD"
         assert manifest["advisory_only"] is True
         assert manifest["human_review_required"] is True
-        assert manifest["count"] >= 20
+        assert manifest["count"] >= 60
 
     def test_manifest_entries_have_hashes(self):
         catalog = load_experiment_catalog(CATALOG_PATH)
@@ -150,6 +183,40 @@ class TestManifest:
         for entry in manifest["entries"]:
             assert "hash" in entry
             assert len(entry["hash"]) == 64  # SHA256 hex
+
+    def test_manifest_entries_sorted(self):
+        catalog = load_experiment_catalog(CATALOG_PATH)
+        manifest = build_experiment_manifest(catalog["experiments"])
+        ids = [e["experiment_id"] for e in manifest["entries"]]
+        assert ids == sorted(ids)
+
+
+class TestCategoryCoverage:
+    def test_all_required_categories_present(self):
+        catalog = load_experiment_catalog(CATALOG_PATH)
+        categories = set(e.get("category", "") for e in catalog["experiments"])
+        for req in REQUIRED_CATEGORIES:
+            assert req in categories, f"Missing category: {req}"
+
+    def test_at_least_20_categories(self):
+        catalog = load_experiment_catalog(CATALOG_PATH)
+        categories = set(e.get("category", "") for e in catalog["experiments"])
+        assert len(categories) >= 20
+
+
+class TestSplitModes:
+    def test_all_valid_split_modes_used(self):
+        catalog = load_experiment_catalog(CATALOG_PATH)
+        modes = set(e.get("split_mode", "") for e in catalog["experiments"])
+        for mode in VALID_SPLIT_MODES:
+            assert mode in modes, f"Split mode not tested: {mode}"
+
+
+class TestUniqueIds:
+    def test_all_ids_unique(self):
+        catalog = load_experiment_catalog(CATALOG_PATH)
+        ids = [e["experiment_id"] for e in catalog["experiments"]]
+        assert len(ids) == len(set(ids))
 
 
 class TestNoNetworkImports:

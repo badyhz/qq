@@ -28,12 +28,12 @@ class TestGenerateFullManifest:
         assert manifest["release_hold"] == "HOLD"
         assert manifest["advisory_only"] is True
         assert manifest["human_review_required"] is True
-        assert manifest["total_experiments"] >= 20
+        assert manifest["total_experiments"] >= 60
 
     def test_all_experiments_valid(self):
         manifest = generate_full_manifest(CATALOG_PATH)
         assert manifest["invalid_experiments"] == 0
-        assert manifest["valid_experiments"] >= 20
+        assert manifest["valid_experiments"] >= 60
 
     def test_manifest_hash_deterministic(self):
         m1 = generate_full_manifest(CATALOG_PATH)
@@ -51,6 +51,40 @@ class TestGenerateFullManifest:
         hashes = [e["hash"] for e in manifest["experiments"]]
         assert len(hashes) == len(set(hashes))
 
+    def test_experiments_sorted_by_id(self):
+        manifest = generate_full_manifest(CATALOG_PATH)
+        ids = [e["experiment_id"] for e in manifest["experiments"]]
+        assert ids == sorted(ids)
+
+    def test_category_counts_present(self):
+        manifest = generate_full_manifest(CATALOG_PATH)
+        assert isinstance(manifest["category_counts"], dict)
+        assert len(manifest["category_counts"]) >= 20
+
+    def test_missing_categories_empty(self):
+        manifest = generate_full_manifest(CATALOG_PATH)
+        assert manifest["missing_categories"] == []
+
+    def test_safety_flag_summary_present(self):
+        manifest = generate_full_manifest(CATALOG_PATH)
+        assert manifest["safety_flag_summary"]["release_hold"] == "HOLD"
+        assert manifest["safety_flag_summary"]["advisory_only"] is True
+
+    def test_forbidden_token_scan_present(self):
+        manifest = generate_full_manifest(CATALOG_PATH)
+        assert isinstance(manifest["forbidden_token_scan"], dict)
+        assert len(manifest["forbidden_token_scan"]) > 0
+
+    def test_expected_artifact_coverage_present(self):
+        manifest = generate_full_manifest(CATALOG_PATH)
+        assert isinstance(manifest["expected_artifact_coverage"], dict)
+        assert len(manifest["expected_artifact_coverage"]) > 0
+
+    def test_recommended_review_order_present(self):
+        manifest = generate_full_manifest(CATALOG_PATH)
+        assert isinstance(manifest["recommended_review_order"], list)
+        assert len(manifest["recommended_review_order"]) >= 60
+
 
 class TestSaveManifest:
     def test_save_and_reload(self, tmp_path):
@@ -60,4 +94,4 @@ class TestSaveManifest:
         assert out.exists()
         loaded = json.loads(out.read_text())
         assert loaded["release_hold"] == "HOLD"
-        assert loaded["total_experiments"] >= 20
+        assert loaded["total_experiments"] >= 60
