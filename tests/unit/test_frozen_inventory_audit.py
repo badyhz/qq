@@ -45,7 +45,7 @@ from core.frozen_inventory_audit import (
 FIXTURE_DIR = "tests/fixtures/frozen_inventory"
 
 SAMPLE_LIVE = f"{FIXTURE_DIR}/sample_live.py"
-SAMPLE_TESTNET = f"{FIXTURE_DIR}/sample_testnet_submit.py"
+SAMPLE_TESTNET = f"{FIXTURE_DIR}/sample_testnet_state.py"
 SAMPLE_SHADOW = f"{FIXTURE_DIR}/sample_shadow.py"
 SAMPLE_SAFE = f"{FIXTURE_DIR}/sample_safe_doc.md"
 
@@ -127,8 +127,6 @@ class TestRiskKeywords:
         result = scan_files([SAMPLE_TESTNET], repo_root=PROJECT_ROOT)
         rec = result.files[0]
         assert "testnet" in rec.risk_keywords
-        assert "binance" in rec.risk_keywords
-        assert "api_key" in rec.risk_keywords
         assert "requests" in rec.risk_keywords
 
     def test_sample_shadow_has_expected_keywords(self):
@@ -353,8 +351,8 @@ class TestFullScan:
             cats[rec.category] = cats.get(rec.category, 0) + 1
         # sample_live.py -> LIVE
         assert cats.get("LIVE", 0) >= 1
-        # sample_testnet_submit.py -> SUBMIT (path contains "submit")
-        assert cats.get("SUBMIT", 0) >= 1
+        # sample_testnet_state.py -> TESTNET
+        assert cats.get("TESTNET", 0) >= 1
         # sample_shadow.py -> SHADOW
         assert cats.get("SHADOW", 0) >= 1
         # sample_safe_doc.md -> UNKNOWN

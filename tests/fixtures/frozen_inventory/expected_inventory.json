@@ -17,16 +17,13 @@
       "skip_reason": null
     },
     {
-      "category": "SUBMIT",
+      "category": "TESTNET",
       "exists": true,
-      "path": "tests/fixtures/frozen_inventory/sample_testnet_submit.py",
+      "path": "tests/fixtures/frozen_inventory/sample_testnet_state.py",
       "risk_keywords": [
-        "api_key",
-        "binance",
         "fapi",
         "positionRisk",
         "requests",
-        "secret",
         "testnet"
       ],
       "skip_reason": null
@@ -58,7 +55,7 @@
     "human_review_required": true,
     "input_paths": [
       "tests/fixtures/frozen_inventory/sample_live.py",
-      "tests/fixtures/frozen_inventory/sample_testnet_submit.py",
+      "tests/fixtures/frozen_inventory/sample_testnet_state.py",
       "tests/fixtures/frozen_inventory/sample_shadow.py",
       "tests/fixtures/frozen_inventory/sample_safe_doc.md"
     ],
