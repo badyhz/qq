@@ -1,0 +1,79 @@
+{
+  "entries": [
+    {
+      "path": "scripts/submit_approved_candidates.py",
+      "exists": true,
+      "category": "LIVE",
+      "risk_score": 53,
+      "risk_keywords": ["submit", "live", "testnet", "order"],
+      "disposition": "CANDIDATE_FOR_ARCHIVE",
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "human_review_required": true,
+      "no_execution": true,
+      "no_import": true,
+      "no_stage": true,
+      "status": "untracked"
+    },
+    {
+      "path": "scripts/run_testnet_order_smoke.py",
+      "exists": true,
+      "category": "LIVE",
+      "risk_score": 63,
+      "risk_keywords": ["testnet", "order", "live", "exchange"],
+      "disposition": "CANDIDATE_FOR_REWRITE",
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "human_review_required": true,
+      "no_execution": true,
+      "no_import": true,
+      "no_stage": true,
+      "status": "untracked"
+    },
+    {
+      "path": "scripts/run_shadow_observation_experiments.py",
+      "exists": true,
+      "category": "FLATTEN",
+      "risk_score": 57,
+      "risk_keywords": ["shadow", "observation", "flatten"],
+      "disposition": "CANDIDATE_FOR_REWRITE",
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "human_review_required": true,
+      "no_execution": true,
+      "no_import": true,
+      "no_stage": true,
+      "status": "untracked"
+    },
+    {
+      "path": "scripts/run_observation_shift_runtime.py",
+      "exists": true,
+      "category": "TESTNET",
+      "risk_score": 27,
+      "risk_keywords": ["observation", "runtime", "testnet"],
+      "disposition": "NEEDS_HUMAN_REVIEW",
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "human_review_required": true,
+      "no_execution": true,
+      "no_import": true,
+      "no_stage": true,
+      "status": "untracked"
+    },
+    {
+      "path": "research/sample.md",
+      "exists": true,
+      "category": "UNKNOWN",
+      "risk_score": 0,
+      "risk_keywords": [],
+      "disposition": "NEEDS_HUMAN_REVIEW",
+      "release_hold": "HOLD",
+      "advisory_only": true,
+      "human_review_required": true,
+      "no_execution": true,
+      "no_import": true,
+      "no_stage": true,
+      "status": "untracked"
+    }
+  ]
+}

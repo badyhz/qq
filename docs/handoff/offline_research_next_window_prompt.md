@@ -25,6 +25,17 @@ Next steps:
 2. Review handoff pack
 3. Decide next phase based on human direction
 
+T15001-T15500 additions:
+- Human review queue built (25 items)
+- Archive/delete decision prep built (25 items)
+- Disposition report rendered (JSON, MD, HTML)
+- All items: deletion_allowed_now=false, archive_allowed_now=false
+- All items: required_human_approval=true, no_touch_until_approved=true
+- 49 targeted tests pass, full suite 7666 passed
+
+Next phase: T15501-T16000 Offline Backup Manifest / Archive Simulation
+Still no actual move/delete.
+
 Do NOT:
 - Activate live/testnet/runtime
 - Execute frozen files
