@@ -33,7 +33,17 @@ T15001-T15500 additions:
 - All items: required_human_approval=true, no_touch_until_approved=true
 - 49 targeted tests pass, full suite 7666 passed
 
-Next phase: T15501-T16000 Offline Backup Manifest / Archive Simulation
+T15501-T16000 additions:
+- Backup manifest built (25 items)
+- Archive simulation built (25 items)
+- Rollback plan built (25 items)
+- Backup verification: 11/11 checks pass
+- All items: backup_allowed_now=false, simulation_only=true
+- All items: would_copy/move/delete/modify=false
+- All proposed paths hypothetical (archive_simulation/ prefix)
+- 67 targeted tests pass, full suite 7733 passed
+
+Next phase: T16001-T16500 Offline Frozen File Backup Evidence Checklist / Manual Approval Forms
 Still no actual move/delete.
 
 Do NOT:

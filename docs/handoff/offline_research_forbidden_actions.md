@@ -32,10 +32,29 @@
 - APPROVED
 - SAFE_TO_EXECUTE
 - SAFE_TO_IMPORT
+- SAFE_TO_DELETE
+- SAFE_TO_MOVE
 - ACTIVATE_LIVE
 - ENABLE_TESTNET
+- BACKUP_DONE
+- ARCHIVED
+- DELETED
+- MOVED
+- EXECUTED
+- IMPORTED
+- ACTIVATED
 - auto_promote
 - auto-promotion
+
+## Forbidden Archive/Delete Actions
+
+- Actually archiving any file
+- Actually deleting any file
+- Actually moving any file
+- Actually renaming any file
+- Creating actual backup copies
+- Executing rollback commands
+- Automated restore operations
 
 ## Consequences of Violation
 
