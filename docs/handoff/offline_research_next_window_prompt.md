@@ -51,8 +51,17 @@ T16001-T16500 additions:
 - No actual backup/archive/delete/move/copy performed
 - 57 targeted tests pass, full suite 7790 passed
 
-Next phase: T16501-T17000 Offline Backup Approval Dry-Run Validator / Completed Form Simulation
-Still no actual backup/copy/move/delete.
+T16501-T17000 additions:
+- Completed form simulation: 625 simulations, 25 categories
+- Dry-run validator: 100 accepted, 500 rejected, 25 needs_review
+- Outcome matrix: 10 outcome categories
+- Completed form report: 16 sections (JSON/MD/HTML)
+- All outcomes: action_authorized=false, no_action_performed=true
+- 56 targeted tests pass, full suite 7846 passed
+- No actual backup/archive/delete/move/copy performed
+
+Next phase: T17001-T17500 Offline Frozen File Cleanup Governance Finalization
+Still no actual cleanup/copy/move/delete.
 
 Do NOT:
 - Activate live/testnet/runtime

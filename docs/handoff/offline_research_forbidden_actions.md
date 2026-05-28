@@ -64,6 +64,9 @@
 - Approving immediate backup/archive/delete/move/copy
 - Approving live/testnet/runtime activation
 - Using completed forms to trigger automated actions
+- Using dry-run validation results to authorize actions
+- Using outcome matrix to dispatch actions
+- Treating "accepted prepare-only" as action authorization
 
 ## Consequences of Violation
 
