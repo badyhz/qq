@@ -1,0 +1,41 @@
+{
+  "allowed_commands": [
+    "run_workbench",
+    "cancel_order"
+  ],
+  "chunk_size": 25,
+  "description": "Invalid fixture copied from forbidden_command template and changed to cancel.",
+  "deterministic_seed": 999997,
+  "expected_artifact_set": [
+    "workbench_results.json"
+  ],
+  "expected_review_path": "research_human_review/",
+  "experiment_id": "invalid_forbidden_cancel_command",
+  "forbidden_commands": [
+    "cancel_order"
+  ],
+  "label": "Invalid Forbidden Cancel Command",
+  "notes": "Invalid: cancel_order is forbidden.",
+  "safety_flags": {
+    "advisory_only": true,
+    "human_review_required": true,
+    "no_exchange": true,
+    "no_live": true,
+    "no_network": true,
+    "no_planner_integration": true,
+    "no_runtime_integration": true,
+    "no_submit": true,
+    "release_hold": "HOLD"
+  },
+  "search_budget": 100,
+  "split_mode": "rolling",
+  "strategy_set": [
+    "breakout"
+  ],
+  "symbols": [
+    "BTCUSDT"
+  ],
+  "timeframes": [
+    "5m"
+  ]
+}
