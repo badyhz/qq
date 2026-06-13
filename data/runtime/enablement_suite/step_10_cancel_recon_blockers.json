@@ -1,0 +1,32 @@
+[
+  {
+    "blocker_id": "cblk_adapter",
+    "description": "Real cancel adapter missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "cblk_idempotency",
+    "description": "Cancel idempotency not field-tested",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "cblk_terminal",
+    "description": "Terminal order handling not field-tested",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "cblk_unknown",
+    "description": "Unknown order handling not field-tested",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "cblk_audit",
+    "description": "Audit trail storage missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "cblk_emergency",
+    "description": "Operator emergency cancel flow missing",
+    "status": "REQUIRES_FIELD_TEST"
+  }
+]

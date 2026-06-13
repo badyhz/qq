@@ -1,0 +1,27 @@
+[
+  {
+    "check_id": "no_real_endpoints",
+    "passed": true,
+    "detail": "no real endpoints hardcoded"
+  },
+  {
+    "check_id": "no_real_credentials",
+    "passed": true,
+    "detail": "no real credentials"
+  },
+  {
+    "check_id": "no_ccxt_active",
+    "passed": true,
+    "detail": "ccxt not active"
+  },
+  {
+    "check_id": "states_no_submit",
+    "passed": true,
+    "detail": "states no submit"
+  },
+  {
+    "check_id": "states_design_only",
+    "passed": true,
+    "detail": "states design only"
+  }
+]

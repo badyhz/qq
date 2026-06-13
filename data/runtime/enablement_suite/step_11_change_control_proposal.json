@@ -1,0 +1,58 @@
+{
+  "proposal_id": "CCP_d09c80cc48d4",
+  "created_at": "2026-06-13T18:15:21.497405+00:00",
+  "scope": "External sandbox adapter dry-run with real testnet endpoints",
+  "non_goals": [
+    "no real submit",
+    "no real credentials in this phase",
+    "no live trading",
+    "no auto submit"
+  ],
+  "risk_assessment": "HIGH \u2014 involves real testnet endpoints, requires full human approval chain",
+  "security_requirements": [
+    "encrypted credential vault",
+    "IP allowlist",
+    "TLS 1.2+",
+    "certificate pinning",
+    "audit logging"
+  ],
+  "credential_requirements": [
+    "testnet-only keys",
+    "no withdraw permission",
+    "read-only + trade only",
+    "key rotation plan"
+  ],
+  "human_approvals_required": [
+    "operator_ack",
+    "security_review",
+    "risk_approval",
+    "legal_review"
+  ],
+  "rollback_plan": "Revert to last known good commit, disable testnet adapter, re-enable kill switch",
+  "kill_switch_procedure": "ENABLED_BLOCKING by default, manual unlock requires 2-person approval",
+  "audit_requirements": [
+    "tamper-evident log",
+    "external storage",
+    "90-day retention",
+    "export capability"
+  ],
+  "dry_run_acceptance": [
+    "all harness steps pass",
+    "no real network calls",
+    "all safety flags present"
+  ],
+  "field_test_acceptance": [
+    "testnet endpoint reachable",
+    "credentials validated",
+    "order lifecycle completes",
+    "cancel works",
+    "reconciliation matches"
+  ],
+  "go_no_go_checklist": [
+    "all blockers resolved",
+    "human approval obtained",
+    "kill switch tested",
+    "rollback tested",
+    "audit log verified"
+  ]
+}

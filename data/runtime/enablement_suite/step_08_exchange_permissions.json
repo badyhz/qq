@@ -1,0 +1,68 @@
+[
+  {
+    "perm_id": "perm_read",
+    "description": "Read permission for account data",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_trade",
+    "description": "Trade permission for order submission",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_no_withdraw",
+    "description": "Withdraw permission forbidden",
+    "required": true,
+    "status": "BLOCKED"
+  },
+  {
+    "perm_id": "perm_subaccount",
+    "description": "Sub-account isolation",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_ip_allowlist",
+    "description": "IP allowlist restriction",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_rate_limit_docs",
+    "description": "Rate limit documentation",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_testnet_only",
+    "description": "Testnet-only environment",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_kill_switch",
+    "description": "Kill switch compatibility",
+    "required": true,
+    "status": "DESIGNED_ONLY"
+  },
+  {
+    "perm_id": "perm_cancel",
+    "description": "Order cancel permission",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_balance_read",
+    "description": "Balance/position read permission",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  },
+  {
+    "perm_id": "perm_audit_export",
+    "description": "Audit export availability",
+    "required": true,
+    "status": "NOT_CONFIGURED"
+  }
+]

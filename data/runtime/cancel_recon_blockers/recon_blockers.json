@@ -1,0 +1,32 @@
+[
+  {
+    "blocker_id": "rblk_balance_fetch",
+    "description": "Real balance fetch missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "rblk_position_fetch",
+    "description": "Real position fetch missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "rblk_staleness",
+    "description": "Snapshot staleness threshold not field-tested",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "rblk_mismatch",
+    "description": "Mismatch handling not field-tested",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "rblk_manual_override",
+    "description": "Manual override policy missing",
+    "status": "REQUIRES_HUMAN_APPROVAL"
+  },
+  {
+    "blocker_id": "rblk_audit_chain",
+    "description": "Audit chain external storage missing",
+    "status": "BLOCKING"
+  }
+]

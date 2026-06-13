@@ -1,0 +1,42 @@
+[
+  {
+    "check_id": "has_frozen_gates",
+    "passed": true,
+    "detail": "frozen gates present"
+  },
+  {
+    "check_id": "submit_gate_locked",
+    "passed": true,
+    "detail": "state=LOCKED"
+  },
+  {
+    "check_id": "cancel_gate_locked",
+    "passed": true,
+    "detail": "state=LOCKED"
+  },
+  {
+    "check_id": "recon_gate_locked",
+    "passed": true,
+    "detail": "state=LOCKED"
+  },
+  {
+    "check_id": "no_real_trading",
+    "passed": true,
+    "detail": "real_trading_allowed=False"
+  },
+  {
+    "check_id": "no_testnet_submit",
+    "passed": true,
+    "detail": "testnet_submit_allowed=False"
+  },
+  {
+    "check_id": "has_approvals",
+    "passed": true,
+    "detail": "approvals present"
+  },
+  {
+    "check_id": "has_forbidden",
+    "passed": true,
+    "detail": "forbidden actions listed"
+  }
+]

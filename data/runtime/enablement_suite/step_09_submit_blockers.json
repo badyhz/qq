@@ -1,0 +1,52 @@
+[
+  {
+    "blocker_id": "blk_cred_vault",
+    "description": "Real credential vault missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_ext_adapter",
+    "description": "External sandbox adapter missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_real_signing",
+    "description": "Real request signing missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_approval_legal",
+    "description": "Human approval legal acceptance missing",
+    "status": "REQUIRES_HUMAN_APPROVAL"
+  },
+  {
+    "blocker_id": "blk_kill_switch_test",
+    "description": "Kill switch field test missing",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "blk_recon_test",
+    "description": "Reconciliation field test missing",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "blk_audit_storage",
+    "description": "Audit log external storage missing",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_emergency_drill",
+    "description": "Operator emergency drill missing",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "blk_rate_limit_live",
+    "description": "Rate limit live behavior unknown",
+    "status": "REQUIRES_FIELD_TEST"
+  },
+  {
+    "blocker_id": "blk_cancel_test",
+    "description": "Cancel safety field test missing",
+    "status": "REQUIRES_FIELD_TEST"
+  }
+]

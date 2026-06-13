@@ -1,0 +1,42 @@
+[
+  {
+    "check_id": "has_scope",
+    "passed": true,
+    "detail": "scope present"
+  },
+  {
+    "check_id": "has_non_goals",
+    "passed": true,
+    "detail": "non-goals listed"
+  },
+  {
+    "check_id": "has_risk",
+    "passed": true,
+    "detail": "risk assessment present"
+  },
+  {
+    "check_id": "has_security",
+    "passed": true,
+    "detail": "security requirements listed"
+  },
+  {
+    "check_id": "has_rollback",
+    "passed": true,
+    "detail": "rollback plan present"
+  },
+  {
+    "check_id": "has_kill_switch",
+    "passed": true,
+    "detail": "kill switch procedure present"
+  },
+  {
+    "check_id": "has_go_no_go",
+    "passed": true,
+    "detail": "go/no-go checklist present"
+  },
+  {
+    "check_id": "no_real_submit_in_non_goals",
+    "passed": true,
+    "detail": "no real submit in non-goals"
+  }
+]

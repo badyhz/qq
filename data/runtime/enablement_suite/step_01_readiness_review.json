@@ -1,0 +1,19 @@
+{
+  "review_ready": true,
+  "submit_allowed": false,
+  "testnet_submit_allowed": false,
+  "criteria_met": [
+    "dry_run_complete",
+    "stabilization_complete",
+    "server_readiness_complete",
+    "sandbox_design_complete",
+    "presubmit_review_complete",
+    "final_gate_complete",
+    "submit_gate_locked",
+    "cancel_gate_locked",
+    "recon_gate_locked",
+    "no_real_credential_vault",
+    "no_real_exchange_adapter"
+  ],
+  "criteria_pending": []
+}

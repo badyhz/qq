@@ -1,0 +1,74 @@
+[
+  {
+    "section_id": "boundaries",
+    "title": "Adapter Boundaries",
+    "content": "Define clear boundary between simulation and real exchange. All methods must be simulation-only in this phase.",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "allowed_methods",
+    "title": "Allowed Future Methods",
+    "content": "load_connection_profile, validate_permissions, build_signed_request, submit_order, cancel_order, fetch_balance, fetch_positions, fetch_order_status",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "forbidden_methods",
+    "title": "Forbidden Current Methods",
+    "content": "No real network calls, no real API keys, no real signatures, no real order submission",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "network_transport",
+    "title": "Network Transport Requirements",
+    "content": "HTTPS only, TLS 1.2+, certificate pinning, request timeout, retry with backoff",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "request_signing",
+    "title": "Request Signing Requirements",
+    "content": "HMAC-SHA256, timestamp validation, recvWindow parameter, canonical string construction",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "credential_vault",
+    "title": "Credential Vault Requirements",
+    "content": "Encrypted at rest, access control, audit logging, key rotation, no environment variables",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "rate_limits",
+    "title": "Rate Limit Requirements",
+    "content": "Per-endpoint limits, order rate limits, cancel rate limits, exponential backoff, cool-down",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "cancel_safety",
+    "title": "Cancel Safety Requirements",
+    "content": "Idempotent cancel, terminal order handling, unknown order handling, audit trail",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "reconciliation",
+    "title": "Reconciliation Requirements",
+    "content": "Real balance fetch, real position fetch, staleness detection, mismatch handling, manual override",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "audit_logging",
+    "title": "Audit Logging Requirements",
+    "content": "Tamper-evident chain, external storage, retention policy, export capability",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "human_approval",
+    "title": "Human Approval Requirements",
+    "content": "Multi-party approval, expiration, risk summary, cancel plan, rollback plan",
+    "status": "DOCUMENTED"
+  },
+  {
+    "section_id": "rollback",
+    "title": "Rollback Requirements",
+    "content": "Point-in-time restore, artifact preservation, audit log continuity",
+    "status": "DOCUMENTED"
+  }
+]

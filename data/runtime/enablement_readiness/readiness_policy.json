@@ -1,0 +1,68 @@
+[
+  {
+    "criterion_id": "dry_run_complete",
+    "description": "Dry-run runtime integration complete",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "stabilization_complete",
+    "description": "Runtime stabilization complete",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "server_readiness_complete",
+    "description": "Server dry-run readiness complete",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "sandbox_design_complete",
+    "description": "Testnet sandbox design complete",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "presubmit_review_complete",
+    "description": "Pre-submit review complete",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "final_gate_complete",
+    "description": "Final gate review complete",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "submit_gate_locked",
+    "description": "Submit gate remains locked",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "cancel_gate_locked",
+    "description": "Cancel gate remains locked",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "recon_gate_locked",
+    "description": "Reconciliation gate remains locked",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "no_real_credential_vault",
+    "description": "No real credential vault exists",
+    "required": true,
+    "status": "DOCUMENTED"
+  },
+  {
+    "criterion_id": "no_real_exchange_adapter",
+    "description": "No real exchange adapter exists",
+    "required": true,
+    "status": "DOCUMENTED"
+  }
+]

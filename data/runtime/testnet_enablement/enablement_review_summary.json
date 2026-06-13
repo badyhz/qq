@@ -1,0 +1,9 @@
+{
+  "milestone": "T140001-T155000",
+  "status": "TESTNET_SUBMIT_ENABLEMENT_REVIEW_READY",
+  "submit_allowed": false,
+  "testnet_submit_allowed": false,
+  "real_trading_allowed": false,
+  "passed": 16,
+  "failed": 0
+}
