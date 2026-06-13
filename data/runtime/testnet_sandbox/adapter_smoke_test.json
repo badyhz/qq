@@ -1,0 +1,13 @@
+{
+  "contract_valid": true,
+  "missing_methods": [],
+  "config_valid": true,
+  "intent_valid": true,
+  "submit_simulated": true,
+  "submit_real_submit_false": true,
+  "submit_testnet_submit_false": true,
+  "submit_no_submit_enforced": true,
+  "cancel_simulated": true,
+  "balance_simulated": true,
+  "positions_count": 0
+}

@@ -1,0 +1,8 @@
+{
+  "kill_switch_enabled": true,
+  "submit_blocked": true,
+  "real_trading_allowed": false,
+  "testnet_submit_allowed": false,
+  "state": "ENABLED_BLOCKING",
+  "reason": "DEFAULT: kill switch enabled, all submit blocked"
+}

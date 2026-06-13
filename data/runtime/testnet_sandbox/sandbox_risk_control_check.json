@@ -1,0 +1,47 @@
+[
+  {
+    "check_id": "max_notional",
+    "passed": true,
+    "detail": "notional=50.00, max=1000.0"
+  },
+  {
+    "check_id": "symbol_allowed",
+    "passed": true,
+    "detail": "symbol=BTCUSDT"
+  },
+  {
+    "check_id": "symbol_not_blocked",
+    "passed": true,
+    "detail": "symbol=BTCUSDT"
+  },
+  {
+    "check_id": "daily_order_count",
+    "passed": true,
+    "detail": "count=5, max=50"
+  },
+  {
+    "check_id": "price_sanity",
+    "passed": true,
+    "detail": "deviation=0.00%, max=5.0%"
+  },
+  {
+    "check_id": "duplicate_intent",
+    "passed": true,
+    "detail": "intent_id=INT_TEST, already_seen=False"
+  },
+  {
+    "check_id": "stale_signal",
+    "passed": true,
+    "detail": "signal_timestamp=2026-06-14T00:00:00Z, max_age=3600.0s"
+  },
+  {
+    "check_id": "approval_required",
+    "passed": true,
+    "detail": "approval_status=DENIED"
+  },
+  {
+    "check_id": "kill_switch",
+    "passed": true,
+    "detail": "kill_switch_blocking=True"
+  }
+]

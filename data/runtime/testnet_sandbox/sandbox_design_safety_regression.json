@@ -1,0 +1,1072 @@
+[
+  {
+    "check_id": "approval_decision.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "__init__.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "adapter_contract.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "credential_policy.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "__init__.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "__init__.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "__init__.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "__init__.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "__init__.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "kill_switch.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "sandbox_types.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_import_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_import_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_import_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_import_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_import_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "approval_decision.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "adapter_contract.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "credential_policy.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "__init__.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "kill_switch.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "sandbox_types.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_real_key_load",
+    "passed": true,
+    "detail": "no real API key loading"
+  },
+  {
+    "check_id": "approval_decision.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "adapter_contract.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "human_approval_gate.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "sandbox_risk_controls.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "simulated_exchange_adapter.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "kill_switch_policy.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "submit_intent_packet.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "credential_policy.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "__init__.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "submit_intent_validator.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "kill_switch.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "credential_vault_stub.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "sandbox_types.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "sandbox_risk_report.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "no_submit_sandbox_smoke.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "gap_closure_matrix.py_no_webhook_send",
+    "passed": true,
+    "detail": "no webhook sending"
+  },
+  {
+    "check_id": "smoke_simulated_only",
+    "passed": true,
+    "detail": "smoke uses simulated=True"
+  },
+  {
+    "check_id": "smoke_no_real_submit",
+    "passed": true,
+    "detail": "smoke uses real_submit=False"
+  },
+  {
+    "check_id": "gate_default_deny",
+    "passed": true,
+    "detail": "gate uses DEFAULT_DENY"
+  },
+  {
+    "check_id": "gate_submit_blocked",
+    "passed": true,
+    "detail": "gate blocks submit"
+  },
+  {
+    "check_id": "ks_default_blocking",
+    "passed": true,
+    "detail": "kill switch defaults to ENABLED_BLOCKING"
+  },
+  {
+    "check_id": "ks_submit_blocked",
+    "passed": true,
+    "detail": "kill switch blocks submit"
+  }
+]

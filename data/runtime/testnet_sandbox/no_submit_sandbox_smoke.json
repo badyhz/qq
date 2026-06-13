@@ -1,0 +1,54 @@
+{
+  "steps": [
+    {
+      "step": "load_signals",
+      "status": "PASS",
+      "detail": "loaded 35 signals"
+    },
+    {
+      "step": "build_intents",
+      "status": "SIMULATED",
+      "detail": "built 5 intents"
+    },
+    {
+      "step": "risk_controls",
+      "status": "PASS",
+      "detail": "all intents pass risk controls (simulated)"
+    },
+    {
+      "step": "human_approval",
+      "status": "BLOCKED",
+      "detail": "default DENY, no human approval"
+    },
+    {
+      "step": "kill_switch",
+      "status": "BLOCKED",
+      "detail": "kill switch ENABLED_BLOCKING"
+    },
+    {
+      "step": "simulated_adapter",
+      "status": "SIMULATED",
+      "detail": "simulated 5 submits"
+    },
+    {
+      "step": "no_real_submit_proof",
+      "status": "PASS",
+      "detail": "all submits are simulated=True"
+    },
+    {
+      "step": "no_network_proof",
+      "status": "PASS",
+      "detail": "no outbound network calls"
+    },
+    {
+      "step": "no_key_reads_proof",
+      "status": "PASS",
+      "detail": "no real credentials read"
+    }
+  ],
+  "no_real_submit": true,
+  "no_testnet_submit": true,
+  "no_network_calls": true,
+  "no_key_reads": true,
+  "overall": "NO_SUBMIT_SANDBOX_SMOKE_PASS"
+}

@@ -1,0 +1,93 @@
+[
+  {
+    "gap_id": "gap_adapter_interface",
+    "category": "adapter interface",
+    "description": "Testnet sandbox adapter interface designed",
+    "status": "DESIGNED",
+    "blocking": false
+  },
+  {
+    "gap_id": "gap_simulated_adapter",
+    "category": "adapter interface",
+    "description": "Simulated exchange adapter implemented",
+    "status": "SIMULATED_ONLY",
+    "blocking": false
+  },
+  {
+    "gap_id": "gap_credential_vault",
+    "category": "credential vault",
+    "description": "Credential vault stub only, no real keys",
+    "status": "STUB_ONLY",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_human_approval",
+    "category": "human approval",
+    "description": "Human approval gate implemented, default DENY",
+    "status": "DESIGNED",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_risk_controls",
+    "category": "risk controls",
+    "description": "Sandbox risk controls implemented",
+    "status": "DESIGNED",
+    "blocking": false
+  },
+  {
+    "gap_id": "gap_kill_switch",
+    "category": "kill switch",
+    "description": "Kill switch implemented, default BLOCKING",
+    "status": "DESIGNED",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_cancel_safety",
+    "category": "cancel safety",
+    "description": "Order cancel safety simulated only",
+    "status": "SIMULATED_ONLY",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_position_recon",
+    "category": "position reconciliation",
+    "description": "Position reconciliation not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_balance_recon",
+    "category": "balance reconciliation",
+    "description": "Balance reconciliation not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_rate_limits",
+    "category": "rate limits",
+    "description": "Rate limit handling not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_network_failure",
+    "category": "network failure handling",
+    "description": "Network failure handling not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_audit_logging",
+    "category": "audit logging",
+    "description": "Audit logging for sandbox operations not implemented",
+    "status": "MISSING",
+    "blocking": false
+  },
+  {
+    "gap_id": "gap_operator_emergency",
+    "category": "operator emergency procedure",
+    "description": "Operator emergency procedure not implemented",
+    "status": "MISSING",
+    "blocking": true
+  }
+]

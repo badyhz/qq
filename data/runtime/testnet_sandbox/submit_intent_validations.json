@@ -1,0 +1,59 @@
+[
+  {
+    "intent_id": "INT_a6e860c89fbf",
+    "valid": true,
+    "checks": [
+      "required_present: intent_id",
+      "required_present: symbol",
+      "required_present: side",
+      "required_present: order_type",
+      "required_present: quantity",
+      "required_present: price_policy",
+      "required_present: risk_summary",
+      "required_present: source_signal_id",
+      "required_present: approval_status",
+      "required_present: simulated",
+      "required_present: real_submit",
+      "required_present: testnet_submit",
+      "required_present: no_submit_enforced"
+    ]
+  },
+  {
+    "intent_id": "INT_511a76fc7028",
+    "valid": true,
+    "checks": [
+      "required_present: intent_id",
+      "required_present: symbol",
+      "required_present: side",
+      "required_present: order_type",
+      "required_present: quantity",
+      "required_present: price_policy",
+      "required_present: risk_summary",
+      "required_present: source_signal_id",
+      "required_present: approval_status",
+      "required_present: simulated",
+      "required_present: real_submit",
+      "required_present: testnet_submit",
+      "required_present: no_submit_enforced"
+    ]
+  },
+  {
+    "intent_id": "INT_156f373b3b96",
+    "valid": true,
+    "checks": [
+      "required_present: intent_id",
+      "required_present: symbol",
+      "required_present: side",
+      "required_present: order_type",
+      "required_present: quantity",
+      "required_present: price_policy",
+      "required_present: risk_summary",
+      "required_present: source_signal_id",
+      "required_present: approval_status",
+      "required_present: simulated",
+      "required_present: real_submit",
+      "required_present: testnet_submit",
+      "required_present: no_submit_enforced"
+    ]
+  }
+]

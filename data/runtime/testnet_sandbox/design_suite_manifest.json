@@ -1,0 +1,28 @@
+{
+  "manifest_id": "sandbox_20260613T164659.6611",
+  "timestamp": "2026-06-13T16:46:59.661190+00:00",
+  "steps": {
+    "adapter_contract": "PASS",
+    "credential_vault": "PASS",
+    "human_approval": "PASS",
+    "submit_intent": "PASS",
+    "risk_controls": "PASS",
+    "kill_switch": "PASS",
+    "sandbox_smoke": "PASS",
+    "gap_closure": "PASS",
+    "safety_regression": "PASS"
+  },
+  "errors": [],
+  "status": "TESTNET_SANDBOX_DESIGN_SUITE_PASS",
+  "required_statuses": {
+    "TESTNET_SANDBOX_DESIGN_SUITE_PASS": true,
+    "SANDBOX_ADAPTER_INTERFACE_VALID": true,
+    "CREDENTIAL_VAULT_STUB_VALID": true,
+    "HUMAN_APPROVAL_GATE_VALID": true,
+    "NO_SUBMIT_SANDBOX_SMOKE_PASS": true,
+    "KILL_SWITCH_DESIGN_VALID": true,
+    "TESTNET_SANDBOX_NOT_READY_FOR_SUBMIT": true,
+    "REAL_TRADING_NOT_ALLOWED": true,
+    "TESTNET_SUBMIT_NOT_ALLOWED": true
+  }
+}
