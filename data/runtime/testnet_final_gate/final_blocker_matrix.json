@@ -1,0 +1,74 @@
+[
+  {
+    "blocker_id": "blk_cred_vault",
+    "category": "credential",
+    "description": "Real credential vault not implemented",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_exchange_adapter",
+    "category": "adapter",
+    "description": "Real exchange adapter not implemented",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_request_signing",
+    "category": "signing",
+    "description": "Real request signing not implemented",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_network_transport",
+    "category": "transport",
+    "description": "Real network transport not implemented",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_testnet_submit",
+    "category": "submit",
+    "description": "Real testnet submit not implemented",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_cancel_api",
+    "category": "cancel",
+    "description": "Real cancel API not implemented",
+    "status": "BLOCKING"
+  },
+  {
+    "blocker_id": "blk_position_recon",
+    "category": "reconciliation",
+    "description": "Position reconciliation only simulated",
+    "status": "SIMULATED_ONLY"
+  },
+  {
+    "blocker_id": "blk_balance_recon",
+    "category": "reconciliation",
+    "description": "Balance reconciliation only simulated",
+    "status": "SIMULATED_ONLY"
+  },
+  {
+    "blocker_id": "blk_rate_limit",
+    "category": "resilience",
+    "description": "Rate limit handling only simulated",
+    "status": "SIMULATED_ONLY"
+  },
+  {
+    "blocker_id": "blk_approval_legal",
+    "category": "governance",
+    "description": "Operator approval not legally binding",
+    "status": "REQUIRES_HUMAN_REVIEW"
+  },
+  {
+    "blocker_id": "blk_emergency_test",
+    "category": "operations",
+    "description": "Emergency procedure not field-tested",
+    "status": "REQUIRES_HUMAN_REVIEW"
+  },
+  {
+    "blocker_id": "blk_audit_storage",
+    "category": "audit",
+    "description": "Audit log not externally stored",
+    "status": "DESIGNED_ONLY"
+  }
+]

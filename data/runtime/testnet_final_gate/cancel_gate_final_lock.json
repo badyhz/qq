@@ -1,0 +1,11 @@
+{
+  "cancel_gate_state": "LOCKED",
+  "real_cancel_allowed": false,
+  "testnet_cancel_allowed": false,
+  "simulated_cancel_only": true,
+  "blocking_reasons": [
+    "MISSING_REAL_CANCEL_API",
+    "MISSING_REAL_ORDER_TRACKING",
+    "CANCEL_GATE_LOCKED"
+  ]
+}

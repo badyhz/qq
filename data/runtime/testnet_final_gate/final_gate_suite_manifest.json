@@ -1,0 +1,32 @@
+{
+  "manifest_id": "finalgate_20260613T174003.5344",
+  "timestamp": "2026-06-13T17:40:03.534409+00:00",
+  "steps": {
+    "exchange_harness": "PASS",
+    "credential_injection": "PASS",
+    "request_signing": "PASS",
+    "submit_gate": "PASS",
+    "cancel_gate": "PASS",
+    "recon_gate": "PASS",
+    "approval_packet": "PASS",
+    "blocker_matrix": "PASS",
+    "safety_regression": "PASS",
+    "presubmit_review": "PASS"
+  },
+  "errors": [],
+  "status": "EXCHANGE_SANDBOX_FINAL_GATE_SUITE_PASS",
+  "required_statuses": {
+    "EXCHANGE_SANDBOX_FINAL_GATE_SUITE_PASS": true,
+    "EXCHANGE_SANDBOX_DRY_RUN_HARNESS_PASS": true,
+    "CREDENTIAL_INJECTION_REVIEW_PASS": true,
+    "REQUEST_SIGNING_DRY_RUN_VALID": true,
+    "SUBMIT_GATE_FINAL_LOCKED": true,
+    "CANCEL_GATE_FINAL_LOCKED": true,
+    "RECONCILIATION_GATE_FINAL_LOCKED": true,
+    "OPERATOR_APPROVAL_PACKET_V2_VALID": true,
+    "SANDBOX_FINAL_BLOCKER_MATRIX_COMPLETE": true,
+    "TESTNET_SANDBOX_FINAL_GATE_REVIEW_READY": true,
+    "REAL_TRADING_NOT_ALLOWED": true,
+    "TESTNET_SUBMIT_NOT_ALLOWED": true
+  }
+}

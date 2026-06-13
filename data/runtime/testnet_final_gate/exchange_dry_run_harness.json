@@ -1,0 +1,48 @@
+{
+  "steps": [
+    {
+      "step": "load_profile",
+      "status": "SIMULATED",
+      "detail": "profile=binance_testnet, key=REDACTED"
+    },
+    {
+      "step": "validate_permissions",
+      "status": "PASS",
+      "detail": "stub permissions: SPOT_READ, SPOT_TRADE"
+    },
+    {
+      "step": "build_order_request",
+      "status": "SIMULATED",
+      "detail": "BTCUSDT BUY 0.001 LIMIT 50000"
+    },
+    {
+      "step": "simulate_signing",
+      "status": "SIMULATED",
+      "detail": "fake_signature=***REDACTED***"
+    },
+    {
+      "step": "simulate_submit",
+      "status": "SIMULATED",
+      "detail": "SIM_ORD_001 status=SIMULATED_NEW"
+    },
+    {
+      "step": "simulate_cancel",
+      "status": "SIMULATED",
+      "detail": "SIM_ORD_001 status=SIMULATED_CANCELLED"
+    },
+    {
+      "step": "simulate_balance",
+      "status": "SIMULATED",
+      "detail": "USDT=10000 BTC=0.5"
+    },
+    {
+      "step": "simulate_positions",
+      "status": "SIMULATED",
+      "detail": "no positions"
+    }
+  ],
+  "no_network": true,
+  "no_real_key": true,
+  "no_submit": true,
+  "overall": "EXCHANGE_SANDBOX_DRY_RUN_HARNESS_PASS"
+}

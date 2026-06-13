@@ -1,0 +1,8 @@
+{
+  "signing_mode": "DRY_RUN_ONLY",
+  "fake_signature": true,
+  "signature_redacted": true,
+  "real_secret_used": false,
+  "request_sendable": false,
+  "network_called": false
+}

@@ -1,0 +1,11 @@
+{
+  "reconciliation_gate_state": "LOCKED",
+  "reconciliation_mode": "SIMULATED_ONLY",
+  "network_called": false,
+  "submit_allowed": false,
+  "blocking_reasons": [
+    "POSITION_RECON_SIMULATED_ONLY",
+    "BALANCE_RECON_SIMULATED_ONLY",
+    "NO_REAL_EXCHANGE_FETCH"
+  ]
+}

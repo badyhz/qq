@@ -1,0 +1,13 @@
+{
+  "submit_gate_state": "LOCKED",
+  "real_submit_allowed": false,
+  "testnet_submit_allowed": false,
+  "dry_run_review_ready": true,
+  "blocking_reasons": [
+    "MISSING_REAL_CREDENTIAL_VAULT",
+    "MISSING_REAL_EXCHANGE_ADAPTER",
+    "MISSING_HUMAN_APPROVAL_WORKFLOW",
+    "MISSING_KILL_SWITCH_OPERATIONAL_TEST",
+    "MISSING_RECONCILIATION_IMPLEMENTATION"
+  ]
+}

@@ -1,0 +1,917 @@
+[
+  {
+    "check_id": "submit_gate_policy.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "__init__.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "__init__.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "submit_gate_policy.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "reconciliation_gate_policy.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "operator_packet_validator.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "final_blocker_matrix.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "exchange_harness_result.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "submit_gate_final_lock.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "credential_injection_policy.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "request_signing_dry_run.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "credential_injection_review.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "__init__.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "__init__.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "__init__.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "__init__.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "__init__.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "cancel_gate_final_lock.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "reconciliation_gate_final_lock.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "exchange_dry_run_harness.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "cancel_gate_policy.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "operator_approval_packet_v2.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_ccxt",
+    "passed": true,
+    "detail": "ccxt absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_requests",
+    "passed": true,
+    "detail": "requests absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_httpx",
+    "passed": true,
+    "detail": "httpx absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_aiohttp",
+    "passed": true,
+    "detail": "aiohttp absent"
+  },
+  {
+    "check_id": "signature_redaction.py_no_websocket",
+    "passed": true,
+    "detail": "websocket absent"
+  },
+  {
+    "check_id": "submit_gate_locked",
+    "passed": true,
+    "detail": "submit gate uses LOCKED"
+  },
+  {
+    "check_id": "submit_gate_no_real",
+    "passed": true,
+    "detail": "real_submit_allowed=False"
+  },
+  {
+    "check_id": "cancel_gate_locked",
+    "passed": true,
+    "detail": "cancel gate uses LOCKED"
+  },
+  {
+    "check_id": "recon_gate_locked",
+    "passed": true,
+    "detail": "reconciliation gate uses LOCKED"
+  },
+  {
+    "check_id": "signing_dry_run",
+    "passed": true,
+    "detail": "signing uses DRY_RUN_ONLY"
+  },
+  {
+    "check_id": "signing_fake",
+    "passed": true,
+    "detail": "uses fake signature"
+  },
+  {
+    "check_id": "cred_injection_disabled",
+    "passed": true,
+    "detail": "injection disabled"
+  }
+]

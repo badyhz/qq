@@ -1,0 +1,17 @@
+{
+  "packet_id": "APV2_979c2773b7c5",
+  "operator_id": "OP_001",
+  "reviewer_id": "RV_001",
+  "created_at": "2026-06-13T17:40:03.557281+00:00",
+  "expires_at": "2026-06-13T18:40:03.557281+00:00",
+  "submit_intent_summary": "3 simulated intents: BTCUSDT BUY, ETHUSDT SELL, BNBUSDT BUY",
+  "credential_review_summary": "REVIEW_STUB_ONLY, no real credentials",
+  "risk_control_summary": "9/9 checks passed, max notional $50",
+  "kill_switch_summary": "ENABLED_BLOCKING, submit blocked",
+  "cancel_plan_summary": "Cancel all open simulated orders",
+  "reconciliation_summary": "SIMULATED_ONLY, all MATCH",
+  "audit_log_summary": "8 events, chain valid, no tampering",
+  "rollback_plan": "Restore to last known good state",
+  "emergency_procedure_reference": "deployment/runtime_dry_run/operator_emergency_procedure.md",
+  "no_submit_declaration": "I confirm no real submit will occur in this phase"
+}
