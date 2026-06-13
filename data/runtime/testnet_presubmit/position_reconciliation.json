@@ -1,0 +1,31 @@
+{
+  "reconciliation_mode": "SIMULATED_ONLY",
+  "network_called": false,
+  "submit_allowed": false,
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "status": "MATCH",
+      "checks": [
+        "quantity_match",
+        "side_match"
+      ]
+    },
+    {
+      "symbol": "ETHUSDT",
+      "status": "MATCH",
+      "checks": [
+        "quantity_match",
+        "side_match"
+      ]
+    },
+    {
+      "symbol": "BNBUSDT",
+      "status": "MATCH",
+      "checks": [
+        "quantity_match",
+        "side_match"
+      ]
+    }
+  ]
+}

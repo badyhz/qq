@@ -1,0 +1,17 @@
+{
+  "total": 6,
+  "all_simulated": true,
+  "all_no_real_cancel": true,
+  "all_no_network": true,
+  "all_no_submit_enforced": true,
+  "valid_cancels": [
+    "CXL_182a5b2da040",
+    "CXL_03ce7f8050ae"
+  ],
+  "blocked_cancels": [
+    "CXL_7ed5823eae96",
+    "CXL_1ab90669b455",
+    "CXL_55b816952c35",
+    "CXL_def2e01bfb0c"
+  ]
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "method": "load_connection_profile_stub",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  },
+  {
+    "method": "validate_permissions_stub",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  },
+  {
+    "method": "build_signed_request_stub",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  },
+  {
+    "method": "simulate_network_submit",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  },
+  {
+    "method": "simulate_network_cancel",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  },
+  {
+    "method": "simulate_fetch_order_status",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  },
+  {
+    "method": "simulate_fetch_balance",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  },
+  {
+    "method": "simulate_fetch_positions",
+    "present": true,
+    "simulation_only": true,
+    "has_safety_flags": true
+  }
+]

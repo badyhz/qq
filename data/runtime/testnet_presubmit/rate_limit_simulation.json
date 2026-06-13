@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "rule_id": "general",
+      "max_requests_per_minute": 1200,
+      "max_order_requests_per_minute": 10,
+      "cool_down_seconds": 60.0,
+      "retry_blocked": true,
+      "backoff_plan": "exponential: 1s, 2s, 4s, 8s, 16s, 32s, 60s"
+    },
+    {
+      "rule_id": "order",
+      "max_requests_per_minute": 10,
+      "max_order_requests_per_minute": 10,
+      "cool_down_seconds": 60.0,
+      "retry_blocked": true,
+      "backoff_plan": "exponential: 1s, 2s, 4s, 8s, 16s, 32s, 60s"
+    },
+    {
+      "rule_id": "cancel",
+      "max_requests_per_minute": 10,
+      "max_order_requests_per_minute": 10,
+      "cool_down_seconds": 60.0,
+      "retry_blocked": true,
+      "backoff_plan": "exponential: 1s, 2s, 4s, 8s, 16s, 32s, 60s"
+    }
+  ],
+  "exceeded": false,
+  "action_taken": "OK: within limits",
+  "no_real_sleep": true
+}

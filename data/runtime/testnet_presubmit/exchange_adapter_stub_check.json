@@ -1,0 +1,74 @@
+[
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "load_connection_profile_stub",
+    "detail": "stub profile loaded, no real connection"
+  },
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "validate_permissions_stub",
+    "detail": "stub permissions validated, no real API call"
+  },
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "build_signed_request_stub",
+    "detail": "stub signature built, no real signing"
+  },
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "simulate_network_submit",
+    "detail": "simulated BUY 0.001 BTCUSDT, no network call"
+  },
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "simulate_network_cancel",
+    "detail": "simulated cancel SIM_ORD_001, no network call"
+  },
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "simulate_fetch_order_status",
+    "detail": "simulated status for SIM_ORD_001, no network call"
+  },
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "simulate_fetch_balance",
+    "detail": "simulated balance fetch, no network call"
+  },
+  {
+    "stub_only": true,
+    "network_called": false,
+    "real_submit": false,
+    "testnet_submit": false,
+    "no_submit_enforced": true,
+    "method": "simulate_fetch_positions",
+    "detail": "simulated positions fetch, no network call"
+  }
+]

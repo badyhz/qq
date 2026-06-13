@@ -1,0 +1,34 @@
+{
+  "manifest_id": "presubmit_20260613T172012.5354",
+  "timestamp": "2026-06-13T17:20:12.535423+00:00",
+  "steps": {
+    "credential_vault_review": "PASS",
+    "exchange_adapter_stub": "PASS",
+    "cancel_safety": "PASS",
+    "position_reconciliation": "PASS",
+    "balance_reconciliation": "PASS",
+    "failure_modes": "PASS",
+    "audit_log": "PASS",
+    "emergency_procedure": "PASS",
+    "approval_hardening": "PASS",
+    "sandbox_design": "PASS"
+  },
+  "errors": [],
+  "status": "TESTNET_PRE_SUBMIT_REVIEW_SUITE_PASS",
+  "required_statuses": {
+    "TESTNET_PRE_SUBMIT_REVIEW_SUITE_PASS": true,
+    "CREDENTIAL_VAULT_REVIEW_PASS": true,
+    "EXCHANGE_SANDBOX_ADAPTER_STUB_VALID": true,
+    "CANCEL_SAFETY_SIMULATION_PASS": true,
+    "POSITION_RECONCILIATION_SIMULATION_PASS": true,
+    "BALANCE_RECONCILIATION_SIMULATION_PASS": true,
+    "RATE_LIMIT_SIMULATION_PASS": true,
+    "NETWORK_FAILURE_SIMULATION_PASS": true,
+    "AUDIT_LOG_DESIGN_VALID": true,
+    "OPERATOR_EMERGENCY_PROCEDURE_VALID": true,
+    "HUMAN_APPROVAL_HARDENED": true,
+    "TESTNET_SANDBOX_PRE_SUBMIT_REVIEW_READY": true,
+    "REAL_TRADING_NOT_ALLOWED": true,
+    "TESTNET_SUBMIT_NOT_ALLOWED": true
+  }
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "check_id": "request_created",
+    "passed": true,
+    "detail": "request_id=HAPR_344d4cb39d7a"
+  },
+  {
+    "check_id": "validation_passes",
+    "passed": true,
+    "detail": "checks=9"
+  },
+  {
+    "check_id": "approval_blocks_submit",
+    "passed": true,
+    "detail": "submit_allowed=False"
+  },
+  {
+    "check_id": "approval_blocks_approved",
+    "passed": true,
+    "detail": "approved=False"
+  },
+  {
+    "check_id": "stale_expiration_present",
+    "passed": true,
+    "detail": "stale request validated"
+  },
+  {
+    "check_id": "missing_reviewer_blocks",
+    "passed": true,
+    "detail": "missing reviewer detected"
+  }
+]

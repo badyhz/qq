@@ -1,0 +1,55 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "nf_timeout",
+      "failure_type": "timeout",
+      "handled": true,
+      "action": "retry with backoff, max 3 retries",
+      "network_called": false
+    },
+    {
+      "scenario_id": "nf_connection",
+      "failure_type": "connection_error",
+      "handled": true,
+      "action": "fail fast, report to operator",
+      "network_called": false
+    },
+    {
+      "scenario_id": "nf_partial",
+      "failure_type": "partial_response",
+      "handled": true,
+      "action": "reject partial, request full snapshot",
+      "network_called": false
+    },
+    {
+      "scenario_id": "nf_malformed",
+      "failure_type": "malformed_response",
+      "handled": true,
+      "action": "reject, log raw response",
+      "network_called": false
+    },
+    {
+      "scenario_id": "nf_duplicate",
+      "failure_type": "duplicate_response",
+      "handled": true,
+      "action": "dedup by order_id, ignore duplicate",
+      "network_called": false
+    },
+    {
+      "scenario_id": "nf_ooo",
+      "failure_type": "out_of_order",
+      "handled": true,
+      "action": "reject stale sequence, request fresh",
+      "network_called": false
+    },
+    {
+      "scenario_id": "nf_stale",
+      "failure_type": "stale_response",
+      "handled": true,
+      "action": "reject if older than 5s, request fresh",
+      "network_called": false
+    }
+  ],
+  "all_handled": true,
+  "no_real_network": true
+}

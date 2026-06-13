@@ -1,0 +1,31 @@
+{
+  "reconciliation_mode": "SIMULATED_ONLY",
+  "network_called": false,
+  "submit_allowed": false,
+  "results": [
+    {
+      "asset": "USDT",
+      "status": "MATCH",
+      "checks": [
+        "free_match",
+        "total_match"
+      ]
+    },
+    {
+      "asset": "BTC",
+      "status": "MATCH",
+      "checks": [
+        "free_match",
+        "total_match"
+      ]
+    },
+    {
+      "asset": "ETH",
+      "status": "MATCH",
+      "checks": [
+        "free_match",
+        "total_match"
+      ]
+    }
+  ]
+}
