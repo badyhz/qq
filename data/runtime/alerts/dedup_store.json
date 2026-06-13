@@ -1,0 +1,499 @@
+[
+  {
+    "dedup_key": "ba134e041aeaacfb",
+    "first_seen": "2026-06-13T16:03:56.957742+00:00",
+    "last_seen": "2026-06-13T16:07:19.414952+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "91ec6b04536d273a",
+    "first_seen": "2026-06-13T16:03:56.957751+00:00",
+    "last_seen": "2026-06-13T16:07:19.414962+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "c0937214f2f55157",
+    "first_seen": "2026-06-13T16:03:56.957756+00:00",
+    "last_seen": "2026-06-13T16:07:19.414967+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "576f786cbd31fc21",
+    "first_seen": "2026-06-13T16:03:56.957761+00:00",
+    "last_seen": "2026-06-13T16:07:19.414972+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "4a2fadb19c1398de",
+    "first_seen": "2026-06-13T16:03:56.957766+00:00",
+    "last_seen": "2026-06-13T16:07:19.414977+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "6f6869e2c2976314",
+    "first_seen": "2026-06-13T16:03:56.957771+00:00",
+    "last_seen": "2026-06-13T16:07:19.414982+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "18f6d19c3a8ded27",
+    "first_seen": "2026-06-13T16:03:56.957775+00:00",
+    "last_seen": "2026-06-13T16:07:19.414986+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "ed057b4701d07941",
+    "first_seen": "2026-06-13T16:03:56.957780+00:00",
+    "last_seen": "2026-06-13T16:07:19.414991+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "1b9dce1d372b390e",
+    "first_seen": "2026-06-13T16:03:56.957784+00:00",
+    "last_seen": "2026-06-13T16:07:19.414996+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "453f814fcaf13804",
+    "first_seen": "2026-06-13T16:03:56.957788+00:00",
+    "last_seen": "2026-06-13T16:07:19.415000+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "d5e49af526190c3f",
+    "first_seen": "2026-06-13T16:03:56.957793+00:00",
+    "last_seen": "2026-06-13T16:07:19.415005+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "f59fa6ea914226cb",
+    "first_seen": "2026-06-13T16:03:56.957797+00:00",
+    "last_seen": "2026-06-13T16:07:19.415009+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "3ee19917bc196c1a",
+    "first_seen": "2026-06-13T16:03:56.957801+00:00",
+    "last_seen": "2026-06-13T16:07:19.415014+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "75f680072610c298",
+    "first_seen": "2026-06-13T16:03:56.957805+00:00",
+    "last_seen": "2026-06-13T16:07:19.415018+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "4f9caeac233ba918",
+    "first_seen": "2026-06-13T16:03:56.957809+00:00",
+    "last_seen": "2026-06-13T16:07:19.415023+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "5d16355155be1fe8",
+    "first_seen": "2026-06-13T16:03:56.957814+00:00",
+    "last_seen": "2026-06-13T16:07:19.415027+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "e993cba94aa4c56b",
+    "first_seen": "2026-06-13T16:03:56.957818+00:00",
+    "last_seen": "2026-06-13T16:07:19.415032+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "0750dcb476452ced",
+    "first_seen": "2026-06-13T16:03:56.957822+00:00",
+    "last_seen": "2026-06-13T16:07:19.415036+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "351436f0a911058b",
+    "first_seen": "2026-06-13T16:03:56.957826+00:00",
+    "last_seen": "2026-06-13T16:07:19.415041+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "61d92ea306d36f54",
+    "first_seen": "2026-06-13T16:03:56.957830+00:00",
+    "last_seen": "2026-06-13T16:07:19.415045+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "72af3d12a8c007e5",
+    "first_seen": "2026-06-13T16:03:56.957835+00:00",
+    "last_seen": "2026-06-13T16:07:19.415050+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "e664c7c621861ffe",
+    "first_seen": "2026-06-13T16:03:56.957839+00:00",
+    "last_seen": "2026-06-13T16:07:19.415054+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "03c765985c462a9d",
+    "first_seen": "2026-06-13T16:03:56.957843+00:00",
+    "last_seen": "2026-06-13T16:07:19.415059+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "7bb586664575ce7e",
+    "first_seen": "2026-06-13T16:03:56.957848+00:00",
+    "last_seen": "2026-06-13T16:07:19.415063+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "51d38794556a6443",
+    "first_seen": "2026-06-13T16:03:56.957852+00:00",
+    "last_seen": "2026-06-13T16:07:19.415067+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "afa428919255c96f",
+    "first_seen": "2026-06-13T16:03:56.957856+00:00",
+    "last_seen": "2026-06-13T16:07:19.415072+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "f7286c3f8b4967f7",
+    "first_seen": "2026-06-13T16:03:56.957861+00:00",
+    "last_seen": "2026-06-13T16:07:19.415076+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "5c4702a5678e30e7",
+    "first_seen": "2026-06-13T16:03:56.957865+00:00",
+    "last_seen": "2026-06-13T16:07:19.415081+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "5f5efa402b32db2b",
+    "first_seen": "2026-06-13T16:03:56.957869+00:00",
+    "last_seen": "2026-06-13T16:07:19.415085+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "5ee32cef41be6cdb",
+    "first_seen": "2026-06-13T16:03:56.957874+00:00",
+    "last_seen": "2026-06-13T16:07:19.415090+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "ac913397ea809756",
+    "first_seen": "2026-06-13T16:03:56.957878+00:00",
+    "last_seen": "2026-06-13T16:07:19.415094+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "dbf4fca783391cf2",
+    "first_seen": "2026-06-13T16:03:56.957882+00:00",
+    "last_seen": "2026-06-13T16:07:19.415099+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "d9c1554dcb36a2ac",
+    "first_seen": "2026-06-13T16:03:56.957886+00:00",
+    "last_seen": "2026-06-13T16:07:19.415103+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "3312ca98b233cc1c",
+    "first_seen": "2026-06-13T16:03:56.957891+00:00",
+    "last_seen": "2026-06-13T16:07:19.415108+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "7988859c18ef1a80",
+    "first_seen": "2026-06-13T16:03:56.957895+00:00",
+    "last_seen": "2026-06-13T16:07:19.415112+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "85373c08a4827130",
+    "first_seen": "2026-06-13T16:03:56.957899+00:00",
+    "last_seen": "2026-06-13T16:07:19.415117+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "bf12e1ad9d3e74f5",
+    "first_seen": "2026-06-13T16:03:56.957904+00:00",
+    "last_seen": "2026-06-13T16:07:19.415121+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "308f07d311a5b481",
+    "first_seen": "2026-06-13T16:03:56.957908+00:00",
+    "last_seen": "2026-06-13T16:07:19.415126+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "9da3fb66dd5293bd",
+    "first_seen": "2026-06-13T16:03:56.957912+00:00",
+    "last_seen": "2026-06-13T16:07:19.415130+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "16442302a63688a2",
+    "first_seen": "2026-06-13T16:03:56.957917+00:00",
+    "last_seen": "2026-06-13T16:07:19.415135+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "337b3c9616cea5d2",
+    "first_seen": "2026-06-13T16:03:56.957921+00:00",
+    "last_seen": "2026-06-13T16:07:19.415139+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "209b208e184c98d8",
+    "first_seen": "2026-06-13T16:03:56.957925+00:00",
+    "last_seen": "2026-06-13T16:07:19.415144+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "8483ed2e360b2b23",
+    "first_seen": "2026-06-13T16:03:56.957929+00:00",
+    "last_seen": "2026-06-13T16:07:19.415148+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "5b83bcc0e5592fec",
+    "first_seen": "2026-06-13T16:03:56.957934+00:00",
+    "last_seen": "2026-06-13T16:07:19.415152+00:00",
+    "count": 4,
+    "last_severity": "WARNING"
+  },
+  {
+    "dedup_key": "54023694327ffcf7",
+    "first_seen": "2026-06-13T16:03:56.957938+00:00",
+    "last_seen": "2026-06-13T16:07:19.415157+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "648039628b899c20",
+    "first_seen": "2026-06-13T16:03:56.957942+00:00",
+    "last_seen": "2026-06-13T16:07:19.415161+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "a4ac176e15aa4233",
+    "first_seen": "2026-06-13T16:03:56.957947+00:00",
+    "last_seen": "2026-06-13T16:07:19.415165+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "fa9a5c445453b589",
+    "first_seen": "2026-06-13T16:03:56.957951+00:00",
+    "last_seen": "2026-06-13T16:07:19.415170+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "07b67899f955b238",
+    "first_seen": "2026-06-13T16:03:56.957955+00:00",
+    "last_seen": "2026-06-13T16:07:19.415174+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "fbf396652dcb255e",
+    "first_seen": "2026-06-13T16:03:56.957959+00:00",
+    "last_seen": "2026-06-13T16:07:19.415179+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "224fed4ce0bb5499",
+    "first_seen": "2026-06-13T16:03:56.957964+00:00",
+    "last_seen": "2026-06-13T16:07:19.415183+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "0957ddb5c646c40d",
+    "first_seen": "2026-06-13T16:03:56.957968+00:00",
+    "last_seen": "2026-06-13T16:07:19.415188+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "05c661fa3dc9e903",
+    "first_seen": "2026-06-13T16:03:56.957972+00:00",
+    "last_seen": "2026-06-13T16:07:19.415192+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "e3cc6e14eb2e5928",
+    "first_seen": "2026-06-13T16:03:56.957976+00:00",
+    "last_seen": "2026-06-13T16:07:19.415196+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "556221f01f118fd1",
+    "first_seen": "2026-06-13T16:03:56.957981+00:00",
+    "last_seen": "2026-06-13T16:07:19.415201+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "7cb2632c880a4594",
+    "first_seen": "2026-06-13T16:03:56.957985+00:00",
+    "last_seen": "2026-06-13T16:07:19.415205+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "5a046ab23d2e972d",
+    "first_seen": "2026-06-13T16:03:56.957989+00:00",
+    "last_seen": "2026-06-13T16:07:19.415210+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "5926543ebf0725af",
+    "first_seen": "2026-06-13T16:03:56.957994+00:00",
+    "last_seen": "2026-06-13T16:07:19.415214+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "496270866069089e",
+    "first_seen": "2026-06-13T16:03:56.957998+00:00",
+    "last_seen": "2026-06-13T16:07:19.415218+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "53e3059a24692901",
+    "first_seen": "2026-06-13T16:03:56.958002+00:00",
+    "last_seen": "2026-06-13T16:07:19.415223+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "6678f574d35a33f1",
+    "first_seen": "2026-06-13T16:03:56.958007+00:00",
+    "last_seen": "2026-06-13T16:07:19.415227+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "a2d4d007f2c460be",
+    "first_seen": "2026-06-13T16:03:56.958011+00:00",
+    "last_seen": "2026-06-13T16:07:19.415232+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "158fd16924cdc342",
+    "first_seen": "2026-06-13T16:03:56.958015+00:00",
+    "last_seen": "2026-06-13T16:07:19.415236+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "3a086a46de833340",
+    "first_seen": "2026-06-13T16:03:56.958020+00:00",
+    "last_seen": "2026-06-13T16:07:19.415241+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "aea20bfe8323d208",
+    "first_seen": "2026-06-13T16:03:56.958024+00:00",
+    "last_seen": "2026-06-13T16:07:19.415245+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "28b1fe91abcaf6d9",
+    "first_seen": "2026-06-13T16:03:56.958029+00:00",
+    "last_seen": "2026-06-13T16:07:19.415249+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "ee132e258900f28e",
+    "first_seen": "2026-06-13T16:03:56.958033+00:00",
+    "last_seen": "2026-06-13T16:07:19.415254+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "92ebb535f092e101",
+    "first_seen": "2026-06-13T16:03:56.958037+00:00",
+    "last_seen": "2026-06-13T16:07:19.415258+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "f2fdecd84e2335ed",
+    "first_seen": "2026-06-13T16:03:56.958042+00:00",
+    "last_seen": "2026-06-13T16:07:19.415262+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "aa4c75390440e1d1",
+    "first_seen": "2026-06-13T16:03:56.958046+00:00",
+    "last_seen": "2026-06-13T16:07:19.415267+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  },
+  {
+    "dedup_key": "b0f625c5b9a90986",
+    "first_seen": "2026-06-13T16:03:56.958051+00:00",
+    "last_seen": "2026-06-13T16:07:19.415272+00:00",
+    "count": 4,
+    "last_severity": "INFO"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "run_count": 1,
+  "step_count": 10,
+  "signal_count": 35,
+  "alert_count": 71,
+  "dedup_suppressed_count": 0,
+  "simulated_intent_count": 9,
+  "simulated_fill_count": 9,
+  "simulated_reject_count": 0,
+  "no_submit_evidence_count": 3,
+  "warning_count": 0,
+  "blocker_count": 0,
+  "artifact_count": 26,
+  "dashboard_generated": true
+}

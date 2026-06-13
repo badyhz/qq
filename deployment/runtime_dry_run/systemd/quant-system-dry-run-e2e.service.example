@@ -1,0 +1,17 @@
+# EXAMPLE ONLY — do not install directly
+# Review and customize before any server deployment
+
+[Unit]
+Description=Quant System Dry-run E2E Pipeline
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/quant-system
+ExecStart=/usr/bin/python3 scripts/run_system_dry_run_e2e.py
+Environment=QQ_MODE=DRY_RUN
+Environment=QQ_SUBMIT_PERMISSION=NO_SUBMIT
+Environment=PYTHONPATH=/opt/quant-system
+
+[Install]
+WantedBy=multi-user.target

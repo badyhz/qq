@@ -1,0 +1,87 @@
+[
+  {
+    "check_name": "state_file_exists",
+    "passed": true,
+    "detail": "system_state.json found"
+  },
+  {
+    "check_name": "state_has_current_mode",
+    "passed": true,
+    "detail": "Field current_mode found"
+  },
+  {
+    "check_name": "state_has_submit_permission",
+    "passed": true,
+    "detail": "Field submit_permission found"
+  },
+  {
+    "check_name": "state_has_runtime_stats",
+    "passed": true,
+    "detail": "Field runtime_stats found"
+  },
+  {
+    "check_name": "real_submit_blocked",
+    "passed": true,
+    "detail": "real_submit_allowed=False"
+  },
+  {
+    "check_name": "dry_run_enabled",
+    "passed": true,
+    "detail": "dry_run=True"
+  },
+  {
+    "check_name": "dashboard_exists",
+    "passed": true,
+    "detail": "operator_dashboard.html found"
+  },
+  {
+    "check_name": "dashboard_contains_ACTUAL_DRY_RUN",
+    "passed": true,
+    "detail": "'ACTUAL_DRY_RUN' found"
+  },
+  {
+    "check_name": "dashboard_contains_NO_SUBMIT",
+    "passed": true,
+    "detail": "'NO_SUBMIT' found"
+  },
+  {
+    "check_name": "dashboard_contains_NOT_ALLOWED",
+    "passed": true,
+    "detail": "'NOT ALLOWED' found"
+  },
+  {
+    "check_name": "dashboard_contains_HEALTHY",
+    "passed": true,
+    "detail": "'HEALTHY' found"
+  },
+  {
+    "check_name": "dashboard_no_cdn_",
+    "passed": true,
+    "detail": "'cdn.' absent (good)"
+  },
+  {
+    "check_name": "dashboard_no_googleapis_com",
+    "passed": true,
+    "detail": "'googleapis.com' absent (good)"
+  },
+  {
+    "check_name": "dashboard_no_cloudflare",
+    "passed": true,
+    "detail": "'cloudflare' absent (good)"
+  },
+  {
+    "check_name": "dashboard_no_REAL_SUBMIT_ALLOWED",
+    "passed": true,
+    "detail": "'REAL_SUBMIT_ALLOWED' absent (good)"
+  },
+  {
+    "check_name": "dashboard_no_LIVE_TRADING",
+    "passed": true,
+    "detail": "'LIVE_TRADING' absent (good)"
+  },
+  {
+    "check_name": "no_external_network",
+    "passed": true,
+    "detail": "No external URLs"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "data/runtime/research/watchlist_evidence.jsonl": "678604fb52c36e3e8cda8958a2127d0b8eecd464baa9726a3fb054a6c56963d2",
+  "data/runtime/research/research_source_status.json": "97e18b92bfce9c94556464031208b4896c0615d5afca235e6b94dd66203845a2",
+  "data/runtime/shadow/signals.jsonl": "791e48d2ae971391d49627a6755e5104cd1e52b94c87c062261779a22585644b",
+  "data/runtime/shadow/scorecard.json": "9605b485aae03e0d24d00427a535b896ff3b0ffd86f422a9f16a1697395db56d",
+  "data/runtime/shadow/promotion_evidence.jsonl": "a01b0ae01d824ca6c75bcebd6767d59e20fb1b101e12d2defdf950b7aeaa6a35",
+  "data/runtime/testnet_sim/order_intents.jsonl": "3f31e456b83928d5089ae2a5b96de9f459d91e0e7b004adc79393bfc78652e5f",
+  "data/runtime/testnet_sim/order_lifecycle.jsonl": "18c1cb4da06b7a9730ee398c17c0d323b7e77aeccd45bab45e7d02da6f289288",
+  "data/runtime/testnet_sim/no_submit_evidence.jsonl": "51d4466c15182f2ea4687cbc54575b1f8bf59b174d3d846f7204861da87777d9",
+  "data/runtime/alerts/alerts.jsonl": "ab5c34236760a16a2553aead12bee41b9cae6d41ad11215e0cca8a8c1913c7ff",
+  "data/runtime/alerts/feishu_dry_run_payloads.jsonl": "3da3a2e900b2c05d7ca8cf52c5b9202f52b40304cdef7d8bd12addf3d4bbb347",
+  "data/runtime/operator/system_state.json": "a9d253faeb6385f8d1cfcc76c181f6d4a3fb5c16cfe77f1e680ec292bf4b7e8b",
+  "data/runtime/e2e/run_manifest.json": "9b8f5ee63a8f6c0b092e0026c188784fb157ed6c5d35012aaa7889bcbfc2e022",
+  "reports/operator_dashboard.html": "91ae4142bea16c1bc8c44299b2825c6e452f6578518f8102c111f40274be5f94",
+  "reports/system_dry_run_e2e_report.md": "841d387e48847f1a4ca6060037ee4e23758e43e4bdcdbfa39907a3e73c13adb2"
+}

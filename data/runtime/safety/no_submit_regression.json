@@ -1,0 +1,72 @@
+[
+  {
+    "check_id": "no_import_core_live_runner",
+    "passed": true,
+    "detail": "Module core.live_runner not imported (good)"
+  },
+  {
+    "check_id": "no_import_scripts_live_playbook",
+    "passed": true,
+    "detail": "Module scripts.live_playbook not imported (good)"
+  },
+  {
+    "check_id": "no_import_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "Module scripts.submit_approved_candidates not imported (good)"
+  },
+  {
+    "check_id": "no_import_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "Module scripts.submit_replayed_testnet_payload not imported (good)"
+  },
+  {
+    "check_id": "no_import_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "Module scripts.run_testnet_order_smoke not imported (good)"
+  },
+  {
+    "check_id": "no_import_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "Module scripts.safe_flatten_testnet_symbol not imported (good)"
+  },
+  {
+    "check_id": "lifecycle_all_dry_run",
+    "passed": true,
+    "detail": "dry_run=True"
+  },
+  {
+    "check_id": "lifecycle_all_no_real",
+    "passed": true,
+    "detail": "no_real_action=True"
+  },
+  {
+    "check_id": "no_submit_evidence_exists",
+    "passed": true,
+    "detail": "evidence file found"
+  },
+  {
+    "check_id": "manifest_status_pass",
+    "passed": true,
+    "detail": "status=SYSTEM_DRY_RUN_E2E_PASS"
+  },
+  {
+    "check_id": "state_real_submit_blocked",
+    "passed": true,
+    "detail": "real_submit_allowed=False"
+  },
+  {
+    "check_id": "state_testnet_submit_blocked",
+    "passed": true,
+    "detail": "testnet_submit_allowed=False"
+  },
+  {
+    "check_id": "state_dry_run",
+    "passed": true,
+    "detail": "dry_run=True"
+  },
+  {
+    "check_id": "dashboard_no_submit_banner",
+    "passed": true,
+    "detail": "safety banner present"
+  }
+]

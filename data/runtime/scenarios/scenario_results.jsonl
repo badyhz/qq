@@ -1,0 +1,5 @@
+{"scenario_name": "alert_duplicates", "status": "PASS", "steps_completed": 10, "errors": [], "warnings": [], "timestamp": "2026-06-13T16:07:19.381315+00:00"}
+{"scenario_name": "baseline", "status": "PASS", "steps_completed": 10, "errors": [], "warnings": [], "timestamp": "2026-06-13T16:07:19.386920+00:00"}
+{"scenario_name": "high_signal_count", "status": "PASS", "steps_completed": 10, "errors": [], "warnings": [], "timestamp": "2026-06-13T16:07:19.393160+00:00"}
+{"scenario_name": "malformed_research", "status": "PASS_WITH_WARNINGS", "steps_completed": 10, "errors": [], "warnings": ["Expected 1 warnings but got none"], "timestamp": "2026-06-13T16:07:19.402544+00:00"}
+{"scenario_name": "no_signals", "status": "PASS", "steps_completed": 10, "errors": [], "warnings": [], "timestamp": "2026-06-13T16:07:19.407174+00:00"}

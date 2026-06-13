@@ -1,0 +1,36 @@
+{
+  "status": "OK",
+  "checks": [
+    {
+      "name": "signals_exist",
+      "ok": true,
+      "detail": "signals=35"
+    },
+    {
+      "name": "alerts_exist",
+      "ok": true,
+      "detail": "alerts=71"
+    },
+    {
+      "name": "no_submit_evidence",
+      "ok": true,
+      "detail": "evidence=3"
+    },
+    {
+      "name": "dashboard_generated",
+      "ok": true,
+      "detail": "dashboard HTML exists"
+    },
+    {
+      "name": "no_blockers",
+      "ok": true,
+      "detail": "blockers=0"
+    },
+    {
+      "name": "no_warnings",
+      "ok": true,
+      "detail": "warnings=0"
+    }
+  ],
+  "summary": "status=OK, warnings=0, blockers=0"
+}

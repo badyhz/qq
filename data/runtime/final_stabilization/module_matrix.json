@@ -1,0 +1,12 @@
+[
+  {"name": "replay_harness", "wave": 1, "status": "COMPLETE"},
+  {"name": "scenario_suite", "wave": 2, "status": "COMPLETE"},
+  {"name": "alert_dedup_persistence", "wave": 3, "status": "COMPLETE"},
+  {"name": "artifact_integrity", "wave": 4, "status": "COMPLETE"},
+  {"name": "dashboard_regression", "wave": 5, "status": "COMPLETE"},
+  {"name": "observability", "wave": 6, "status": "COMPLETE"},
+  {"name": "no_submit_regression", "wave": 7, "status": "COMPLETE"},
+  {"name": "server_readiness", "wave": 8, "status": "COMPLETE"},
+  {"name": "stabilization_suite", "wave": 9, "status": "COMPLETE"},
+  {"name": "final_handoff", "wave": 10, "status": "COMPLETE"}
+]

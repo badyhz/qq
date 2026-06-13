@@ -1,0 +1,17 @@
+{
+  "manifest_id": "stab_20260613T160719.2560",
+  "timestamp": "2026-06-13T16:07:19.256088+00:00",
+  "steps": {
+    "e2e": "SYSTEM_DRY_RUN_E2E_PASS",
+    "replay": "PASS",
+    "scenarios": "PASS",
+    "alert_dedup": "PASS",
+    "artifact_integrity": "PASS",
+    "dashboard_regression": "PASS",
+    "observability": "PASS",
+    "no_submit_regression": "PASS",
+    "server_readiness": "PASS"
+  },
+  "errors": [],
+  "status": "RUNTIME_STABILIZATION_SUITE_PASS"
+}
