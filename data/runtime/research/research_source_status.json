@@ -1,0 +1,20 @@
+[
+  {
+    "source_name": "x_aleabitoreddit_2026-05-21_2026-05-28_imported.jsonl",
+    "items_loaded": 85,
+    "status": "LOADED",
+    "error": null
+  },
+  {
+    "source_name": "x_aleabitoreddit_latest.jsonl",
+    "items_loaded": 0,
+    "status": "EMPTY",
+    "error": null
+  },
+  {
+    "source_name": "runtime/research/scored_watchlist.json",
+    "items_loaded": 0,
+    "status": "EMPTY",
+    "error": null
+  }
+]

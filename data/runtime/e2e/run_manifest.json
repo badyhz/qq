@@ -1,0 +1,19 @@
+{
+  "run_id": "e2e_20260613T155228.2480",
+  "timestamp": "2026-06-13T15:52:28.248010+00:00",
+  "steps_completed": [
+    "research_source_loading",
+    "watchlist_scoring",
+    "shadow_runtime",
+    "promotion_evidence",
+    "testnet_simulation",
+    "alert_runtime",
+    "feishu_payloads",
+    "operator_state",
+    "dashboard"
+  ],
+  "errors": [],
+  "status": "SYSTEM_DRY_RUN_E2E_PASS",
+  "real_trading": "NOT_ALLOWED",
+  "testnet_submit": "NOT_ALLOWED"
+}

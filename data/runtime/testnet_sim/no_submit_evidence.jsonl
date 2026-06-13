@@ -1,0 +1,20 @@
+[
+  {
+    "evidence_type": "no_real_submit",
+    "dry_run": true,
+    "events_count": 9,
+    "timestamp": "2026-06-13T15:52:28.295547+00:00"
+  },
+  {
+    "evidence_type": "no_real_exchange_call",
+    "dry_run": true,
+    "events_count": 0,
+    "timestamp": "2026-06-13T15:52:28.295547+00:00"
+  },
+  {
+    "evidence_type": "no_real_api_key_read",
+    "dry_run": true,
+    "events_count": 0,
+    "timestamp": "2026-06-13T15:52:28.295547+00:00"
+  }
+]

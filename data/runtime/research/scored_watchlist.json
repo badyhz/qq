@@ -1,0 +1,317 @@
+[
+  {
+    "ticker": "AAOI",
+    "mention_count": 5,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 1.0,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "AXTI",
+    "mention_count": 8,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 1.0,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "SIVE",
+    "mention_count": 18,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 1.0,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "SOI",
+    "mention_count": 6,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 1.0,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "XFAB",
+    "mention_count": 5,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 1.0,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "IQE",
+    "mention_count": 4,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.8,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "LITE",
+    "mention_count": 4,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.8,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "NVDA",
+    "mention_count": 4,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.8,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "RPI",
+    "mention_count": 3,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.6,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "JBL",
+    "mention_count": 2,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.4,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "NOK",
+    "mention_count": 2,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.4,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "AMD",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "AMZN",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "COHR",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "EWY",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "GFS",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "IBKR",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "LASR",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "LPK",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "LPKFF",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "MSFT",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "MTRN",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "MTSI",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "MU",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "NVTS",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "PL",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "POET",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "POWI",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "RDDT",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "RKLB",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "SLOIF",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "SNDK",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "SPCX",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "TSLA",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  },
+  {
+    "ticker": "WOLF",
+    "mention_count": 1,
+    "sources": [
+      "research/x_aleabitoreddit_2026-05-21_2026-05-28.md"
+    ],
+    "score": 0.2,
+    "signal_type": "research_mention"
+  }
+]

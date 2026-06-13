@@ -1,0 +1,9 @@
+{
+  "run_id": "e2e_20260613T155228.2480",
+  "signals_generated": 35,
+  "unique_tickers": 35,
+  "avg_confidence": 0.389,
+  "top_signal": "AAOI",
+  "timestamp": "2026-06-13T15:52:28.295063+00:00",
+  "shadow_only": true
+}

@@ -1,0 +1,34 @@
+{
+  "state_id": "runtime_state_v1",
+  "current_mode": "ACTUAL_DRY_RUN",
+  "submit_permission": "NO_SUBMIT",
+  "real_submit_allowed": false,
+  "testnet_submit_allowed": false,
+  "dry_run_allowed": true,
+  "system_healthy": true,
+  "dry_run": true,
+  "strategy_count": 11,
+  "active_alert_sources": [
+    "earnings",
+    "stock_price",
+    "macd_rebound",
+    "binance_futures",
+    "system_heartbeat",
+    "research_watchlist",
+    "shadow_signals"
+  ],
+  "critical_blockers": [],
+  "next_recommended_phase": "TESTNET_DRY_RUN_SIMULATION",
+  "runtime_stats": {
+    "research_items": 85,
+    "shadow_signals": 35,
+    "shadow_tickers": 35,
+    "alert_events": 71,
+    "feishu_payloads": 71,
+    "testnet_intents": 9,
+    "testnet_lifecycle_events": 9,
+    "no_submit_evidence": 3,
+    "high_risk_isolated": 10
+  },
+  "timestamp": "2026-06-13T15:52:28.298352+00:00"
+}
