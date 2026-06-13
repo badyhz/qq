@@ -1,0 +1,58 @@
+[
+  {
+    "artifact_type": "e2e_run_output",
+    "max_age_days": 7,
+    "max_count": 50,
+    "auto_cleanup": false,
+    "safety_exception": false
+  },
+  {
+    "artifact_type": "shadow_signals",
+    "max_age_days": 3,
+    "max_count": 30,
+    "auto_cleanup": false,
+    "safety_exception": false
+  },
+  {
+    "artifact_type": "alert_events",
+    "max_age_days": 30,
+    "max_count": 100,
+    "auto_cleanup": false,
+    "safety_exception": false
+  },
+  {
+    "artifact_type": "operator_state",
+    "max_age_days": 7,
+    "max_count": 50,
+    "auto_cleanup": false,
+    "safety_exception": false
+  },
+  {
+    "artifact_type": "dashboard_html",
+    "max_age_days": 7,
+    "max_count": 30,
+    "auto_cleanup": false,
+    "safety_exception": false
+  },
+  {
+    "artifact_type": "safety_evidence",
+    "max_age_days": 365,
+    "max_count": 1000,
+    "auto_cleanup": false,
+    "safety_exception": true
+  },
+  {
+    "artifact_type": "scheduler_logs",
+    "max_age_days": 30,
+    "max_count": 100,
+    "auto_cleanup": false,
+    "safety_exception": false
+  },
+  {
+    "artifact_type": "testnet_simulation",
+    "max_age_days": 7,
+    "max_count": 50,
+    "auto_cleanup": false,
+    "safety_exception": false
+  }
+]

@@ -1,0 +1,47 @@
+[
+  {
+    "check_id": "python_version",
+    "passed": true,
+    "detail": "3.9.6"
+  },
+  {
+    "check_id": "repo_path",
+    "passed": true,
+    "detail": "/Users/winnie/Documents/trae_projects/qq"
+  },
+  {
+    "check_id": "script_run_system_dry_run_e2e",
+    "passed": true,
+    "detail": "run_system_dry_run_e2e.py"
+  },
+  {
+    "check_id": "script_run_runtime_stabilization_suite",
+    "passed": true,
+    "detail": "run_runtime_stabilization_suite.py"
+  },
+  {
+    "check_id": "import_e2e",
+    "passed": true,
+    "detail": "importable"
+  },
+  {
+    "check_id": "deploy_README_md",
+    "passed": true,
+    "detail": "README.md"
+  },
+  {
+    "check_id": "deploy_env_example",
+    "passed": true,
+    "detail": "env.example"
+  },
+  {
+    "check_id": "deploy_safety_checklist_md",
+    "passed": true,
+    "detail": "safety_checklist.md"
+  },
+  {
+    "check_id": "no_real_secrets",
+    "passed": true,
+    "detail": "env.example clean"
+  }
+]

@@ -1,0 +1,79 @@
+[
+  {
+    "gap_id": "gap_exchange_adapter",
+    "category": "exchange",
+    "description": "Binance testnet API adapter not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_credential_vault",
+    "category": "security",
+    "description": "Secure credential vault not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_submit_approval",
+    "category": "workflow",
+    "description": "Submit approval workflow not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_order_cancel",
+    "category": "safety",
+    "description": "Order cancel safety mechanism not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_position_recon",
+    "category": "reconciliation",
+    "description": "Position reconciliation not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_balance_recon",
+    "category": "reconciliation",
+    "description": "Balance reconciliation not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_rate_limit",
+    "category": "resilience",
+    "description": "Sandbox rate limit handling not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_network_failure",
+    "category": "resilience",
+    "description": "Sandbox network failure handling not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_kill_switch",
+    "category": "safety",
+    "description": "Manual kill switch not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_audit_logging",
+    "category": "observability",
+    "description": "Audit logging for testnet operations not implemented",
+    "status": "MISSING",
+    "blocking": true
+  },
+  {
+    "gap_id": "gap_human_approval",
+    "category": "governance",
+    "description": "Human approval gate not implemented",
+    "status": "MISSING",
+    "blocking": true
+  }
+]

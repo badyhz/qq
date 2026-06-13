@@ -1,0 +1,167 @@
+[
+  {
+    "check_id": "e2e_no_import_core_live_runner",
+    "passed": true,
+    "detail": "core.live_runner absent"
+  },
+  {
+    "check_id": "e2e_no_import_scripts_live_playbook",
+    "passed": true,
+    "detail": "scripts.live_playbook absent"
+  },
+  {
+    "check_id": "e2e_no_import_scripts_submit_approved_candidates",
+    "passed": true,
+    "detail": "scripts.submit_approved_candidates absent"
+  },
+  {
+    "check_id": "e2e_no_import_scripts_submit_replayed_testnet_payload",
+    "passed": true,
+    "detail": "scripts.submit_replayed_testnet_payload absent"
+  },
+  {
+    "check_id": "e2e_no_import_scripts_run_testnet_order_smoke",
+    "passed": true,
+    "detail": "scripts.run_testnet_order_smoke absent"
+  },
+  {
+    "check_id": "e2e_no_import_scripts_safe_flatten_testnet_symbol",
+    "passed": true,
+    "detail": "scripts.safe_flatten_testnet_symbol absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.timer.example_no_live_runner_py",
+    "passed": true,
+    "detail": "live_runner.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.timer.example_no_live_playbook_py",
+    "passed": true,
+    "detail": "live_playbook.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.timer.example_no_submit_approved_candidates_py",
+    "passed": true,
+    "detail": "submit_approved_candidates.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.timer.example_no_submit_replayed_testnet_payload_py",
+    "passed": true,
+    "detail": "submit_replayed_testnet_payload.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.timer.example_no_run_testnet_order_smoke_py",
+    "passed": true,
+    "detail": "run_testnet_order_smoke.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.timer.example_no_safe_flatten_testnet_symbol_py",
+    "passed": true,
+    "detail": "safe_flatten_testnet_symbol.py absent"
+  },
+  {
+    "check_id": "template_quant-alert-dry-run.service.example_no_live_runner_py",
+    "passed": true,
+    "detail": "live_runner.py absent"
+  },
+  {
+    "check_id": "template_quant-alert-dry-run.service.example_no_live_playbook_py",
+    "passed": true,
+    "detail": "live_playbook.py absent"
+  },
+  {
+    "check_id": "template_quant-alert-dry-run.service.example_no_submit_approved_candidates_py",
+    "passed": true,
+    "detail": "submit_approved_candidates.py absent"
+  },
+  {
+    "check_id": "template_quant-alert-dry-run.service.example_no_submit_replayed_testnet_payload_py",
+    "passed": true,
+    "detail": "submit_replayed_testnet_payload.py absent"
+  },
+  {
+    "check_id": "template_quant-alert-dry-run.service.example_no_run_testnet_order_smoke_py",
+    "passed": true,
+    "detail": "run_testnet_order_smoke.py absent"
+  },
+  {
+    "check_id": "template_quant-alert-dry-run.service.example_no_safe_flatten_testnet_symbol_py",
+    "passed": true,
+    "detail": "safe_flatten_testnet_symbol.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.service.example_no_live_runner_py",
+    "passed": true,
+    "detail": "live_runner.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.service.example_no_live_playbook_py",
+    "passed": true,
+    "detail": "live_playbook.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.service.example_no_submit_approved_candidates_py",
+    "passed": true,
+    "detail": "submit_approved_candidates.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.service.example_no_submit_replayed_testnet_payload_py",
+    "passed": true,
+    "detail": "submit_replayed_testnet_payload.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.service.example_no_run_testnet_order_smoke_py",
+    "passed": true,
+    "detail": "run_testnet_order_smoke.py absent"
+  },
+  {
+    "check_id": "template_quant-system-dry-run-e2e.service.example_no_safe_flatten_testnet_symbol_py",
+    "passed": true,
+    "detail": "safe_flatten_testnet_symbol.py absent"
+  },
+  {
+    "check_id": "template_quant-dashboard-render.service.example_no_live_runner_py",
+    "passed": true,
+    "detail": "live_runner.py absent"
+  },
+  {
+    "check_id": "template_quant-dashboard-render.service.example_no_live_playbook_py",
+    "passed": true,
+    "detail": "live_playbook.py absent"
+  },
+  {
+    "check_id": "template_quant-dashboard-render.service.example_no_submit_approved_candidates_py",
+    "passed": true,
+    "detail": "submit_approved_candidates.py absent"
+  },
+  {
+    "check_id": "template_quant-dashboard-render.service.example_no_submit_replayed_testnet_payload_py",
+    "passed": true,
+    "detail": "submit_replayed_testnet_payload.py absent"
+  },
+  {
+    "check_id": "template_quant-dashboard-render.service.example_no_run_testnet_order_smoke_py",
+    "passed": true,
+    "detail": "run_testnet_order_smoke.py absent"
+  },
+  {
+    "check_id": "template_quant-dashboard-render.service.example_no_safe_flatten_testnet_symbol_py",
+    "passed": true,
+    "detail": "safe_flatten_testnet_symbol.py absent"
+  },
+  {
+    "check_id": "manifest_status",
+    "passed": true,
+    "detail": "status=SYSTEM_DRY_RUN_E2E_PASS"
+  },
+  {
+    "check_id": "state_real_submit_blocked",
+    "passed": true,
+    "detail": "real_submit_allowed=False"
+  },
+  {
+    "check_id": "state_dry_run",
+    "passed": true,
+    "detail": "dry_run=True"
+  }
+]

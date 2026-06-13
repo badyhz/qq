@@ -1,0 +1,62 @@
+[
+  {
+    "file": "quant-alert-dry-run.service.example",
+    "valid": true,
+    "checks": [
+      "forbidden_absent: systemctl enable",
+      "forbidden_absent: systemctl start",
+      "forbidden_absent: api_key=",
+      "forbidden_absent: secret=",
+      "forbidden_absent: webhook_url=",
+      "forbidden_absent: REAL_TRADING",
+      "forbidden_absent: LIVE_TRADING",
+      "required_present: DRY_RUN",
+      "required_present: NO_SUBMIT"
+    ]
+  },
+  {
+    "file": "quant-dashboard-render.service.example",
+    "valid": true,
+    "checks": [
+      "forbidden_absent: systemctl enable",
+      "forbidden_absent: systemctl start",
+      "forbidden_absent: api_key=",
+      "forbidden_absent: secret=",
+      "forbidden_absent: webhook_url=",
+      "forbidden_absent: REAL_TRADING",
+      "forbidden_absent: LIVE_TRADING",
+      "required_present: DRY_RUN",
+      "required_present: NO_SUBMIT"
+    ]
+  },
+  {
+    "file": "quant-system-dry-run-e2e.service.example",
+    "valid": true,
+    "checks": [
+      "forbidden_absent: systemctl enable",
+      "forbidden_absent: systemctl start",
+      "forbidden_absent: api_key=",
+      "forbidden_absent: secret=",
+      "forbidden_absent: webhook_url=",
+      "forbidden_absent: REAL_TRADING",
+      "forbidden_absent: LIVE_TRADING",
+      "required_present: DRY_RUN",
+      "required_present: NO_SUBMIT"
+    ]
+  },
+  {
+    "file": "quant-system-dry-run-e2e.timer.example",
+    "valid": true,
+    "checks": [
+      "forbidden_absent: systemctl enable",
+      "forbidden_absent: systemctl start",
+      "forbidden_absent: api_key=",
+      "forbidden_absent: secret=",
+      "forbidden_absent: webhook_url=",
+      "forbidden_absent: REAL_TRADING",
+      "forbidden_absent: LIVE_TRADING",
+      "required_present: DRY_RUN",
+      "required_present: NO_SUBMIT"
+    ]
+  }
+]

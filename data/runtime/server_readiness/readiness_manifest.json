@@ -1,0 +1,19 @@
+{
+  "manifest_id": "server_20260613T163038.5660",
+  "timestamp": "2026-06-13T16:30:38.566034+00:00",
+  "steps": {
+    "artifact_hygiene": "PASS",
+    "git_pollution": "PASS",
+    "output_router": "PASS",
+    "scheduled_e2e": "PASS",
+    "server_environment": "PASS",
+    "systemd_templates": "PASS",
+    "log_rotation": "PASS",
+    "feishu_payload": "PASS",
+    "server_no_submit": "PASS",
+    "testnet_gaps": "PASS",
+    "review_packet": "PASS"
+  },
+  "errors": [],
+  "status": "SERVER_DRY_RUN_READINESS_PASS"
+}

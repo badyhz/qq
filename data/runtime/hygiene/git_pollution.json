@@ -1,0 +1,32 @@
+[
+  {
+    "path": "core/live_runner.py",
+    "category": "SHOULD_BE_IGNORED",
+    "severity": "WARN"
+  },
+  {
+    "path": "scripts/live_playbook.py",
+    "category": "SHOULD_BE_IGNORED",
+    "severity": "WARN"
+  },
+  {
+    "path": "scripts/run_testnet_order_smoke.py",
+    "category": "SHOULD_BE_IGNORED",
+    "severity": "WARN"
+  },
+  {
+    "path": "scripts/safe_flatten_testnet_symbol.py",
+    "category": "SHOULD_BE_IGNORED",
+    "severity": "WARN"
+  },
+  {
+    "path": "scripts/submit_approved_candidates.py",
+    "category": "SHOULD_BE_IGNORED",
+    "severity": "WARN"
+  },
+  {
+    "path": "scripts/submit_replayed_testnet_payload.py",
+    "category": "SHOULD_BE_IGNORED",
+    "severity": "WARN"
+  }
+]

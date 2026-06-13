@@ -1,0 +1,152 @@
+[
+  {
+    "path_pattern": "data/runtime/e2e/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "E2E run artifacts regenerated each run"
+  },
+  {
+    "path_pattern": "data/runtime/shadow/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Shadow signals regenerated each run"
+  },
+  {
+    "path_pattern": "data/runtime/alerts/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Alert events regenerated each run"
+  },
+  {
+    "path_pattern": "data/runtime/testnet_sim/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Testnet simulation artifacts"
+  },
+  {
+    "path_pattern": "data/runtime/operator/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Operator state regenerated each run"
+  },
+  {
+    "path_pattern": "data/runtime/research/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Research artifacts regenerated"
+  },
+  {
+    "path_pattern": "data/runtime/replay/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Replay harness artifacts"
+  },
+  {
+    "path_pattern": "data/runtime/scenarios/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Scenario run results"
+  },
+  {
+    "path_pattern": "data/runtime/artifacts/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Artifact manifest"
+  },
+  {
+    "path_pattern": "data/runtime/observability/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Observability metrics"
+  },
+  {
+    "path_pattern": "data/runtime/safety/*",
+    "category": "SAFETY_EVIDENCE",
+    "git_action": "milestone_only",
+    "description": "Safety regression evidence"
+  },
+  {
+    "path_pattern": "data/runtime/hygiene/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Hygiene check artifacts"
+  },
+  {
+    "path_pattern": "data/runtime/scheduler/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Scheduler simulation artifacts"
+  },
+  {
+    "path_pattern": "data/runtime/server/*",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Server readiness artifacts"
+  },
+  {
+    "path_pattern": "data/runtime/stabilization/*",
+    "category": "MILESTONE_REPORT",
+    "git_action": "milestone_only",
+    "description": "Stabilization suite results"
+  },
+  {
+    "path_pattern": "data/runtime/final_stabilization/*",
+    "category": "MILESTONE_REPORT",
+    "git_action": "milestone_only",
+    "description": "Final stabilization handoff"
+  },
+  {
+    "path_pattern": "reports/operator_dashboard.html",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Dashboard regenerated each run"
+  },
+  {
+    "path_pattern": "reports/system_dry_run_e2e_report.md",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "E2E report regenerated"
+  },
+  {
+    "path_pattern": "reports/runtime_*.md",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Runtime reports regenerated"
+  },
+  {
+    "path_pattern": "reports/final_*.md",
+    "category": "MILESTONE_REPORT",
+    "git_action": "milestone_only",
+    "description": "Final handoff reports"
+  },
+  {
+    "path_pattern": "reports/server_*.md",
+    "category": "RUNTIME_EPHEMERAL",
+    "git_action": "ignore",
+    "description": "Server readiness reports"
+  },
+  {
+    "path_pattern": "deployment/runtime_dry_run/*",
+    "category": "COMMITTED_BASELINE",
+    "git_action": "track",
+    "description": "Deployment templates"
+  },
+  {
+    "path_pattern": "src/runtime_integrations/**",
+    "category": "COMMITTED_BASELINE",
+    "git_action": "track",
+    "description": "Runtime integration source"
+  },
+  {
+    "path_pattern": "tests/integration/**",
+    "category": "COMMITTED_BASELINE",
+    "git_action": "track",
+    "description": "Integration tests"
+  },
+  {
+    "path_pattern": "scripts/run_*.py",
+    "category": "COMMITTED_BASELINE",
+    "git_action": "track",
+    "description": "Runner scripts"
+  }
+]

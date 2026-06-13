@@ -1,0 +1,13 @@
+# quant-system-dry-run-e2e.timer.example
+# Systemd timer for scheduled dry-run E2E execution
+# DRY_RUN=True NO_SUBMIT=True
+
+[Unit]
+Description=Quant System Dry-Run E2E Timer
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
