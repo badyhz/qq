@@ -1,0 +1,15 @@
+{
+  "total_items": 23,
+  "classification_counts": {
+    "RETAIN": 23
+  },
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "would_copy": false,
+  "would_move": false,
+  "would_delete": false,
+  "would_modify": false,
+  "no_touch_required": true,
+  "human_approval_required": true,
+  "inventory_hash": "2fe55edf7334403b6050efe4cbfeac2a2d5ec6fd1c640f6b9c2f07888f3bfb2c"
+}

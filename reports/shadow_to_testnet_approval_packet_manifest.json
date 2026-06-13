@@ -1,0 +1,8 @@
+{
+  "packet_id": "shadow_to_testnet_approval_packet",
+  "decision": "READY_FOR_TESTNET_DRY_RUN_PREP",
+  "total_items": 5,
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "packet_hash": "c1c6e68e04752ad95b106025bf318ad3f1a24971a75e98217ce495b9b3c1fb8a"
+}

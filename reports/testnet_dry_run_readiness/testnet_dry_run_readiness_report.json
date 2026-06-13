@@ -1,0 +1,32 @@
+{
+  "generated_at_utc": "2026-05-06T17:42:48.396528+00:00",
+  "final_verdict": "NOT_READY",
+  "kline_cache_status": "OK",
+  "shadow_collector_status": "NO_SIGNAL",
+  "shadow_sample_count": 0,
+  "weighted_sample_count": 1.0,
+  "sample_confidence_level": "TOO_SMALL",
+  "system_health_verdict": "PASS",
+  "shadow_to_testnet_promotion": "KEEP_SHADOW_ONLY",
+  "allow_testnet_dry_run": false,
+  "allow_testnet_submit": false,
+  "allow_real_submit": false,
+  "blocking_reasons": [
+    "need_more_shadow_samples",
+    "promotion_not_ready",
+    "sample_confidence_too_small"
+  ],
+  "allowed_actions": [
+    "OBSERVE_ONLY",
+    "SHADOW_ONLY",
+    "TESTNET_DRY_RUN_ONLY"
+  ],
+  "prohibited_actions": [
+    "NO_REAL_SUBMIT",
+    "NO_TESTNET_SUBMIT_WITHOUT_GATE",
+    "NO_BYPASS_STRATEGY_GATE"
+  ],
+  "submit_attempted": false,
+  "cancel_attempted": false,
+  "flatten_attempted": false
+}

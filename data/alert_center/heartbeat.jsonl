@@ -1,0 +1,19 @@
+[
+  {
+    "heartbeat_id": "heartbeat_20260613140512",
+    "timestamp": "2026-06-13T14:05:12.561840+00:00",
+    "status": "ALIVE",
+    "active_sources": [
+      "strategy_registry",
+      "system_heartbeat",
+      "earnings",
+      "binance_futures",
+      "macd_rebound",
+      "force_alert",
+      "stock_price"
+    ],
+    "alert_count": 11,
+    "duplicate_count": 0,
+    "dry_run": true
+  }
+]

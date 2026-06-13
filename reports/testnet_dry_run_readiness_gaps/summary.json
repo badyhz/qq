@@ -1,0 +1,13 @@
+{
+  "generated_at_utc": "2026-05-07T17:40:52.419857+00:00",
+  "final_verdict": "NOT_READY",
+  "blocking_gap_count": 4,
+  "p0_gap_count": 1,
+  "p1_gap_count": 3,
+  "submit_attempted": false,
+  "cancel_attempted": false,
+  "flatten_attempted": false,
+  "csv_path": "reports/testnet_dry_run_readiness_gaps/readiness_gaps.csv",
+  "summary_json": "reports/testnet_dry_run_readiness_gaps/summary.json",
+  "summary_md": "reports/testnet_dry_run_readiness_gaps/summary.md"
+}

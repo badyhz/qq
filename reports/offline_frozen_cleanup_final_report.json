@@ -1,0 +1,19 @@
+{
+  "report_id": "frozen_cleanup_final_report",
+  "total_files_inventoried": 23,
+  "classification_counts": {
+    "RETAIN": 23
+  },
+  "decision_counts": {
+    "RETAIN_FROZEN": 23
+  },
+  "dry_run_outcome_counts": {
+    "BLOCKED_NO_ACTION": 23
+  },
+  "evidence_count": 69,
+  "all_simulation_only": true,
+  "all_no_action_performed": true,
+  "all_human_approval_required": true,
+  "cleanup_ready_for_human_review": true,
+  "release_hold": "HOLD"
+}

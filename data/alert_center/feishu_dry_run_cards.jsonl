@@ -1,0 +1,562 @@
+[
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\u26a0\ufe0f [IMPORTANT] AAPL Earnings Beat"
+        },
+        "template": "orange"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: earnings"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: AAPL"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: AAPL beat estimates by 15%"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560215+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\u26a0\ufe0f [IMPORTANT] MSFT Earnings Miss"
+        },
+        "template": "orange"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: earnings"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: MSFT"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: MSFT missed by 3%"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560473+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\ud83d\udc41\ufe0f [WATCH] NVDA +5%"
+        },
+        "template": "orange"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: stock_price"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: NVDA"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: NVDA up 5% intraday"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560480+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\ud83d\udc41\ufe0f [WATCH] TSLA -3%"
+        },
+        "template": "orange"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: stock_price"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: TSLA"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: TSLA down 3%"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560485+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\ud83d\udc41\ufe0f [WATCH] SPY MACD Cross"
+        },
+        "template": "orange"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: macd_rebound"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: SPY"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: SPY MACD bullish crossover"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560489+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\u26a0\ufe0f [IMPORTANT] BTC Volume Spike"
+        },
+        "template": "orange"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: binance_futures"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: BTCUSDT"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: BTC futures volume 3x average"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560494+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\u26a0\ufe0f [IMPORTANT] ETH Breakout"
+        },
+        "template": "orange"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: binance_futures"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: ETHUSDT"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: ETH above resistance"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560499+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\u2139\ufe0f [INFO] Strategy Update"
+        },
+        "template": "blue"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: strategy_registry"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: N/A"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: macd_momentum_v1 moved to WATCHLIST"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560503+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\u2139\ufe0f [INFO] Heartbeat"
+        },
+        "template": "blue"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: system_heartbeat"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: N/A"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: System alive"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560507+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  },
+  {
+    "msg_type": "interactive",
+    "card": {
+      "header": {
+        "title": {
+          "tag": "plain_text",
+          "content": "\ud83d\udea8 [CRITICAL] Test Force Alert"
+        },
+        "template": "red"
+      },
+      "elements": [
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Source: force_alert"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Ticker: N/A"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Message: Testing force alert mechanism"
+          }
+        },
+        {
+          "tag": "div",
+          "text": {
+            "tag": "plain_text",
+            "content": "Time: 2026-06-13T14:05:12.560512+00:00"
+          }
+        },
+        {
+          "tag": "hr"
+        },
+        {
+          "tag": "note",
+          "elements": [
+            {
+              "tag": "plain_text",
+              "content": "DRY RUN - No real notification sent"
+            }
+          ]
+        }
+      ]
+    },
+    "_dry_run": true,
+    "_no_real_notification": true
+  }
+]

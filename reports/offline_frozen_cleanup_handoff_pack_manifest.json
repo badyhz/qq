@@ -1,0 +1,8 @@
+{
+  "pack_id": "frozen_cleanup_handoff_pack",
+  "total_artifacts": 5,
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "human_review_required": true,
+  "handoff_hash": "f06ba9ac27c7c84c9d6e1418eab2ad90a4039ae09ab5565d86b3165d4a07e10d"
+}

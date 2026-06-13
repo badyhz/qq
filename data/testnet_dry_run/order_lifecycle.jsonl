@@ -1,0 +1,72 @@
+[
+  {
+    "event_id": "evt_intent_BTCUSDT_BUY_2026-06-13T14:08:34.154589+00:00_filled",
+    "intent_id": "intent_BTCUSDT_BUY_2026-06-13T14:08:34.154589+00:00",
+    "stage": "SIMULATED_FILL",
+    "simulated_response": "simulated_fill_successful",
+    "simulated_fill_price": 50012.5,
+    "simulated_slippage_bps": 2.5,
+    "simulated_latency_ms": 45.0,
+    "risk_precheck_passed": true,
+    "no_submit_evidence": true,
+    "dry_run": true,
+    "no_real_action": true,
+    "timestamp": "2026-06-13T14:08:34.154799+00:00"
+  },
+  {
+    "event_id": "evt_intent_ETHUSDT_BUY_2026-06-13T14:08:34.154783+00:00_filled",
+    "intent_id": "intent_ETHUSDT_BUY_2026-06-13T14:08:34.154783+00:00",
+    "stage": "SIMULATED_FILL",
+    "simulated_response": "simulated_fill_successful",
+    "simulated_fill_price": 3000.75,
+    "simulated_slippage_bps": 2.5,
+    "simulated_latency_ms": 45.0,
+    "risk_precheck_passed": true,
+    "no_submit_evidence": true,
+    "dry_run": true,
+    "no_real_action": true,
+    "timestamp": "2026-06-13T14:08:34.154808+00:00"
+  },
+  {
+    "event_id": "evt_intent_BTCUSDT_SELL_2026-06-13T14:08:34.154788+00:00_filled",
+    "intent_id": "intent_BTCUSDT_SELL_2026-06-13T14:08:34.154788+00:00",
+    "stage": "SIMULATED_FILL",
+    "simulated_response": "simulated_fill_successful",
+    "simulated_fill_price": 50987.25,
+    "simulated_slippage_bps": 2.5,
+    "simulated_latency_ms": 45.0,
+    "risk_precheck_passed": true,
+    "no_submit_evidence": true,
+    "dry_run": true,
+    "no_real_action": true,
+    "timestamp": "2026-06-13T14:08:34.154812+00:00"
+  },
+  {
+    "event_id": "evt_intent_SOLUSDT_BUY_2026-06-13T14:08:34.154791+00:00_filled",
+    "intent_id": "intent_SOLUSDT_BUY_2026-06-13T14:08:34.154791+00:00",
+    "stage": "SIMULATED_FILL",
+    "simulated_response": "simulated_fill_successful",
+    "simulated_fill_price": 150.0375,
+    "simulated_slippage_bps": 2.5,
+    "simulated_latency_ms": 45.0,
+    "risk_precheck_passed": true,
+    "no_submit_evidence": true,
+    "dry_run": true,
+    "no_real_action": true,
+    "timestamp": "2026-06-13T14:08:34.154816+00:00"
+  },
+  {
+    "event_id": "evt_intent_ETHUSDT_SELL_2026-06-13T14:08:34.154793+00:00_filled",
+    "intent_id": "intent_ETHUSDT_SELL_2026-06-13T14:08:34.154793+00:00",
+    "stage": "SIMULATED_FILL",
+    "simulated_response": "simulated_fill_successful",
+    "simulated_fill_price": 3099.225,
+    "simulated_slippage_bps": 2.5,
+    "simulated_latency_ms": 45.0,
+    "risk_precheck_passed": true,
+    "no_submit_evidence": true,
+    "dry_run": true,
+    "no_real_action": true,
+    "timestamp": "2026-06-13T14:08:34.154820+00:00"
+  }
+]

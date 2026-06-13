@@ -1,0 +1,15 @@
+[
+  {
+    "evidence_type": "no_real_submit",
+    "dry_run": true,
+    "events_count": 5
+  },
+  {
+    "evidence_type": "no_real_exchange_call",
+    "dry_run": true
+  },
+  {
+    "evidence_type": "no_real_api_key_read",
+    "dry_run": true
+  }
+]

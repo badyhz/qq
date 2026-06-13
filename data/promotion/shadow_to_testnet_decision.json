@@ -1,0 +1,22 @@
+{
+  "decision_id": "shadow_to_testnet_promotion",
+  "decision": "READY_FOR_TESTNET_DRY_RUN_PREP",
+  "reasons": [
+    "all_evidence_passed"
+  ],
+  "denial_reasons": [],
+  "evidence_passed": [
+    "frozen_cleanup_finalized",
+    "shadow_evidence_exists",
+    "no_critical_blocker",
+    "no_submit_guard_passed",
+    "offline_regression_clean",
+    "strategy_registry_exists",
+    "testnet_dry_run_no_submit_default"
+  ],
+  "evidence_failed": [],
+  "all_evidence_passed": true,
+  "any_critical_blocker": false,
+  "simulation_only": true,
+  "release_hold": "HOLD"
+}

@@ -1,0 +1,12 @@
+{
+  "total_strategies": 11,
+  "all_ids_unique": true,
+  "status_counts": {
+    "RESEARCH_ONLY": 4,
+    "SHADOW_CANDIDATE": 1,
+    "WATCHLIST_ONLY": 6
+  },
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "registry_hash": "f5cf7ddbc99b3388b741e556352d8ede6bdd6ea8f156fdfa422d2b9bf8fb0c78"
+}

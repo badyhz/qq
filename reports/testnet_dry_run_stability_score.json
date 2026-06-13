@@ -1,0 +1,9 @@
+{
+  "score_id": "dry_run_stability",
+  "total_intents": 5,
+  "successful_simulations": 5,
+  "blocked_by_risk": 0,
+  "blocked_by_guard": 0,
+  "stability_ratio": 1.0,
+  "dry_run": true
+}

@@ -1,0 +1,2 @@
+strategy_key,symbol,side,timeframe,real_sample_count,shadow_sample_count,weighted_sample_count,real_avg_r,shadow_avg_r,weighted_avg_r,sample_confidence_level,system_health_verdict,reset_readiness_verdict,promotion_decision,allowed_action,submit_permission,risk_level,reason
+OPUSDT_LONG_5m,OPUSDT,LONG,5m,1,0,1.0,0.20967742,nan,0.20967742,TOO_SMALL,PASS,NOT_READY,KEEP_SHADOW_ONLY,SHADOW_ONLY,NO_TESTNET_SUBMIT,LOW_SAMPLE,need_more_shadow_samples

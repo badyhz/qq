@@ -1,0 +1,8 @@
+{
+  "decision": "READY_FOR_TESTNET_DRY_RUN_PREP",
+  "all_evidence_passed": true,
+  "any_critical_blocker": false,
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "decision_hash": "8adae6bb591e865c496d65cefdd6a4921988d88f73284a47c0c765934afc7460"
+}

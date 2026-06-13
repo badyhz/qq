@@ -1,0 +1,17 @@
+{
+  "total_raw_alerts": 11,
+  "unique_alerts": 10,
+  "duplicates_filtered": 0,
+  "feishu_cards": 10,
+  "active_sources": [
+    "strategy_registry",
+    "system_heartbeat",
+    "earnings",
+    "binance_futures",
+    "macd_rebound",
+    "force_alert",
+    "stock_price"
+  ],
+  "dry_run": true,
+  "alerts_hash": "0d087a8947fdaebd8cfd3359a3477fa861380262f832e7fc441d5b8d0c716192"
+}

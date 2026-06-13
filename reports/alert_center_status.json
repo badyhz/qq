@@ -1,0 +1,32 @@
+{
+  "total_alerts": 10,
+  "unique_alerts": 10,
+  "duplicate_alerts": 0,
+  "priority_counts": {
+    "CRITICAL": 1,
+    "IMPORTANT": 4,
+    "INFO": 2,
+    "WATCH": 3
+  },
+  "source_counts": {
+    "binance_futures": 2,
+    "earnings": 2,
+    "force_alert": 1,
+    "macd_rebound": 1,
+    "stock_price": 2,
+    "strategy_registry": 1,
+    "system_heartbeat": 1
+  },
+  "heartbeat_status": "ALIVE",
+  "active_sources": [
+    "strategy_registry",
+    "system_heartbeat",
+    "earnings",
+    "binance_futures",
+    "macd_rebound",
+    "force_alert",
+    "stock_price"
+  ],
+  "dry_run": true,
+  "no_real_notification": true
+}

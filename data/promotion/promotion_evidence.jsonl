@@ -1,0 +1,65 @@
+[
+  {
+    "evidence_id": "promo_evidence_frozen_cleanup_finalized",
+    "evidence_type": "frozen_cleanup_finalized",
+    "status": "PASS",
+    "description": "cleanup_ready_for_human_review=True",
+    "source": "frozen_cleanup_report",
+    "verified": true,
+    "blocking": true
+  },
+  {
+    "evidence_id": "promo_evidence_shadow_evidence_exists",
+    "evidence_type": "shadow_evidence_exists",
+    "status": "PASS",
+    "description": "shadow_evidence_exists=True",
+    "source": "shadow_experiment_data",
+    "verified": true,
+    "blocking": true
+  },
+  {
+    "evidence_id": "promo_evidence_no_critical_blocker",
+    "evidence_type": "no_critical_blocker",
+    "status": "PASS",
+    "description": "stability_score=0.85_threshold=0.5",
+    "source": "shadow_stability_data",
+    "verified": true,
+    "blocking": true
+  },
+  {
+    "evidence_id": "promo_evidence_no_submit_guard_passed",
+    "evidence_type": "no_submit_guard_passed",
+    "status": "PASS",
+    "description": "no_submit_guard_passed=True",
+    "source": "execution_guard",
+    "verified": true,
+    "blocking": true
+  },
+  {
+    "evidence_id": "promo_evidence_offline_regression_clean",
+    "evidence_type": "offline_regression_clean",
+    "status": "PASS",
+    "description": "offline_regression_clean=True",
+    "source": "regression_pack",
+    "verified": true,
+    "blocking": true
+  },
+  {
+    "evidence_id": "promo_evidence_strategy_registry_exists",
+    "evidence_type": "strategy_registry_exists",
+    "status": "PASS",
+    "description": "strategy_registry_exists=True",
+    "source": "strategy_registry",
+    "verified": true,
+    "blocking": true
+  },
+  {
+    "evidence_id": "promo_evidence_testnet_dry_run_no_submit_default",
+    "evidence_type": "testnet_dry_run_no_submit_default",
+    "status": "PASS",
+    "description": "testnet_dry_run_no_submit_default=True",
+    "source": "testnet_config",
+    "verified": true,
+    "blocking": true
+  }
+]

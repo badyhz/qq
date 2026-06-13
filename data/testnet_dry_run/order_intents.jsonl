@@ -1,0 +1,57 @@
+[
+  {
+    "intent_id": "intent_BTCUSDT_BUY_2026-06-13T14:08:34.154589+00:00",
+    "symbol": "BTCUSDT",
+    "side": "BUY",
+    "order_type": "LIMIT",
+    "quantity": 0.001,
+    "price": 50000.0,
+    "strategy_id": "macd_momentum_v1",
+    "timestamp": "2026-06-13T14:08:34.154589+00:00",
+    "dry_run": true
+  },
+  {
+    "intent_id": "intent_ETHUSDT_BUY_2026-06-13T14:08:34.154783+00:00",
+    "symbol": "ETHUSDT",
+    "side": "BUY",
+    "order_type": "LIMIT",
+    "quantity": 0.01,
+    "price": 3000.0,
+    "strategy_id": "binance_futures_scanner",
+    "timestamp": "2026-06-13T14:08:34.154783+00:00",
+    "dry_run": true
+  },
+  {
+    "intent_id": "intent_BTCUSDT_SELL_2026-06-13T14:08:34.154788+00:00",
+    "symbol": "BTCUSDT",
+    "side": "SELL",
+    "order_type": "MARKET",
+    "quantity": 0.001,
+    "price": 51000.0,
+    "strategy_id": "macd_momentum_v1",
+    "timestamp": "2026-06-13T14:08:34.154788+00:00",
+    "dry_run": true
+  },
+  {
+    "intent_id": "intent_SOLUSDT_BUY_2026-06-13T14:08:34.154791+00:00",
+    "symbol": "SOLUSDT",
+    "side": "BUY",
+    "order_type": "LIMIT",
+    "quantity": 1.0,
+    "price": 150.0,
+    "strategy_id": "binance_futures_scanner",
+    "timestamp": "2026-06-13T14:08:34.154791+00:00",
+    "dry_run": true
+  },
+  {
+    "intent_id": "intent_ETHUSDT_SELL_2026-06-13T14:08:34.154793+00:00",
+    "symbol": "ETHUSDT",
+    "side": "SELL",
+    "order_type": "LIMIT",
+    "quantity": 0.01,
+    "price": 3100.0,
+    "strategy_id": "binance_futures_scanner",
+    "timestamp": "2026-06-13T14:08:34.154793+00:00",
+    "dry_run": true
+  }
+]

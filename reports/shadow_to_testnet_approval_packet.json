@@ -1,0 +1,44 @@
+{
+  "packet_id": "shadow_to_testnet_approval_packet",
+  "decision": "READY_FOR_TESTNET_DRY_RUN_PREP",
+  "items": [
+    {
+      "item_id": "packet_decision",
+      "section": "decision",
+      "content": "promotion_decision=READY_FOR_TESTNET_DRY_RUN_PREP",
+      "status": "GENERATED",
+      "simulation_only": true
+    },
+    {
+      "item_id": "packet_evidence_summary",
+      "section": "evidence",
+      "content": "passed=7_failed=0",
+      "status": "GENERATED",
+      "simulation_only": true
+    },
+    {
+      "item_id": "packet_denial_reasons",
+      "section": "denials",
+      "content": "denial_count=0",
+      "status": "GENERATED",
+      "simulation_only": true
+    },
+    {
+      "item_id": "packet_safety_boundary",
+      "section": "safety",
+      "content": "no_real_submit_authorized_simulation_only",
+      "status": "GENERATED",
+      "simulation_only": true
+    },
+    {
+      "item_id": "packet_rollback_reference",
+      "section": "rollback",
+      "content": "rollback_plan_available",
+      "status": "GENERATED",
+      "simulation_only": true
+    }
+  ],
+  "total_items": 5,
+  "simulation_only": true,
+  "release_hold": "HOLD"
+}

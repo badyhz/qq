@@ -1,0 +1,7 @@
+{
+  "plan_id": "shadow_to_testnet_rollback_plan",
+  "total_steps": 5,
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "rollback_hash": "b4ea0c885ac32858909aa4796bacf61dda0f587652aab37947a56ddb84f4d9ef"
+}

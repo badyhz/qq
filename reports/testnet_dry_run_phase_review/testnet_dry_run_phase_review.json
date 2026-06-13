@@ -1,0 +1,42 @@
+{
+  "generated_at_utc": "2026-05-07T17:11:20.160410+00:00",
+  "final_verdict": "NOT_READY",
+  "allow_testnet_dry_run_only": false,
+  "allow_testnet_submit": false,
+  "allow_real_submit": false,
+  "current_phase": "SHADOW_EXPERIMENT_COLLECTION",
+  "minimum_requirements": {
+    "system_health_pass": true,
+    "shadow_research_history_days_min_met": false,
+    "experiment_samples_min_met": false,
+    "stability_not_all_needs_more_data": false,
+    "strategy_candidate_weighted_samples_min_met": false,
+    "no_trade_actions_attempted": true,
+    "testnet_dry_run_readiness_not_fail": true
+  },
+  "blocking_reasons": [
+    "insufficient_experiment_samples",
+    "insufficient_shadow_research_history",
+    "stability_needs_more_data",
+    "weighted_sample_count_too_small"
+  ],
+  "allowed_next_modes": [
+    "SHADOW_ONLY",
+    "TESTNET_DRY_RUN_ONLY_WHEN_REQUIREMENTS_MET"
+  ],
+  "prohibited_actions": [
+    "NO_TESTNET_SUBMIT",
+    "NO_REAL_SUBMIT",
+    "NO_BYPASS_STRATEGY_GATE"
+  ],
+  "submit_attempted": false,
+  "cancel_attempted": false,
+  "flatten_attempted": false,
+  "metrics": {
+    "history_days": 1,
+    "total_experiment_samples_proxy": 3,
+    "experiment_count": 3,
+    "needs_more_data_count": 3,
+    "avg_weighted_sample_count": 1.0
+  }
+}

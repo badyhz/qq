@@ -1,0 +1,16 @@
+{
+  "total_items": 23,
+  "outcome_counts": {
+    "BLOCKED_NO_ACTION": 23
+  },
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "no_action_performed": true,
+  "would_copy": false,
+  "would_move": false,
+  "would_delete": false,
+  "would_modify": false,
+  "human_approval_required": true,
+  "advisory_only": true,
+  "dry_run_hash": "eb608bd5d5d103bedb20de24814a15970f9ee3b7d5bdcf3bee340c4abad7f2c4"
+}

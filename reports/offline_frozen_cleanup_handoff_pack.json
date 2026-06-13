@@ -1,0 +1,66 @@
+{
+  "pack_id": "frozen_cleanup_handoff_pack",
+  "items": [
+    {
+      "item_id": "handoff_final_inventory",
+      "artifact_type": "inventory",
+      "artifact_name": "final_inventory",
+      "artifact_path": "reports/offline_frozen_cleanup_final_inventory.md",
+      "description": "Complete frozen file final inventory with classifications",
+      "status": "GENERATED",
+      "simulation_only": true,
+      "human_review_required": true
+    },
+    {
+      "item_id": "handoff_decision_matrix",
+      "artifact_type": "decision_matrix",
+      "artifact_name": "decision_matrix",
+      "artifact_path": "reports/offline_frozen_cleanup_decision_matrix.md",
+      "description": "Cleanup decision matrix with Archive/Retain/Review/Reject decisions",
+      "status": "GENERATED",
+      "simulation_only": true,
+      "human_review_required": true
+    },
+    {
+      "item_id": "handoff_dry_run_report",
+      "artifact_type": "dry_run_report",
+      "artifact_name": "dry_run_report",
+      "artifact_path": "reports/offline_frozen_cleanup_dry_run_report.md",
+      "description": "Dry-run execution report for all cleanup decisions",
+      "status": "GENERATED",
+      "simulation_only": true,
+      "human_review_required": true
+    },
+    {
+      "item_id": "handoff_cleanup_evidence",
+      "artifact_type": "evidence",
+      "artifact_name": "cleanup_evidence",
+      "artifact_path": "reports/offline_frozen_cleanup_final_evidence.md",
+      "description": "Evidence records for all cleanup governance steps",
+      "status": "GENERATED",
+      "simulation_only": true,
+      "human_review_required": true
+    },
+    {
+      "item_id": "handoff_final_report",
+      "artifact_type": "final_report",
+      "artifact_name": "final_report",
+      "artifact_path": "reports/offline_frozen_cleanup_final_report.md",
+      "description": "Final cleanup governance report summary",
+      "status": "GENERATED",
+      "simulation_only": true,
+      "human_review_required": true
+    }
+  ],
+  "total_artifacts": 5,
+  "all_simulation_only": true,
+  "all_human_review_required": true,
+  "release_hold": "HOLD",
+  "next_steps": [
+    "HUMAN_REVIEW: Review all generated artifacts",
+    "HUMAN_DECISION: Approve or reject cleanup classifications",
+    "HUMAN_APPROVAL: Obtain explicit approval before any file operations",
+    "EVIDENCE: Verify all evidence records are complete",
+    "BLOCKER: Clear all blockers before proceeding"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "report_id": "frozen_cleanup_final_report",
+  "total_files_inventoried": 23,
+  "evidence_count": 69,
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "no_action_performed": true,
+  "human_approval_required": true,
+  "report_hash": "a48b114c140bcaf94422c6bb4d9ef574c70dc5dcb9373bcc000898ccd6c2c8aa"
+}

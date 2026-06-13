@@ -1,0 +1,13 @@
+{
+  "total_evidence": 69,
+  "type_counts": {
+    "DECISION_MATRIX_GENERATED": 23,
+    "DRY_RUN_EXECUTED": 23,
+    "INVENTORY_COMPLETE": 23
+  },
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "no_action_performed": true,
+  "advisory_only": true,
+  "evidence_hash": "1c4c3c10a61bc061ce8eaf32b7f3a182deab21657cc31b8d44480a94892e2f5b"
+}

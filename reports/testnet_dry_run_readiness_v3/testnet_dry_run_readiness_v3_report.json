@@ -1,0 +1,34 @@
+{
+  "task_id": "T369",
+  "phase": "TESTNET_DRY_RUN_READINESS_V3",
+  "allowed_mode": "SHADOW_ONLY",
+  "submit_permission": "NO_SUBMIT",
+  "allow_testnet_dry_run": false,
+  "testnet_submit_allowed": false,
+  "real_submit_allowed": false,
+  "submit_attempted": false,
+  "cancel_attempted": false,
+  "flatten_attempted": false,
+  "readiness_trend": "UNKNOWN",
+  "readiness_score": 20.0,
+  "required_gates": {
+    "remediation_effective": false,
+    "sample_gap_closed": false,
+    "convergence_confirmed": false,
+    "safety_flags_clean": true,
+    "history_dedup_ok": true,
+    "shadow_only_integrity_ok": true
+  },
+  "blocked_reasons": [
+    "remediation_not_effective",
+    "sample_gap_remaining_22",
+    "convergence_not_confirmed"
+  ],
+  "allowed_actions": [
+    "SHADOW_ONLY",
+    "TESTNET_DRY_RUN_BLOCKED"
+  ],
+  "final_verdict": "NOT_READY",
+  "missing_inputs": [],
+  "generated_at_utc": "2026-05-09T02:27:40.462331+00:00"
+}

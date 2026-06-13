@@ -1,0 +1,16 @@
+{
+  "total_items": 23,
+  "decision_counts": {
+    "RETAIN_FROZEN": 23
+  },
+  "release_hold": "HOLD",
+  "simulation_only": true,
+  "would_copy": false,
+  "would_move": false,
+  "would_delete": false,
+  "would_modify": false,
+  "no_touch_required": true,
+  "human_approval_required": true,
+  "advisory_only": true,
+  "decision_hash": "8e1aede83ecbf846705416e0042f5e6bdfdee9ee33ac6d154d47e57132e4fd7a"
+}

@@ -1,0 +1,8 @@
+requirement_key,requirement_name,current_value,required_value,gap_value,gap_unit,gap_severity,priority,blocking,remediation_hint,source_report
+shadow_research_history_days,Shadow research history days,1.0,3.0,2.0,days,MEDIUM,P1,True,Continue daily shadow-only runs until at least 3 unique days are recorded.,reports/shadow_research_history/shadow_research_history.csv
+experiment_total_samples,Total experiment samples,3.0,20.0,17.0,samples,CRITICAL,P0,True,Run remediation shadow-only loops to increase experiment sample count.,reports/shadow_experiment_history_dashboard/history_dashboard.json
+stability_ready_count,Stability ready experiment count,0.0,1.0,1.0,experiments,MEDIUM,P1,True,"Accumulate more evaluated samples, then recompute stability summary.",reports/shadow_experiment_stability/summary.json
+strategy_weighted_sample_count,Strategy weighted sample count,1.0,5.0,4.0,weighted_samples,HIGH,P1,True,Collect additional strict/observation shadow samples to lift weighted count.,reports/strategy_candidate_score/summary.json
+system_health_pass,System health PASS,True,True,0.0,flag,NONE,P3,False,Keep system health checks green before any phase transition.,reports/testnet_dry_run_phase_review/testnet_dry_run_phase_review.json
+no_trade_actions_attempted,No submit/cancel/flatten attempts,True,True,0.0,flag,NONE,P3,False,Ensure all runs stay shadow-only with no trade actions attempted.,reports/daily_shadow_research_control/daily_shadow_research_control_report.json
+testnet_dry_run_readiness_not_fail,Testnet dry-run readiness report not FAIL,True,True,0.0,flag,NONE,P3,False,Resolve any readiness FAIL conditions before re-evaluation.,reports/testnet_dry_run_phase_review/testnet_dry_run_phase_review.json
