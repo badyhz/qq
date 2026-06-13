@@ -1,0 +1,15 @@
+{
+  "total_pipeline_scripts": 4,
+  "release_hold": "HOLD",
+  "registry_hash": "19ee33dcf89392c318a51d73361d10fd0d8382b22b58dde526823c6c2dd2d8ac",
+  "all_shadow_only": true,
+  "all_no_submit": true,
+  "all_governance_tracked": true,
+  "all_operator_console_connected": true,
+  "role_counts": {
+    "orchestrator": 1,
+    "sample_collector": 1,
+    "signal_evaluator": 1,
+    "universe_collector": 1
+  }
+}

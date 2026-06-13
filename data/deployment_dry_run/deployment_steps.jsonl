@@ -1,0 +1,86 @@
+[
+  {
+    "step_id": "deploy_step_000",
+    "step_name": "verify_core_modules",
+    "description": "Verify all required core modules are present",
+    "would_execute": false,
+    "would_modify_files": false,
+    "would_install_deps": false,
+    "would_start_services": false,
+    "simulation_only": true,
+    "human_approval_required": true,
+    "advisory_only": true
+  },
+  {
+    "step_id": "deploy_step_001",
+    "step_name": "verify_runner_scripts",
+    "description": "Verify all runner scripts are present",
+    "would_execute": false,
+    "would_modify_files": false,
+    "would_install_deps": false,
+    "would_start_services": false,
+    "simulation_only": true,
+    "human_approval_required": true,
+    "advisory_only": true
+  },
+  {
+    "step_id": "deploy_step_002",
+    "step_name": "verify_test_suite",
+    "description": "Verify test suite passes (dry-run: check only)",
+    "would_execute": false,
+    "would_modify_files": false,
+    "would_install_deps": false,
+    "would_start_services": false,
+    "simulation_only": true,
+    "human_approval_required": true,
+    "advisory_only": true
+  },
+  {
+    "step_id": "deploy_step_003",
+    "step_name": "verify_no_real_submit",
+    "description": "Verify no real submit permissions are enabled",
+    "would_execute": false,
+    "would_modify_files": false,
+    "would_install_deps": false,
+    "would_start_services": false,
+    "simulation_only": true,
+    "human_approval_required": true,
+    "advisory_only": true
+  },
+  {
+    "step_id": "deploy_step_004",
+    "step_name": "verify_dry_run_mode",
+    "description": "Verify system is in dry-run mode",
+    "would_execute": false,
+    "would_modify_files": false,
+    "would_install_deps": false,
+    "would_start_services": false,
+    "simulation_only": true,
+    "human_approval_required": true,
+    "advisory_only": true
+  },
+  {
+    "step_id": "deploy_step_005",
+    "step_name": "generate_deployment_manifest",
+    "description": "Generate deployment manifest with hashes",
+    "would_execute": false,
+    "would_modify_files": false,
+    "would_install_deps": false,
+    "would_start_services": false,
+    "simulation_only": true,
+    "human_approval_required": true,
+    "advisory_only": true
+  },
+  {
+    "step_id": "deploy_step_006",
+    "step_name": "generate_deployment_checklist",
+    "description": "Generate human-readable deployment checklist",
+    "would_execute": false,
+    "would_modify_files": false,
+    "would_install_deps": false,
+    "would_start_services": false,
+    "simulation_only": true,
+    "human_approval_required": true,
+    "advisory_only": true
+  }
+]

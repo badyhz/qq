@@ -1,0 +1,21 @@
+{
+  "audit_id": "final_one_month_audit",
+  "total_modules": 26,
+  "completed_modules": 26,
+  "wave_coverage": {
+    "wave_0": 16,
+    "wave_1": 1,
+    "wave_2": 2,
+    "wave_3": 1,
+    "wave_4": 1,
+    "wave_5": 1,
+    "wave_6": 1,
+    "wave_7": 1,
+    "wave_8": 1,
+    "wave_9": 1
+  },
+  "all_complete": true,
+  "real_submit_blocked": true,
+  "dry_run_enforced": true,
+  "governance_tracked": true
+}

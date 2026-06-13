@@ -1,0 +1,34 @@
+[
+  {
+    "entry_id": "tdr_scripts__replay_shadow_order_plans_as_testnet_dry_py",
+    "path": "scripts/replay_shadow_order_plans_as_testnet_dry.py",
+    "adapter_type": "dry_run_replay",
+    "description": "Replays shadow order plans as testnet dry-run payloads",
+    "risk_category": "TESTNET_DRY_RUN_ONLY",
+    "risk_reason": "Public exchange info call, submit path explicitly stubbed out, writes dry-run payloads",
+    "network_access": "public_exchange_info_only",
+    "submit_path": "explicitly_stubbed",
+    "key_usage": "none",
+    "has_network_calls": true,
+    "has_api_keys": false,
+    "dry_run_locked": true,
+    "no_submit": true,
+    "governance_tracked": true
+  },
+  {
+    "entry_id": "tdr_scripts__verify_testnet_repair_scenarios_py",
+    "path": "scripts/verify_testnet_repair_scenarios.py",
+    "adapter_type": "dry_run_diagnostic",
+    "description": "Read-only testnet diagnostic with repair plan generation",
+    "risk_category": "TESTNET_DRY_RUN_ONLY",
+    "risk_reason": "Read-only testnet diagnostic, force-locks dry_run=True, produces repair plans",
+    "network_access": "testnet_read_only",
+    "submit_path": "force_dry_run_locked",
+    "key_usage": "read_only_no_secret",
+    "has_network_calls": true,
+    "has_api_keys": true,
+    "dry_run_locked": true,
+    "no_submit": true,
+    "governance_tracked": true
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "snapshot_id": "operator_dashboard_v1",
+  "current_mode": "TESTNET_DRY_RUN_PREP",
+  "system_healthy": true,
+  "dry_run": true,
+  "release_hold": "HOLD",
+  "dashboard_hash": "6d965c52e90f5134707c4f132812448165c6bc74ac30fedca801177819c89afb"
+}

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operator Dashboard</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f6fa; color: #2d3436; }
+.header { background: #2d3436; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+.header h1 { margin: 0; font-size: 24px; }
+.header .mode { display: inline-block; padding: 4px 12px; border-radius: 4px; background: #3498db; margin-top: 8px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.card { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.card h3 { margin: 0 0 8px 0; font-size: 14px; color: #636e72; text-transform: uppercase; }
+.card .value { font-size: 28px; font-weight: bold; }
+.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.status-item { display: flex; align-items: center; gap: 8px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.dot.green { background: #27ae60; }
+.dot.red { background: #e74c3c; }
+.dot.yellow { background: #f39c12; }
+.dot.blue { background: #3498db; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; background: #dfe6e9; margin: 2px; font-size: 12px; }
+.blockers { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+.blockers.clear { border-left: 4px solid #27ae60; }
+.blockers h3 { margin: 0 0 8px 0; }
+.next-action { background: #2d3436; color: white; border-radius: 8px; padding: 16px; }
+.next-action h3 { margin: 0 0 8px 0; color: #dfe6e9; }
+.next-action .phase { font-size: 18px; font-weight: bold; color: #74b9ff; }
+.footer { margin-top: 20px; text-align: center; color: #636e72; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>Operator Dashboard</h1>
+<div class="mode">TESTNET_DRY_RUN_PREP</div>
+</div>
+<div class="grid">
+<div class="card">
+<h3>System Health</h3>
+<div class="value" style="color: #27ae60">HEALTHY</div>
+</div>
+<div class="card">
+<h3>Submit Permission</h3>
+<div class="value" style="color: #27ae60">NO_SUBMIT</div>
+</div>
+<div class="card">
+<h3>Strategies</h3>
+<div class="value">11</div>
+</div>
+<div class="card">
+<h3>Dry Run</h3>
+<div class="value">ENABLED</div>
+</div>
+</div>
+<div class="grid">
+<div class="card">
+<h3>Status Flags</h3>
+<div class="status-grid">
+<div class="status-item"><span class="dot green"></span> Dry Run Allowed</div>
+<div class="status-item"><span class="dot green"></span> Real Submit Blocked</div>
+<div class="status-item"><span class="dot green"></span> Testnet Submit Blocked</div>
+<div class="status-item"><span class="dot blue"></span> Frozen Cleanup: COMPLETE</div>
+<div class="status-item"><span class="dot blue"></span> Promotion: READY_FOR_TESTNET_DRY_RUN_PREP</div>
+</div>
+</div>
+<div class="card">
+<h3>Active Alert Sources</h3>
+<span class='tag'>earnings</span><span class='tag'>stock_price</span><span class='tag'>macd_rebound</span><span class='tag'>binance_futures</span><span class='tag'>system_heartbeat</span>
+</div>
+</div>
+<div class="blockers clear"><h3>Critical Blockers</h3><p>None</p></div>
+<div class="next-action">
+<h3>Next Recommended Phase</h3>
+<div class="phase">TESTNET_DRY_RUN_SIMULATION</div>
+</div>
+<div class="footer">
+Dashboard hash: 6d965c52e90f5134... | Snapshot: operator_dashboard_v1
+</div>
+</body>
+</html>

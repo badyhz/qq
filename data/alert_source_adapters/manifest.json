@@ -1,0 +1,13 @@
+{
+  "total_adapters": 5,
+  "release_hold": "HOLD",
+  "registry_hash": "7b56b77ec76c3fbf041170c25b802339496884dc56210fb512bcae2a10d6f771",
+  "all_integrated": true,
+  "all_dry_run_compatible": true,
+  "all_governance_tracked": true,
+  "priority_counts": {
+    "HIGH": 2,
+    "LOW": 1,
+    "MEDIUM": 2
+  }
+}

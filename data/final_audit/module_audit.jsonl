@@ -1,0 +1,184 @@
+[
+  {
+    "module_name": "untracked_runtime_inventory",
+    "wave": 1,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "dangerous_runtime_isolator",
+    "wave": 2,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "safe_archive_planner",
+    "wave": 2,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "research_artifact_registry",
+    "wave": 3,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "shadow_pipeline_registry",
+    "wave": 4,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "testnet_dry_run_adapter_registry",
+    "wave": 5,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "alert_source_adapter_registry",
+    "wave": 6,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "operator_dashboard_renderer",
+    "wave": 7,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "deployment_dry_run_pack",
+    "wave": 8,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "repo_hygiene_scanner",
+    "wave": 9,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "frozen_cleanup_final_inventory",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "frozen_cleanup_decision_matrix",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "frozen_cleanup_dry_run_executor",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "frozen_cleanup_evidence_recorder",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "frozen_cleanup_report",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "frozen_cleanup_handoff_pack",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "promotion_evidence_loader",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "promotion_decision_engine",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "promotion_approval_packet",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "promotion_rollback_plan",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "strategy_registry",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "strategy_promotion_board",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "alert_center",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "testnet_dry_run_orchestrator",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "operator_console",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  },
+  {
+    "module_name": "final_handoff_pack",
+    "wave": 0,
+    "status": "COMPLETE",
+    "governance_tracked": true,
+    "tests_exist": true
+  }
+]

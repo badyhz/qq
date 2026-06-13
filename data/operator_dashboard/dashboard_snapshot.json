@@ -1,0 +1,22 @@
+{
+  "snapshot_id": "operator_dashboard_v1",
+  "current_mode": "TESTNET_DRY_RUN_PREP",
+  "submit_permission": "NO_SUBMIT",
+  "real_submit_allowed": false,
+  "testnet_submit_allowed": false,
+  "dry_run_allowed": true,
+  "frozen_cleanup_status": "COMPLETE",
+  "promotion_status": "READY_FOR_TESTNET_DRY_RUN_PREP",
+  "strategy_count": 11,
+  "active_alert_sources": [
+    "earnings",
+    "stock_price",
+    "macd_rebound",
+    "binance_futures",
+    "system_heartbeat"
+  ],
+  "critical_blockers": [],
+  "next_recommended_phase": "TESTNET_DRY_RUN_SIMULATION",
+  "system_healthy": true,
+  "dry_run": true
+}

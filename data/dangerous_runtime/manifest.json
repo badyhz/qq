@@ -1,0 +1,12 @@
+{
+  "total_isolated": 10,
+  "category_counts": {
+    "HIGH_RISK_FLATTEN": 1,
+    "HIGH_RISK_LIVE_RUNTIME": 1,
+    "HIGH_RISK_TESTNET_SUBMIT": 8
+  },
+  "release_hold": "HOLD",
+  "deny_list_hash": "78281fc198a91d4b44524a242d5ad3848d360d714a06a53090b63ff84772064d",
+  "all_require_human_approval": true,
+  "all_no_touch": true
+}

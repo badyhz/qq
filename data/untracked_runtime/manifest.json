@@ -1,0 +1,17 @@
+{
+  "total_files": 29,
+  "high_risk_count": 10,
+  "category_counts": {
+    "HIGH_RISK_FLATTEN": 1,
+    "HIGH_RISK_LIVE_RUNTIME": 1,
+    "HIGH_RISK_TESTNET_SUBMIT": 8,
+    "NEEDS_HUMAN_REVIEW": 2,
+    "SAFE_IMPORTER": 2,
+    "SAFE_REPORT": 1,
+    "SAFE_RESEARCH": 8,
+    "SHADOW_PIPELINE": 4,
+    "TESTNET_DRY_RUN_ONLY": 2
+  },
+  "release_hold": "HOLD",
+  "inventory_hash": "b7fd421ac426bcf0527256ef66e6dea95fc7bce9b585564ba6b5ae5b076617f4"
+}

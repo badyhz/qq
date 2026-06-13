@@ -1,0 +1,37 @@
+{
+  "config_id": "pre_commit_hygiene_v1",
+  "hook_name": "qq-hygiene-check",
+  "checks": [
+    {
+      "check_id": "forbidden_terms",
+      "description": "Detect forbidden trading permission terms outside deny-list contexts",
+      "pattern": "REAL_SUBMIT_ALLOWED|TESTNET_SUBMIT_ALLOWED|LIVE_TRADING|AUTO_SUBMIT_ENABLED",
+      "severity": "BLOCK",
+      "pre_commit_hook_compatible": true
+    },
+    {
+      "check_id": "hardcoded_secrets",
+      "description": "Detect potential hardcoded API keys or secrets",
+      "pattern": "(api_key|api_secret|password)\\s*=\\s*['\\\"][^'\\\"]+['\\\"]",
+      "severity": "BLOCK",
+      "pre_commit_hook_compatible": true
+    },
+    {
+      "check_id": "real_order_calls",
+      "description": "Detect real order submission calls outside dry-run context",
+      "pattern": "(create_order|submit_order|place_order)",
+      "severity": "WARN",
+      "pre_commit_hook_compatible": true
+    },
+    {
+      "check_id": "live_mode_flag",
+      "description": "Detect enable_live_trading=True outside guard context",
+      "pattern": "enable_live_trading\\s*=\\s*True",
+      "severity": "BLOCK",
+      "pre_commit_hook_compatible": true
+    }
+  ],
+  "enabled": true,
+  "blocking": true,
+  "description": "Pre-commit hook to detect forbidden trading terms and security violations"
+}

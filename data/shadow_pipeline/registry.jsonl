@@ -1,0 +1,54 @@
+[
+  {
+    "entry_id": "spr_scripts__run_daily_shadow_scan_pipeline_py",
+    "path": "scripts/run_daily_shadow_scan_pipeline.py",
+    "pipeline_role": "orchestrator",
+    "pipeline_stage": "stage_0_orchestration",
+    "risk_category": "SHADOW_PIPELINE",
+    "risk_reason": "Shadow pipeline orchestrator, all steps shadow/observation, no submit",
+    "has_network_calls": false,
+    "shadow_only": true,
+    "no_submit": true,
+    "governance_tracked": true,
+    "operator_console_connected": true
+  },
+  {
+    "entry_id": "spr_scripts__run_shadow_sample_collection_pipeline_py",
+    "path": "scripts/run_shadow_sample_collection_pipeline.py",
+    "pipeline_role": "sample_collector",
+    "pipeline_stage": "stage_1_backfill",
+    "risk_category": "SHADOW_PIPELINE",
+    "risk_reason": "Shadow sample collection orchestrator, kline backfill forced dry_run=True",
+    "has_network_calls": false,
+    "shadow_only": true,
+    "no_submit": true,
+    "governance_tracked": true,
+    "operator_console_connected": true
+  },
+  {
+    "entry_id": "spr_scripts__run_shadow_universe_collector_py",
+    "path": "scripts/run_shadow_universe_collector.py",
+    "pipeline_role": "universe_collector",
+    "pipeline_stage": "stage_2_universe",
+    "risk_category": "SHADOW_PIPELINE",
+    "risk_reason": "Shadow universe collector, NO_TESTNET_SUBMIT, cached klines only",
+    "has_network_calls": false,
+    "shadow_only": true,
+    "no_submit": true,
+    "governance_tracked": true,
+    "operator_console_connected": true
+  },
+  {
+    "entry_id": "spr_scripts__run_right_breakout_param_observation_py",
+    "path": "scripts/run_right_breakout_param_observation.py",
+    "pipeline_role": "signal_evaluator",
+    "pipeline_stage": "stage_3_signal_eval",
+    "risk_category": "SHADOW_PIPELINE",
+    "risk_reason": "Public market data + signal eval, enable_live_trading=False, dormant submit path",
+    "has_network_calls": true,
+    "shadow_only": true,
+    "no_submit": true,
+    "governance_tracked": true,
+    "operator_console_connected": true
+  }
+]

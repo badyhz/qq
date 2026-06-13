@@ -1,0 +1,12 @@
+{
+  "total_adapters": 2,
+  "release_hold": "HOLD",
+  "registry_hash": "201f637acd369cd3a846c16994e69d045a5272b2aa97409f3257d20fd3cfb901",
+  "all_dry_run_locked": true,
+  "all_no_submit": true,
+  "all_governance_tracked": true,
+  "adapter_type_counts": {
+    "dry_run_diagnostic": 1,
+    "dry_run_replay": 1
+  }
+}

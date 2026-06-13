@@ -1,0 +1,67 @@
+[
+  {
+    "adapter_id": "asr_earnings",
+    "source_name": "earnings",
+    "adapter_type": "event_driven",
+    "data_source": "local_schedule",
+    "network_required": false,
+    "priority": "HIGH",
+    "dedup_window_minutes": 60,
+    "description": "Earnings calendar event alerts from local schedule data",
+    "integrated_with_alert_center": true,
+    "dry_run_compatible": true,
+    "governance_tracked": true
+  },
+  {
+    "adapter_id": "asr_stock_price",
+    "source_name": "stock_price",
+    "adapter_type": "threshold_monitor",
+    "data_source": "public_market_data",
+    "network_required": true,
+    "priority": "MEDIUM",
+    "dedup_window_minutes": 5,
+    "description": "Stock price threshold breach alerts from public market data",
+    "integrated_with_alert_center": true,
+    "dry_run_compatible": true,
+    "governance_tracked": true
+  },
+  {
+    "adapter_id": "asr_macd_rebound",
+    "source_name": "macd_rebound",
+    "adapter_type": "signal_generator",
+    "data_source": "computed_indicators",
+    "network_required": false,
+    "priority": "MEDIUM",
+    "dedup_window_minutes": 15,
+    "description": "MACD rebound signal alerts from computed technical indicators",
+    "integrated_with_alert_center": true,
+    "dry_run_compatible": true,
+    "governance_tracked": true
+  },
+  {
+    "adapter_id": "asr_binance_futures",
+    "source_name": "binance_futures",
+    "adapter_type": "market_scanner",
+    "data_source": "public_binance_api",
+    "network_required": true,
+    "priority": "HIGH",
+    "dedup_window_minutes": 5,
+    "description": "Binance futures market scanner alerts from public API data",
+    "integrated_with_alert_center": true,
+    "dry_run_compatible": true,
+    "governance_tracked": true
+  },
+  {
+    "adapter_id": "asr_system_heartbeat",
+    "source_name": "system_heartbeat",
+    "adapter_type": "health_monitor",
+    "data_source": "internal_metrics",
+    "network_required": false,
+    "priority": "LOW",
+    "dedup_window_minutes": 1,
+    "description": "System heartbeat and health monitoring alerts",
+    "integrated_with_alert_center": true,
+    "dry_run_compatible": true,
+    "governance_tracked": true
+  }
+]

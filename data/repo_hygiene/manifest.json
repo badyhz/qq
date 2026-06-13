@@ -1,0 +1,9 @@
+{
+  "config_id": "pre_commit_hygiene_v1",
+  "hook_name": "qq-hygiene-check",
+  "enabled": true,
+  "blocking": true,
+  "checks_count": 4,
+  "release_hold": "HOLD",
+  "config_hash": "0862dc654272b76b5b6784728e198be4fa5f706dcec177aa314077266f97ddaa"
+}

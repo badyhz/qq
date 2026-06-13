@@ -1,0 +1,10 @@
+{
+  "total_steps": 7,
+  "release_hold": "HOLD",
+  "pack_hash": "9a4334001d63042565526d339fd0ad7605eff3e391ad895358497e506af8d6c4",
+  "all_simulation_only": true,
+  "all_advisory_only": true,
+  "all_human_approval_required": true,
+  "required_core_modules_count": 25,
+  "required_runner_scripts_count": 12
+}

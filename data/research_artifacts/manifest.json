@@ -1,0 +1,17 @@
+{
+  "total_artifacts": 11,
+  "type_counts": {
+    "data_source_adapter": 2,
+    "research_scanner": 8,
+    "verification_report": 1
+  },
+  "target_counts": {
+    "alert_center": 2,
+    "operator_console": 1,
+    "strategy_registry": 8
+  },
+  "release_hold": "HOLD",
+  "registry_hash": "709dc168bbcb03bbd00e0d9d813f50347dac85cff60f2fbd07608c87a08e07a5",
+  "all_governance_tracked": true,
+  "all_ready_for_integration": true
+}

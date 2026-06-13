@@ -1,0 +1,204 @@
+[
+  {
+    "entry_id": "deny_scripts__run_controlled_testnet_shift_py",
+    "path": "scripts/run_controlled_testnet_shift.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Generates submit_approved_candidates.py commands, calls testnet API, orchestrates full pipeline",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__run_observation_shift_runtime_py",
+    "path": "scripts/run_observation_shift_runtime.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Queries live testnet state via API, argparse self-labels HIGH_RISK",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__run_replay_submit_batch_py",
+    "path": "scripts/run_replay_submit_batch.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Submits orders to testnet via submit_replayed_testnet_payloads",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__run_signal_testnet_trial_py",
+    "path": "scripts/run_signal_testnet_trial.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Creates real Binance testnet connector, --submit-testnet flag enables order submit",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__run_spot_testnet_acceptance_py",
+    "path": "scripts/run_spot_testnet_acceptance.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Full testnet acceptance: submit order, query status, cancel order",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__run_testnet_order_smoke_py",
+    "path": "scripts/run_testnet_order_smoke.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Testnet smoke test with real order submit, accepts --mode live",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__submit_approved_candidates_py",
+    "path": "scripts/submit_approved_candidates.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Main approved-candidate-to-order bridge, delegates to run_replay_submit_batch",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__submit_replayed_testnet_payload_py",
+    "path": "scripts/submit_replayed_testnet_payload.py",
+    "risk_category": "HIGH_RISK_TESTNET_SUBMIT",
+    "risk_reason": "Core order submission engine, submits entry+SL+TP to Binance testnet",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all testnet order submissions",
+      "Require human approval before any execution",
+      "Add pre-commit hook to detect accidental imports"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on testnet submit use case",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__live_playbook_py",
+    "path": "scripts/live_playbook.py",
+    "risk_category": "HIGH_RISK_LIVE_RUNTIME",
+    "risk_reason": "Accepts --mode live, imports ExecutionEngine+OrderManager, enable_live_trading=True",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all live trading paths",
+      "Require human approval before any execution",
+      "Add runtime guard to reject enable_live_trading=True"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on live runtime use case",
+      "Risk engine integration verified",
+      "Deployment monitor integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  },
+  {
+    "entry_id": "deny_scripts__safe_flatten_testnet_symbol_py",
+    "path": "scripts/safe_flatten_testnet_symbol.py",
+    "risk_category": "HIGH_RISK_FLATTEN",
+    "risk_reason": "Submits MARKET reduce-only orders + cancels algo orders on testnet, reads API keys",
+    "isolation_actions": [
+      "Add to execution deny-list",
+      "Block all flatten/reduce-only order paths",
+      "Require human approval before any execution",
+      "Add runtime guard to reject MARKET reduce-only orders"
+    ],
+    "required_unblock_conditions": [
+      "Human signs off on flatten use case",
+      "Risk engine integration verified",
+      "Execution guard integration verified",
+      "Dry-run test passes with no real orders"
+    ],
+    "human_approval_required": true,
+    "no_touch_required": true,
+    "isolation_status": "ISOLATED"
+  }
+]
