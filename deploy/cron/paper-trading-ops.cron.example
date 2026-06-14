@@ -1,0 +1,16 @@
+# Paper Trading Ops Cron (example — do not install automatically)
+# Adjust paths to your environment
+# QQ_ROOT=/Users/winnie/Documents/trae_projects/qq
+
+# Every 15 minutes: signal pipeline
+*/15 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_log_freshness.py >> logs/paper_ops.log 2>&1
+*/15 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_state_audit.py >> logs/paper_ops.log 2>&1
+
+# Every 30 minutes: strategy metrics + dashboard
+*/30 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_strategy_metrics.py >> logs/paper_ops.log 2>&1
+*/30 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_signal_dashboard.py >> logs/paper_ops.log 2>&1
+
+# Daily 23:55: review bundle + alert payload + safety regression
+55 23 * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_daily_bundle.py >> logs/paper_ops.log 2>&1
+55 23 * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_alert_payload.py >> logs/paper_ops.log 2>&1
+55 23 * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_safety_regression.py >> logs/paper_ops.log 2>&1

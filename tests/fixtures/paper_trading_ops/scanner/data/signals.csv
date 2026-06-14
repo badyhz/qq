@@ -1,0 +1,4 @@
+time,symbol,interval,price,signal_level,drop_pct,dif,dea,hist,ma7,ma25,ma99,volume,volume_ma5,volume_ratio,above_ma99,reason
+2026-06-14 10:00:00,BTCUSDT,5m,104500.0,B,3.50,1.2e-05,1.1e-05,1.0e-06,104200.0,103800.0,103000.0,5200.0,3500.0,1.49,True,MACD rebound
+2026-06-14 10:05:00,ETHUSDT,5m,2650.0,B,4.20,2.1e-04,1.8e-04,3.0e-05,2640.0,2630.0,2610.0,3200.0,2100.0,1.52,True,MACD rebound
+2026-06-14 10:10:00,SOLUSDT,5m,155.0,B,2.80,5.0e-05,4.5e-05,5.0e-06,154.5,153.8,152.0,8900.0,6200.0,1.44,True,MACD rebound

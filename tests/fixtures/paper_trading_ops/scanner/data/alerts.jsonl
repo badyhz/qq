@@ -1,0 +1,2 @@
+{"time": "2026-06-14T10:00:00", "symbol": "BTCUSDT", "interval": "5m", "price": 104500.0, "signal_level": "B", "drop_pct": 3.5, "reason": "MACD rebound"}
+{"time": "2026-06-14T10:05:00", "symbol": "ETHUSDT", "interval": "5m", "price": 2650.0, "signal_level": "B", "drop_pct": 4.2, "reason": "MACD rebound"}

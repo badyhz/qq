@@ -1,0 +1,15 @@
+[Unit]
+Description=Paper Trading Ops Daily Review
+After=network.target
+
+[Service]
+Type=oneshot
+User=www
+WorkingDirectory=/www/wwwroot/qq
+Environment=PYTHONPATH=/www/wwwroot/qq
+ExecStart=/usr/bin/python3 scripts/run_paper_ops_daily_bundle.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
