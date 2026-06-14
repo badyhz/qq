@@ -40,3 +40,27 @@ def test_render_report():
     backlog = create_backlog()
     report = render_report(backlog)
     assert "READONLY_REMEDIATION_BACKLOG_READY" in report
+
+
+def test_rem002_expanded():
+    backlog = create_backlog()
+    rem002 = [i for i in backlog.items if i.task_id == "REM_002"][0]
+    assert "Expanded in T325001-T335000" in rem002.recommended_fix
+
+
+def test_rem003_split_completed():
+    backlog = create_backlog()
+    rem003 = [i for i in backlog.items if i.task_id == "REM_003"][0]
+    assert "Test split completed in T325001-T335000" in rem003.recommended_fix
+
+
+def test_rem004_split_completed():
+    backlog = create_backlog()
+    rem004 = [i for i in backlog.items if i.task_id == "REM_004"][0]
+    assert "Test split completed in T325001-T335000" in rem004.recommended_fix
+
+
+def test_rem005_de_facto_registry():
+    backlog = create_backlog()
+    rem005 = [i for i in backlog.items if i.task_id == "REM_005"][0]
+    assert "De facto spec registry created in T325001-T335000" in rem005.recommended_fix

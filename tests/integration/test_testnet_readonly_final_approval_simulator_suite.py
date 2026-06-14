@@ -19,6 +19,12 @@ def test_blocker_drill_pass():
     assert "NETWORK_ON_BLOCKER_DRILL_PASS" in drill.final_verdict
 
 
+def test_blocker_drill_expanded():
+    drill = create_drill()
+    assert len(drill.scenarios) >= 15
+    assert "NETWORK_ON_BLOCKER_DRILL_EXPANDED" in drill.final_verdict
+
+
 def test_signoff_archive_ready():
     archive = create_archive()
     assert "READONLY_HUMAN_SIGNOFF_ARCHIVE_READY" in archive.final_verdict

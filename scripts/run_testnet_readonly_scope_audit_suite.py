@@ -14,6 +14,7 @@ STEPS = [
     ("step_03_suite_depth_review", "scripts.run_readonly_suite_depth_review"),
     ("step_04_remediation_backlog", "scripts.run_readonly_remediation_backlog"),
     ("step_05_safety_regression", "scripts.run_readonly_scope_audit_safety_regression"),
+    ("step_06_de_facto_spec_registry", "scripts.run_de_facto_spec_registry"),
 ]
 
 

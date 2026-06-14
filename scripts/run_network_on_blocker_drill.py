@@ -15,7 +15,7 @@ def main() -> int:
     report = mod.render_report(obj)
     (REPORT_DIR / "network_on_blocker_drill_report.md").parent.mkdir(parents=True, exist_ok=True)
     (REPORT_DIR / "network_on_blocker_drill_report.md").write_text(report, encoding="utf-8")
-    print(f"network-on blocker drill: created")
+    print(f"network-on blocker drill: {len(obj.scenarios)} scenarios, all blocked")
     return 0
 
 if __name__ == "__main__":

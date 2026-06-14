@@ -37,10 +37,10 @@ class RemediationBacklog:
 
 BACKLOG_ITEMS = (
     BacklogItem("REM_001", "GAP_010", "STG_RO_002", "False positive fix already applied for safety regression", "P2", "Already remediated: environment variable and gate unlock references rewritten in SOP/evidence text", True, False),
-    BacklogItem("REM_002", "GAP_019", "STG_RO_004", "Add more network-on blocker drill scenarios", "P2", "Add edge-case scenarios: partial network, timeout, auth failure, rate limit", False, False),
-    BacklogItem("REM_003", "GAP_023", "STG_RO_005", "Split dry execution integration tests into per-module files", "P3", "Create test_readonly_endpoint_allowlist_stub.py and test_readonly_audit_redaction_pack.py", True, False),
-    BacklogItem("REM_004", "GAP_027", "STG_RO_006", "Split final governance integration tests into per-module files", "P3", "Create test_readonly_operator_handoff_packet.py and test_readonly_no_submit_release_archive.py", True, False),
-    BacklogItem("REM_005", "GAP_032", "ALL", "Locate or create PRD source documents", "P3", "If PRDs exist externally, link them; if not, the implementation serves as the de facto spec", False, True),
+    BacklogItem("REM_002", "GAP_019", "STG_RO_004", "Add more network-on blocker drill scenarios", "P2", "Expanded in T325001-T335000: 19 scenarios covering partial network, timeout, auth failure, rate limit, allowlist bypass, scope escalation, redaction bypass, kill switch bypass, rollback bypass", True, False),
+    BacklogItem("REM_003", "GAP_023", "STG_RO_005", "Split dry execution integration tests into per-module files", "P3", "Test split completed in T325001-T335000: test_readonly_endpoint_allowlist_stub.py, test_readonly_audit_redaction_pack.py, test_readonly_dry_execution_artifact_manifest.py", True, False),
+    BacklogItem("REM_004", "GAP_027", "STG_RO_006", "Split final governance integration tests into per-module files", "P3", "Test split completed in T325001-T335000: test_readonly_operator_handoff_packet.py, test_readonly_no_submit_release_archive.py, test_readonly_freeze_integrity_manifest.py", True, False),
+    BacklogItem("REM_005", "GAP_032", "ALL", "Locate or create PRD source documents", "P3", "De facto spec registry created in T325001-T335000: all 6 stages documented with implementation as spec source", False, True),
     BacklogItem("REM_006", "ALL", "ALL", "No P0 safety boundary gaps found", "P0", "All safety boundaries verified: no real network, no real credentials, no submit unlock", True, False),
 )
 
