@@ -1,0 +1,18 @@
+[Unit]
+Description=Paper Trading Pipeline (every 15m)
+After=network.target
+
+[Service]
+Type=oneshot
+User=www
+WorkingDirectory=/www/wwwroot/qq
+Environment=PYTHONPATH=/www/wwwroot/qq
+ExecStart=/usr/bin/python3 scripts/run_paper_trading_log_source_check.py
+ExecStart=/usr/bin/python3 scripts/run_paper_trading_signal_dedup.py
+ExecStart=/usr/bin/python3 scripts/run_paper_trade_plan_batch.py
+ExecStart=/usr/bin/python3 scripts/run_paper_position_store_update.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

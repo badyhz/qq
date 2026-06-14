@@ -1,0 +1,30 @@
+deployment_name: paper_trading_ops_server_test
+mode: dry_run_only
+
+server:
+  host_alias: test_monitor
+  qq_repo_path_candidates:
+    - /Users/winnie/Documents/trae_projects/qq
+  scanner_path_candidates:
+    - /Users/winnie/Documents/trae_projects/qq/tests/fixtures/paper_trading_deployment/scanner
+
+runtime:
+  paper_positions_path: data/runtime/paper_trading_pipeline/paper_positions.jsonl
+  reports_dir: reports/paper_trading_ops
+  logs_dir: logs/paper_trading_ops
+
+schedule:
+  every_15m:
+    - scripts/run_paper_trading_log_source_check.py
+  every_30m:
+    - scripts/run_paper_ops_strategy_metrics.py
+  daily_2355:
+    - scripts/run_paper_ops_daily_bundle.py
+
+safety:
+  real_order_submit_allowed: false
+  real_trading_allowed: false
+  real_feishu_send_allowed: false
+  private_exchange_api_allowed: false
+  systemd_auto_install_allowed: false
+  crontab_auto_write_allowed: false

@@ -1,0 +1,41 @@
+deployment_name: paper_trading_ops_server
+mode: dry_run_only
+
+server:
+  host_alias: tencent_cloud_quant_monitor
+  qq_repo_path_candidates:
+    - /www/wwwroot/quant_monitor/qq
+    - /www/wwwroot/qq
+    - /Users/winnie/Documents/trae_projects/qq
+  scanner_path_candidates:
+    - /www/wwwroot/quant_monitor/macd_rebound_scanner
+    - /Users/winnie/Documents/trae_projects/quant_monitor/macd_rebound_scanner
+    - /Users/winnie/Documents/trae_projects/macd_rebound_scanner
+
+runtime:
+  paper_positions_path: data/runtime/paper_trading_pipeline/paper_positions.jsonl
+  reports_dir: reports/paper_trading_ops
+  logs_dir: logs/paper_trading_ops
+
+schedule:
+  every_15m:
+    - scripts/run_paper_trading_log_source_check.py
+    - scripts/run_paper_trading_signal_dedup.py
+    - scripts/run_paper_trade_plan_batch.py
+    - scripts/run_paper_position_store_update.py
+  every_30m:
+    - scripts/run_paper_position_replay_update.py
+    - scripts/run_paper_ops_strategy_metrics.py
+    - scripts/run_paper_ops_signal_dashboard.py
+  daily_2355:
+    - scripts/run_daily_paper_trading_review.py
+    - scripts/run_paper_ops_daily_bundle.py
+    - scripts/run_paper_ops_alert_payload.py
+
+safety:
+  real_order_submit_allowed: false
+  real_trading_allowed: false
+  real_feishu_send_allowed: false
+  private_exchange_api_allowed: false
+  systemd_auto_install_allowed: false
+  crontab_auto_write_allowed: false

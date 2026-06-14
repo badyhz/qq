@@ -1,0 +1,19 @@
+# Paper Trading Full Cron (example — do not install automatically)
+# Adjust paths to your environment
+# QQ_ROOT=/www/wwwroot/qq
+
+# Every 15 minutes: signal pipeline
+*/15 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_trading_log_source_check.py >> logs/paper_trading_ops/pipeline.log 2>&1
+*/15 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_trading_signal_dedup.py >> logs/paper_trading_ops/pipeline.log 2>&1
+*/15 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_trade_plan_batch.py >> logs/paper_trading_ops/pipeline.log 2>&1
+*/15 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_position_store_update.py >> logs/paper_trading_ops/pipeline.log 2>&1
+
+# Every 30 minutes: position replay + strategy metrics
+*/30 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_position_replay_update.py >> logs/paper_trading_ops/ops.log 2>&1
+*/30 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_strategy_metrics.py >> logs/paper_trading_ops/ops.log 2>&1
+*/30 * * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_signal_dashboard.py >> logs/paper_trading_ops/ops.log 2>&1
+
+# Daily 23:55: review bundle + alert payload
+55 23 * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_daily_paper_trading_review.py >> logs/paper_trading_ops/daily.log 2>&1
+55 23 * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_daily_bundle.py >> logs/paper_trading_ops/daily.log 2>&1
+55 23 * * * cd $QQ_ROOT && PYTHONPATH=. python3 scripts/run_paper_ops_alert_payload.py >> logs/paper_trading_ops/daily.log 2>&1

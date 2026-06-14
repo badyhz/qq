@@ -1,0 +1,17 @@
+[Unit]
+Description=Paper Trading Daily Review
+After=network.target
+
+[Service]
+Type=oneshot
+User=www
+WorkingDirectory=/www/wwwroot/qq
+Environment=PYTHONPATH=/www/wwwroot/qq
+ExecStart=/usr/bin/python3 scripts/run_daily_paper_trading_review.py
+ExecStart=/usr/bin/python3 scripts/run_paper_ops_daily_bundle.py
+ExecStart=/usr/bin/python3 scripts/run_paper_ops_alert_payload.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

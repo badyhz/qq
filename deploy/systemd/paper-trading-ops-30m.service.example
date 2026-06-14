@@ -1,0 +1,17 @@
+[Unit]
+Description=Paper Trading Ops (every 30m)
+After=network.target
+
+[Service]
+Type=oneshot
+User=www
+WorkingDirectory=/www/wwwroot/qq
+Environment=PYTHONPATH=/www/wwwroot/qq
+ExecStart=/usr/bin/python3 scripts/run_paper_position_replay_update.py
+ExecStart=/usr/bin/python3 scripts/run_paper_ops_strategy_metrics.py
+ExecStart=/usr/bin/python3 scripts/run_paper_ops_signal_dashboard.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

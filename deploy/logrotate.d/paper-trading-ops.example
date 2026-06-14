@@ -1,0 +1,13 @@
+/www/wwwroot/qq/logs/paper_trading_ops/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0644 www www
+    sharedscripts
+    postrotate
+        # No service restart needed for log files
+    endscript
+}
