@@ -1,0 +1,4 @@
+time,symbol,interval,price,signal_level,drop_pct,dif,dea,hist,ma7,ma25,ma99,volume,volume_ma5,volume_ratio,above_ma99,reason
+2026-06-12 16:45:00,1000CHEEMSUSDT,5m,0.0006037,B,9.44,7.44e-06,7.38e-06,5.86e-08,0.000597,0.000589,0.000562,49607561.0,25094091.0,1.98,True,MACD rebound signal
+2026-06-12 16:45:00,APEUSDT,5m,0.1298,B,2.97,-3.10e-05,-6.72e-05,3.62e-05,0.1293,0.1297,0.1293,222548.0,169396.0,1.31,True,MACD rebound signal
+2026-06-12 16:50:00,DYDXUSDT,5m,0.122,B,4.03,-8.94e-05,-1.20e-04,3.03e-05,0.1213,0.1219,0.1218,140780.3,79203.0,1.78,True,MACD rebound signal

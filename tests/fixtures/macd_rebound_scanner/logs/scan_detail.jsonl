@@ -1,0 +1,3 @@
+{"round_id": "20260613-005433", "symbol": "ETHUSDT", "interval": "5m", "triggered": false, "failed_conditions": ["MACD 负柱未连续缩小", "当前收盘价未站上 MA25"], "metrics": {"price": 1670.86, "drop_pct": 2.25, "volume_ratio": 0.86}}
+{"round_id": "20260613-005444", "symbol": "BTCUSDT", "interval": "5m", "triggered": true, "failed_conditions": [], "metrics": {"price": 104500.0, "drop_pct": 3.5, "volume_ratio": 1.45}}
+{"round_id": "20260613-005444", "symbol": "APEUSDT", "interval": "5m", "triggered": true, "failed_conditions": [], "metrics": {"price": 0.1298, "drop_pct": 2.97, "volume_ratio": 1.31}}

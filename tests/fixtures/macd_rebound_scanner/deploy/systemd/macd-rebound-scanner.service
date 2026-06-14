@@ -1,0 +1,15 @@
+[Unit]
+Description=MACD Rebound Scanner
+After=network.target
+
+[Service]
+Type=simple
+User=www
+WorkingDirectory=/www/wwwroot/quant_monitor/macd_rebound_scanner
+EnvironmentFile=/www/wwwroot/quant_monitor/macd_rebound_scanner/.env
+ExecStart=/usr/bin/python3 main.py --config config.yaml
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

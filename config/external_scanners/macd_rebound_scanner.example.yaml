@@ -1,0 +1,24 @@
+scanner_name: macd_rebound_scanner
+repo_url: https://github.com/badyhz/macd_rebound_scanner
+local_path_candidates:
+  - /Users/winnie/Documents/trae_projects/quant_monitor/macd_rebound_scanner
+  - /Users/winnie/Documents/trae_projects/macd_rebound_scanner
+  - /www/wwwroot/quant_monitor/macd_rebound_scanner
+expected_files:
+  - main.py
+  - config.yaml
+  - requirements.txt
+  - src
+  - tests
+runtime_files:
+  signals_csv: data/signals.csv
+  alert_state_json: data/alert_state.json
+  scanner_log: logs/macd_rebound_scanner.log
+  scan_detail_jsonl: logs/scan_detail.jsonl
+  alerts_jsonl: logs/alerts.jsonl
+  errors_log: logs/errors.log
+default_mode:
+  dry_run: true
+  once: true
+real_feishu_send_allowed: false
+real_order_submit_allowed: false

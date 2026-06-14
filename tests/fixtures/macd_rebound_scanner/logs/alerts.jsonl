@@ -1,0 +1,4 @@
+{"round_id": "20260613-005433-force", "symbol": "BTCUSDT", "interval": "5m", "signal_time": "2026-06-13T00:54:33", "force_alert": true, "dry_run": true, "sent": false, "webhook_http_status": null, "error_message": null}
+{"round_id": "20260613-005444", "symbol": "1000CHEEMSUSDT", "interval": "5m", "signal_time": "2026-06-12T16:45:00", "sent": false, "dry_run": true, "webhook_http_status": null, "error_message": null}
+{"round_id": "20260613-005444", "symbol": "APEUSDT", "interval": "5m", "signal_time": "2026-06-12T16:45:00", "sent": false, "dry_run": true, "webhook_http_status": null, "error_message": null}
+{"round_id": "20260613-014516-force", "symbol": "BTCUSDT", "interval": "5m", "signal_time": "2026-06-13T01:45:16", "force_alert": true, "dry_run": false, "sent": false, "webhook_http_status": null, "error_message": "FEISHU_WEBHOOK_URL is empty"}
