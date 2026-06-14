@@ -1,0 +1,92 @@
+[
+  {
+    "criterion_id": "dry_run_parity",
+    "title": "Dry-Run Parity Before Field Test",
+    "content": "All dry-run tests must pass before field test begins.",
+    "required": true
+  },
+  {
+    "criterion_id": "vault_approved",
+    "title": "Credential Vault Approved",
+    "content": "Credential vault must be reviewed and approved.",
+    "required": true
+  },
+  {
+    "criterion_id": "signing_reviewed",
+    "title": "Request Signing Reviewed",
+    "content": "Request signing implementation must be reviewed.",
+    "required": true
+  },
+  {
+    "criterion_id": "transport_reviewed",
+    "title": "Network Transport Reviewed",
+    "content": "Network transport implementation must be reviewed.",
+    "required": true
+  },
+  {
+    "criterion_id": "submit_unlock",
+    "title": "Submit Gate Temporary Unlock Approval",
+    "content": "Explicit approval for temporary submit unlock during field test.",
+    "required": true
+  },
+  {
+    "criterion_id": "cancel_unlock",
+    "title": "Cancel Gate Temporary Unlock Approval",
+    "content": "Explicit approval for temporary cancel unlock during field test.",
+    "required": true
+  },
+  {
+    "criterion_id": "recon_unlock",
+    "title": "Reconciliation Gate Temporary Unlock Approval",
+    "content": "Explicit approval for temporary reconciliation unlock during field test.",
+    "required": true
+  },
+  {
+    "criterion_id": "symbol_allowlist",
+    "title": "Symbol Allowlist",
+    "content": "Only approved symbols allowed during field test.",
+    "required": true
+  },
+  {
+    "criterion_id": "notional_cap",
+    "title": "Notional Cap",
+    "content": "Per-order notional cap set and enforced.",
+    "required": true
+  },
+  {
+    "criterion_id": "daily_cap",
+    "title": "Daily Order Cap",
+    "content": "Daily order cap set and enforced.",
+    "required": true
+  },
+  {
+    "criterion_id": "operator_present",
+    "title": "Manual Operator Present",
+    "content": "Operator must be present during entire field test.",
+    "required": true
+  },
+  {
+    "criterion_id": "kill_switch_armed",
+    "title": "Kill Switch Armed",
+    "content": "Kill switch must be armed and tested.",
+    "required": true
+  },
+  {
+    "criterion_id": "audit_backup",
+    "title": "Audit Log External Backup",
+    "content": "Audit log backed up to external storage before field test.",
+    "required": true
+  },
+  {
+    "criterion_id": "rollback_rehearsal",
+    "title": "Rollback Rehearsal",
+    "content": "Rollback procedure rehearsed before field test.",
+    "required": true
+  },
+  {
+    "criterion_id": "post_review",
+    "title": "Post-Test Review",
+    "content": "Post-test review required before next phase.",
+    "required": true
+  }
+]

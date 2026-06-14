@@ -1,0 +1,62 @@
+[
+  {
+    "section_id": "canonical_format",
+    "title": "Canonical Request Format",
+    "content": "METHOD\\nPATH\\nTIMESTAMP\\nNONCE\\nPAYLOAD_HASH. Architecture-only."
+  },
+  {
+    "section_id": "timestamp_policy",
+    "title": "Timestamp Policy",
+    "content": "Unix epoch milliseconds. Must be within 5 seconds of server time. Clock skew handling required."
+  },
+  {
+    "section_id": "nonce_policy",
+    "title": "Nonce Policy",
+    "content": "UUID v4 per request. Never reused within timestamp window."
+  },
+  {
+    "section_id": "payload_hash",
+    "title": "Payload Hashing",
+    "content": "SHA-256 of request body. Empty string for GET requests."
+  },
+  {
+    "section_id": "signature_algorithm",
+    "title": "Signature Algorithm Placeholder",
+    "content": "HMAC-SHA256 of canonical string with API secret. Placeholder only \u2014 no real signing."
+  },
+  {
+    "section_id": "redaction",
+    "title": "Redaction Requirement",
+    "content": "Secret never logged. Signature redacted in audit logs. Only last 4 chars of key visible."
+  },
+  {
+    "section_id": "replay_protection",
+    "title": "Replay Protection",
+    "content": "Timestamp + nonce combination prevents replay. Server-side nonce cache recommended."
+  },
+  {
+    "section_id": "clock_skew",
+    "title": "Clock Skew Handling",
+    "content": "Requests outside 5-second window rejected. NTP sync recommended."
+  },
+  {
+    "section_id": "signing_failure",
+    "title": "Signing Failure Handling",
+    "content": "Signing failure aborts request. No fallback to unsigned. Incident logged."
+  },
+  {
+    "section_id": "audit_event",
+    "title": "Audit Event Requirement",
+    "content": "Every signing attempt logged: timestamp, key_id (redacted), success/failure, reason."
+  },
+  {
+    "section_id": "credential_dep",
+    "title": "Credential Dependency",
+    "content": "Signing requires credential vault with API secret. Not implemented."
+  },
+  {
+    "section_id": "no_submit_dep",
+    "title": "No-Submit Dependency",
+    "content": "Signing does not grant submit permission. Submit gate remains locked."
+  }
+]

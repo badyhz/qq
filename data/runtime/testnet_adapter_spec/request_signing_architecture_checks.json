@@ -1,0 +1,52 @@
+[
+  {
+    "check_id": "mode_architecture_only",
+    "passed": true,
+    "detail": "mode=ARCHITECTURE_ONLY"
+  },
+  {
+    "check_id": "no_real_secret",
+    "passed": true,
+    "detail": "no real secret"
+  },
+  {
+    "check_id": "not_sendable",
+    "passed": true,
+    "detail": "request not sendable"
+  },
+  {
+    "check_id": "no_network",
+    "passed": true,
+    "detail": "no network call"
+  },
+  {
+    "check_id": "submit_not_allowed",
+    "passed": true,
+    "detail": "submit not allowed"
+  },
+  {
+    "check_id": "has_canonical",
+    "passed": true,
+    "detail": "canonical format present"
+  },
+  {
+    "check_id": "has_timestamp",
+    "passed": true,
+    "detail": "timestamp policy present"
+  },
+  {
+    "check_id": "has_nonce",
+    "passed": true,
+    "detail": "nonce policy present"
+  },
+  {
+    "check_id": "has_redaction",
+    "passed": true,
+    "detail": "redaction requirement present"
+  },
+  {
+    "check_id": "has_replay",
+    "passed": true,
+    "detail": "replay protection present"
+  }
+]

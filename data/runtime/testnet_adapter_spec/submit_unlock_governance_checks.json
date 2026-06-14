@@ -1,0 +1,52 @@
+[
+  {
+    "check_id": "mode_draft_only",
+    "passed": true,
+    "detail": "mode=DRAFT_ONLY"
+  },
+  {
+    "check_id": "gate_locked",
+    "passed": true,
+    "detail": "gate remains locked"
+  },
+  {
+    "check_id": "testnet_not_allowed",
+    "passed": true,
+    "detail": "testnet submit not allowed"
+  },
+  {
+    "check_id": "real_not_allowed",
+    "passed": true,
+    "detail": "real submit not allowed"
+  },
+  {
+    "check_id": "has_approvals",
+    "passed": true,
+    "detail": "approval requirements present"
+  },
+  {
+    "check_id": "has_kill_switch",
+    "passed": true,
+    "detail": "kill switch present"
+  },
+  {
+    "check_id": "has_rollback",
+    "passed": true,
+    "detail": "rollback present"
+  },
+  {
+    "check_id": "has_audit",
+    "passed": true,
+    "detail": "audit present"
+  },
+  {
+    "check_id": "has_expiration",
+    "passed": true,
+    "detail": "expiration present"
+  },
+  {
+    "check_id": "has_revocation",
+    "passed": true,
+    "detail": "revocation present"
+  }
+]

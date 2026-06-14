@@ -1,0 +1,52 @@
+[
+  {
+    "check_id": "mode_criteria_only",
+    "passed": true,
+    "detail": "mode=CRITERIA_ONLY"
+  },
+  {
+    "check_id": "not_executed",
+    "passed": true,
+    "detail": "field test not executed"
+  },
+  {
+    "check_id": "submit_not_allowed",
+    "passed": true,
+    "detail": "submit not allowed"
+  },
+  {
+    "check_id": "has_dry_run_parity",
+    "passed": true,
+    "detail": "dry-run parity present"
+  },
+  {
+    "check_id": "has_vault_approval",
+    "passed": true,
+    "detail": "vault approval present"
+  },
+  {
+    "check_id": "has_kill_switch",
+    "passed": true,
+    "detail": "kill switch present"
+  },
+  {
+    "check_id": "has_rollback",
+    "passed": true,
+    "detail": "rollback present"
+  },
+  {
+    "check_id": "has_operator",
+    "passed": true,
+    "detail": "operator requirement present"
+  },
+  {
+    "check_id": "has_audit",
+    "passed": true,
+    "detail": "audit present"
+  },
+  {
+    "check_id": "has_notional_cap",
+    "passed": true,
+    "detail": "notional cap present"
+  }
+]

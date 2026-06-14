@@ -1,0 +1,86 @@
+[
+  {
+    "perm_id": "testnet_only",
+    "title": "Testnet-Only Account",
+    "content": "All operations restricted to testnet.binance.vision. No production access.",
+    "required": true
+  },
+  {
+    "perm_id": "subaccount_isolation",
+    "title": "Sub-Account Isolation",
+    "content": "Dedicated sub-account for automated trading. No shared accounts.",
+    "required": true
+  },
+  {
+    "perm_id": "ip_allowlist",
+    "title": "IP Allowlist Requirement",
+    "content": "API keys restricted to known IP addresses. No wildcard IPs.",
+    "required": true
+  },
+  {
+    "perm_id": "read_perm",
+    "title": "Read Permission",
+    "content": "Required for balance, position, and order status queries.",
+    "required": true
+  },
+  {
+    "perm_id": "order_create",
+    "title": "Order Create Permission",
+    "content": "Required for order submission. Scoped to allowed symbols only.",
+    "required": true
+  },
+  {
+    "perm_id": "order_cancel",
+    "title": "Order Cancel Permission",
+    "content": "Required for order cancellation. Must be idempotent.",
+    "required": true
+  },
+  {
+    "perm_id": "balance_read",
+    "title": "Balance Read Permission",
+    "content": "Required for account balance queries. Read-only.",
+    "required": true
+  },
+  {
+    "perm_id": "position_read",
+    "title": "Position Read Permission",
+    "content": "Required for position queries. Read-only.",
+    "required": true
+  },
+  {
+    "perm_id": "no_withdraw",
+    "title": "Withdraw Permission Forbidden",
+    "content": "Withdraw permission must not be granted. Any key with withdraw must be revoked.",
+    "required": true
+  },
+  {
+    "perm_id": "no_margin",
+    "title": "Margin/Borrow Forbidden",
+    "content": "Margin and borrow permissions forbidden unless explicitly approved by risk review.",
+    "required": true
+  },
+  {
+    "perm_id": "symbol_allowlist",
+    "title": "Symbol Allowlist",
+    "content": "Only approved symbols allowed. Default: empty (no symbols).",
+    "required": true
+  },
+  {
+    "perm_id": "notional_cap",
+    "title": "Notional Cap",
+    "content": "Per-order notional cap. Default: 0 (no orders). Requires explicit approval to increase.",
+    "required": true
+  },
+  {
+    "perm_id": "daily_order_cap",
+    "title": "Daily Order Cap",
+    "content": "Maximum orders per day. Default: 0. Requires explicit approval to increase.",
+    "required": true
+  },
+  {
+    "perm_id": "manual_freeze",
+    "title": "Manual Freeze Procedure",
+    "content": "Operator can freeze all trading immediately. Freeze requires manual unfreeze.",
+    "required": true
+  }
+]

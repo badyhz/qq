@@ -1,0 +1,107 @@
+[
+  {
+    "threat_id": "cred_leak",
+    "category": "credential_leakage",
+    "description": "API secret leaked through logs, errors, or debug output",
+    "mitigation": "Redaction policy, audit logging, secret scanning",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "perm_overreach",
+    "category": "permission_overreach",
+    "description": "API key granted more permissions than needed",
+    "mitigation": "Least privilege, permission review, withdraw forbidden",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "withdraw_exposure",
+    "category": "withdraw_permission_exposure",
+    "description": "Withdraw permission accidentally enabled",
+    "mitigation": "Explicit deny, automated check, revocation policy",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "replay_attack",
+    "category": "replay_attack",
+    "description": "Signed request replayed by attacker",
+    "mitigation": "Timestamp + nonce, server-side dedup, short TTL",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "duplicate_submit",
+    "category": "duplicate_submit",
+    "description": "Order submitted multiple times",
+    "mitigation": "Idempotency key, server-side dedup, client-side dedup",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "stale_signal",
+    "category": "stale_signal_submit",
+    "description": "Order submitted based on stale signal",
+    "mitigation": "Signal staleness check, timestamp validation",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "network_timeout",
+    "category": "network_timeout",
+    "description": "Request times out, unknown state",
+    "mitigation": "Timeout policy, retry with backoff, idempotency",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "partial_response",
+    "category": "partial_response",
+    "description": "Server returns partial response",
+    "mitigation": "Response validation, reject partial, retry",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "cancel_failure",
+    "category": "cancel_failure",
+    "description": "Cancel request fails, order remains open",
+    "mitigation": "Cancel retry, emergency cancel, operator alert",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "recon_mismatch",
+    "category": "reconciliation_mismatch",
+    "description": "Local state differs from exchange state",
+    "mitigation": "Reconciliation cycle, mismatch alert, order hold",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "audit_tamper",
+    "category": "audit_tampering",
+    "description": "Audit log tampered or deleted",
+    "mitigation": "Tamper-evident chain, external storage, backup",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "operator_error",
+    "category": "operator_error",
+    "description": "Operator makes mistake (wrong symbol, wrong size)",
+    "mitigation": "Approval workflow, notional cap, symbol allowlist",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "approval_spoof",
+    "category": "approval_spoofing",
+    "description": "Fake approval submitted",
+    "mitigation": "Authenticated approval, MFA, audit trail",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "kill_switch_fail",
+    "category": "kill_switch_failure",
+    "description": "Kill switch fails to block submit",
+    "mitigation": "Default blocking, regular testing, redundant check",
+    "status": "DESIGNED"
+  },
+  {
+    "threat_id": "rollback_fail",
+    "category": "rollback_failure",
+    "description": "Rollback fails or corrupts state",
+    "mitigation": "Rollback rehearsal, artifact preservation, backup",
+    "status": "DESIGNED"
+  }
+]

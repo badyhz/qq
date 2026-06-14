@@ -1,0 +1,72 @@
+[
+  {
+    "section_id": "abstraction",
+    "title": "Transport Abstraction",
+    "content": "Abstract HTTP client interface. Architecture-only \u2014 no implementation."
+  },
+  {
+    "section_id": "timeout_policy",
+    "title": "Timeout Policy",
+    "content": "Connect timeout: 5s. Read timeout: 10s. Total timeout: 30s."
+  },
+  {
+    "section_id": "retry_policy",
+    "title": "Retry Policy",
+    "content": "Exponential backoff: 1s, 2s, 4s, 8s. Max 4 retries. Only on 5xx and timeout."
+  },
+  {
+    "section_id": "rate_limit_policy",
+    "title": "Rate Limit Policy",
+    "content": "Per-endpoint rate limits. Order: 10/s. Cancel: 10/s. General: 1200/min. Backoff on 429."
+  },
+  {
+    "section_id": "circuit_breaker",
+    "title": "Circuit Breaker Policy",
+    "content": "Open after 5 consecutive failures. Half-open after 30s. Closed after 3 successes."
+  },
+  {
+    "section_id": "idempotency",
+    "title": "Idempotency Key Policy",
+    "content": "UUID v4 idempotency key per order request. Server-side dedup recommended."
+  },
+  {
+    "section_id": "response_validation",
+    "title": "Response Validation",
+    "content": "Validate HTTP status, content-type, JSON schema. Reject malformed responses."
+  },
+  {
+    "section_id": "malformed_response",
+    "title": "Malformed Response Handling",
+    "content": "Log error, reject response, increment error counter. No retry on malformed."
+  },
+  {
+    "section_id": "partial_response",
+    "title": "Partial Response Handling",
+    "content": "Detect partial JSON, log error, reject. No partial processing."
+  },
+  {
+    "section_id": "duplicate_response",
+    "title": "Duplicate Response Handling",
+    "content": "Idempotency key dedup. Log warning on duplicate detection."
+  },
+  {
+    "section_id": "out_of_order",
+    "title": "Out-of-Order Response Handling",
+    "content": "Sequence number tracking. Reject out-of-order. Log warning."
+  },
+  {
+    "section_id": "stale_response",
+    "title": "Stale Response Handling",
+    "content": "Timestamp comparison. Reject responses older than 30s. Log warning."
+  },
+  {
+    "section_id": "audit_event",
+    "title": "Audit Event Emission",
+    "content": "Every request/response logged: method, path, status, latency, error. Tamper-evident."
+  },
+  {
+    "section_id": "kill_switch_dep",
+    "title": "Kill Switch Dependency",
+    "content": "Kill switch blocks all outbound requests when armed. Not implemented."
+  }
+]

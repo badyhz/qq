@@ -1,0 +1,77 @@
+[
+  {
+    "section_id": "purpose",
+    "title": "Adapter Purpose",
+    "content": "Provide a safe, auditable interface to Binance testnet for order lifecycle management. Design-only phase \u2014 no implementation."
+  },
+  {
+    "section_id": "non_goals",
+    "title": "Non-Goals",
+    "content": "No real submit, no real credentials, no live trading, no auto-submit, no real network calls in this phase."
+  },
+  {
+    "section_id": "exchange_profile",
+    "title": "Supported Future Exchange Profile",
+    "content": "Binance testnet (testnet.binance.vision) only; no production endpoints. Spot and USD\u24c8-M futures. REST API v3/v1. HMAC-SHA256 signing."
+  },
+  {
+    "section_id": "method_boundaries",
+    "title": "Future Method Boundaries",
+    "content": "load_connection_profile, validate_permissions, build_signed_request, submit_order, cancel_order, fetch_balance, fetch_positions, fetch_order_status, reconcile."
+  },
+  {
+    "section_id": "forbidden_methods",
+    "title": "Forbidden Current Methods",
+    "content": "No real network calls, no real API keys, no real signatures, no real order submission, no ccxt client instantiation. Submit remains locked and testnet submit is not allowed until governance unlock."
+  },
+  {
+    "section_id": "credential_dep",
+    "title": "Credential Dependency",
+    "content": "Requires encrypted credential vault with access control, audit logging, key rotation, and redaction. Not implemented in this phase."
+  },
+  {
+    "section_id": "signing_dep",
+    "title": "Request Signing Dependency",
+    "content": "Requires HMAC-SHA256 canonical request construction with timestamp, nonce, and payload hash. Not implemented in this phase."
+  },
+  {
+    "section_id": "network_dep",
+    "title": "Network Transport Dependency",
+    "content": "Requires HTTPS-only transport with TLS 1.2+, certificate pinning, timeout, retry, and rate limiting. Not implemented in this phase."
+  },
+  {
+    "section_id": "rate_limit_dep",
+    "title": "Rate Limit Dependency",
+    "content": "Requires per-endpoint rate limits with exponential backoff and cool-down. Not implemented in this phase."
+  },
+  {
+    "section_id": "cancel_dep",
+    "title": "Cancel Dependency",
+    "content": "Requires idempotent cancel, terminal order handling, unknown order handling, and cancel audit trail. Not implemented in this phase."
+  },
+  {
+    "section_id": "recon_dep",
+    "title": "Reconciliation Dependency",
+    "content": "Requires real balance/position fetch, staleness detection, mismatch handling, and manual override. Not implemented in this phase."
+  },
+  {
+    "section_id": "audit_dep",
+    "title": "Audit Dependency",
+    "content": "Requires tamper-evident hash chain, external storage, 90-day retention, and export capability. Not implemented in this phase."
+  },
+  {
+    "section_id": "approval_dep",
+    "title": "Human Approval Dependency",
+    "content": "Requires multi-party approval with expiration, risk summary, cancel plan, and rollback plan. Not implemented in this phase."
+  },
+  {
+    "section_id": "kill_switch_dep",
+    "title": "Kill Switch Dependency",
+    "content": "Requires kill switch armed by default, blocking all submits, with manual 2-person unlock. Not implemented in this phase."
+  },
+  {
+    "section_id": "rollback_dep",
+    "title": "Rollback Dependency",
+    "content": "Requires point-in-time restore, artifact preservation, and audit log continuity. Not implemented in this phase."
+  }
+]

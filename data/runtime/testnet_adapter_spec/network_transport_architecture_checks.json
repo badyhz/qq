@@ -1,0 +1,52 @@
+[
+  {
+    "check_id": "mode_architecture_only",
+    "passed": true,
+    "detail": "mode=ARCHITECTURE_ONLY"
+  },
+  {
+    "check_id": "no_network_client",
+    "passed": true,
+    "detail": "no network client"
+  },
+  {
+    "check_id": "no_network_call",
+    "passed": true,
+    "detail": "no network call"
+  },
+  {
+    "check_id": "submit_not_allowed",
+    "passed": true,
+    "detail": "submit not allowed"
+  },
+  {
+    "check_id": "has_timeout",
+    "passed": true,
+    "detail": "timeout policy present"
+  },
+  {
+    "check_id": "has_retry",
+    "passed": true,
+    "detail": "retry policy present"
+  },
+  {
+    "check_id": "has_rate_limit",
+    "passed": true,
+    "detail": "rate limit policy present"
+  },
+  {
+    "check_id": "has_circuit_breaker",
+    "passed": true,
+    "detail": "circuit breaker present"
+  },
+  {
+    "check_id": "has_idempotency",
+    "passed": true,
+    "detail": "idempotency present"
+  },
+  {
+    "check_id": "has_audit",
+    "passed": true,
+    "detail": "audit event present"
+  }
+]

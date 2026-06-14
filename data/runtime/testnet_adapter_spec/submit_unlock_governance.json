@@ -1,0 +1,92 @@
+[
+  {
+    "item_id": "required_approvals",
+    "title": "Required Approvals",
+    "content": "Minimum 3 independent human approvals: operator, reviewer, security. Each must be authenticated.",
+    "required": true
+  },
+  {
+    "item_id": "operator_ack",
+    "title": "Operator Acknowledgement",
+    "content": "Operator must acknowledge risks, read-only constraints, and emergency procedures.",
+    "required": true
+  },
+  {
+    "item_id": "reviewer_ack",
+    "title": "Reviewer Acknowledgement",
+    "content": "Reviewer must independently verify all safety controls are in place.",
+    "required": true
+  },
+  {
+    "item_id": "security_review",
+    "title": "Security Review",
+    "content": "Security reviewer must verify credential vault, access control, and audit logging.",
+    "required": true
+  },
+  {
+    "item_id": "vault_approval",
+    "title": "Credential Vault Approval",
+    "content": "Credential vault must be reviewed and approved before submit unlock.",
+    "required": true
+  },
+  {
+    "item_id": "adapter_review",
+    "title": "Adapter Implementation Review",
+    "content": "External adapter implementation must pass code review and safety scan.",
+    "required": true
+  },
+  {
+    "item_id": "dry_run_evidence",
+    "title": "Dry-Run Evidence",
+    "content": "Complete dry-run evidence showing all safety controls work as designed.",
+    "required": true
+  },
+  {
+    "item_id": "field_test_scope",
+    "title": "Field-Test Scope",
+    "content": "Defined scope for field test: symbols, notional caps, duration, rollback plan.",
+    "required": true
+  },
+  {
+    "item_id": "max_notional",
+    "title": "Max Notional Cap",
+    "content": "Per-order notional cap must be set. Default: 100 USDT. Requires approval to increase.",
+    "required": true
+  },
+  {
+    "item_id": "symbol_allowlist",
+    "title": "Symbol Allowlist",
+    "content": "Only approved symbols. Default: empty. Each symbol requires individual approval.",
+    "required": true
+  },
+  {
+    "item_id": "kill_switch_proof",
+    "title": "Kill Switch Proof",
+    "content": "Kill switch must be tested and verified to block all submits.",
+    "required": true
+  },
+  {
+    "item_id": "rollback_proof",
+    "title": "Rollback Proof",
+    "content": "Rollback procedure must be tested and verified.",
+    "required": true
+  },
+  {
+    "item_id": "audit_retention",
+    "title": "Audit Retention Proof",
+    "content": "Audit log retention must be verified: tamper-evident, external storage, 90-day retention.",
+    "required": true
+  },
+  {
+    "item_id": "unlock_expiration",
+    "title": "Submit Unlock Expiration",
+    "content": "Submit unlock must have an expiration time. Default: 24 hours. Requires re-approval to extend.",
+    "required": true
+  },
+  {
+    "item_id": "unlock_revocation",
+    "title": "Submit Unlock Revocation",
+    "content": "Any approver can revoke submit unlock immediately. Revocation logged.",
+    "required": true
+  }
+]

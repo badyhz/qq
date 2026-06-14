@@ -1,0 +1,62 @@
+[
+  {
+    "check_id": "has_purpose",
+    "passed": true,
+    "detail": "section 'purpose' present"
+  },
+  {
+    "check_id": "has_method_boundaries",
+    "passed": true,
+    "detail": "section 'method_boundaries' present"
+  },
+  {
+    "check_id": "has_exchange_profile",
+    "passed": true,
+    "detail": "section 'exchange_profile' present"
+  },
+  {
+    "check_id": "has_signing_dep",
+    "passed": true,
+    "detail": "section 'signing_dep' present"
+  },
+  {
+    "check_id": "has_credential_dep",
+    "passed": true,
+    "detail": "section 'credential_dep' present"
+  },
+  {
+    "check_id": "has_forbidden_methods",
+    "passed": true,
+    "detail": "section 'forbidden_methods' present"
+  },
+  {
+    "check_id": "has_network_dep",
+    "passed": true,
+    "detail": "section 'network_dep' present"
+  },
+  {
+    "check_id": "has_non_goals",
+    "passed": true,
+    "detail": "section 'non_goals' present"
+  },
+  {
+    "check_id": "no_real_endpoints",
+    "passed": true,
+    "detail": "no real endpoints hardcoded"
+  },
+  {
+    "check_id": "no_real_credentials",
+    "passed": true,
+    "detail": "no real credentials"
+  },
+  {
+    "check_id": "no_ccxt_active",
+    "passed": true,
+    "detail": "no ccxt import"
+  },
+  {
+    "check_id": "states_submit_locked",
+    "passed": true,
+    "detail": "submit remains locked"
+  }
+]

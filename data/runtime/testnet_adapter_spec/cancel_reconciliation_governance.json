@@ -1,0 +1,76 @@
+{
+  "cancel_governance": [
+    {
+      "item_id": "idempotency",
+      "title": "Cancel Idempotency Proof",
+      "content": "Cancel must be idempotent. Duplicate cancel returns success without error."
+    },
+    {
+      "item_id": "unknown_order",
+      "title": "Unknown Order Policy",
+      "content": "Cancel of unknown order returns success (already cancelled or never existed)."
+    },
+    {
+      "item_id": "terminal_order",
+      "title": "Terminal Order Policy",
+      "content": "Cancel of terminal order (filled, cancelled, expired) returns success."
+    },
+    {
+      "item_id": "duplicate_cancel",
+      "title": "Duplicate Cancel Policy",
+      "content": "Duplicate cancel within 60s returns cached result."
+    },
+    {
+      "item_id": "emergency_cancel",
+      "title": "Emergency Cancel Procedure",
+      "content": "Operator can cancel all open orders immediately. Requires confirmation."
+    },
+    {
+      "item_id": "cancel_audit",
+      "title": "Cancel Audit Log Proof",
+      "content": "Every cancel attempt logged: order_id, result, timestamp, operator."
+    },
+    {
+      "item_id": "manual_override",
+      "title": "Manual Cancel Override Policy",
+      "content": "Operator can override cancel failures. Override logged and reviewed."
+    }
+  ],
+  "reconciliation_governance": [
+    {
+      "item_id": "balance_snapshot",
+      "title": "Balance Snapshot Proof",
+      "content": "Balance snapshot taken before and after each reconciliation cycle."
+    },
+    {
+      "item_id": "position_snapshot",
+      "title": "Position Snapshot Proof",
+      "content": "Position snapshot taken before and after each reconciliation cycle."
+    },
+    {
+      "item_id": "staleness",
+      "title": "Staleness Threshold",
+      "content": "Snapshots older than 30s considered stale. Stale snapshots trigger warning."
+    },
+    {
+      "item_id": "mismatch",
+      "title": "Mismatch Resolution Policy",
+      "content": "Mismatch detected: log warning, hold new orders, notify operator."
+    },
+    {
+      "item_id": "manual_override",
+      "title": "Manual Override Policy",
+      "content": "Operator can override mismatch. Override logged and reviewed."
+    },
+    {
+      "item_id": "audit_chain",
+      "title": "Audit Chain Proof",
+      "content": "Reconciliation events in tamper-evident audit chain."
+    },
+    {
+      "item_id": "operator_review",
+      "title": "Operator Review Policy",
+      "content": "Operator must review reconciliation report before next trading cycle."
+    }
+  ]
+}
