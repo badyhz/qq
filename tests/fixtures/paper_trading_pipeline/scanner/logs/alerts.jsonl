@@ -1,0 +1,3 @@
+{"round_id": "20260614-100000", "symbol": "BTCUSDT", "interval": "5m", "signal_time": "2026-06-14T10:00:00", "force_alert": true, "dry_run": true, "sent": false}
+{"round_id": "20260614-100500", "symbol": "ETHUSDT", "interval": "5m", "signal_time": "2026-06-14T10:05:00", "dry_run": true, "sent": false}
+{"round_id": "20260614-101000", "symbol": "SOLUSDT", "interval": "5m", "signal_time": "2026-06-14T10:10:00", "dry_run": true, "sent": false, "error_message": "FEISHU_WEBHOOK_URL is empty"}
