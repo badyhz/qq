@@ -1,0 +1,3 @@
+{"round_id": "20260612-164500", "symbol": "BTCUSDT", "interval": "5m", "triggered": true, "failed_conditions": [], "metrics": {"price": 104500.0, "drop_pct": 3.5, "volume_ratio": 1.49}}
+{"round_id": "20260612-164500", "symbol": "ETHUSDT", "interval": "5m", "triggered": true, "failed_conditions": [], "metrics": {"price": 2650.0, "drop_pct": 4.2, "volume_ratio": 1.52}}
+{"round_id": "20260612-165000", "symbol": "SOLUSDT", "interval": "5m", "triggered": true, "failed_conditions": [], "metrics": {"price": 155.0, "drop_pct": 2.8, "volume_ratio": 1.44}}
