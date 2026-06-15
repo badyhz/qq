@@ -89,7 +89,7 @@ strategy_profiles:
 execution:
   slippage_threshold: 0.003
   dry_run_fee_rate: 0.0004
-  dry_run_slippage_rate: 0.0
+  dry_run_slippage_rate: 0.0005
   working_type: "MARK_PRICE"
   allow_live_without_protection: false
   guard_check_interval_seconds: 5

@@ -57,3 +57,25 @@ def atr(highs, lows, closes, period: int) -> float:
     if not true_ranges:
         return 0.0
     return float(np.mean(true_ranges))
+
+
+def ema_series(values, period: int) -> list[float]:
+    series = np.asarray(values, dtype=float)
+    if len(series) == 0:
+        return []
+    alpha = 2.0 / (period + 1)
+    result = [float(series[0])]
+    for value in series[1:]:
+        result.append(alpha * value + (1 - alpha) * result[-1])
+    return result
+
+
+def macd(closes, fast: int = 12, slow: int = 26, signal_period: int = 9) -> tuple[float, float, float]:
+    if len(closes) < slow:
+        return 0.0, 0.0, 0.0
+    fast_ema = ema_series(closes, fast)
+    slow_ema = ema_series(closes, slow)
+    dif = [f - s for f, s in zip(fast_ema, slow_ema)]
+    dea = ema_series(dif, signal_period)
+    hist = [d - e for d, e in zip(dif, dea)]
+    return dif[-1], dea[-1], hist[-1]

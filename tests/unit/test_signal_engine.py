@@ -169,3 +169,61 @@ def test_on_candle_returns_none_when_no_signal(mock_config, mock_logger, mock_ca
     assert "action" in no_signal_result
     assert no_signal_result["action"] == "NONE"
     assert no_signal_result["state"] == "IDLE"
+
+def test_full_short_signal_generation(mock_logger):
+    """Exercise ARMED -> scoring -> entry confirmation -> SHORT signal."""
+    config = {
+        "strategy_profile": "aggressive",
+        "strategy": {
+            "profile_name": "aggressive",
+            "lookback": 5,
+            "ema_period": 3,
+            "vwap_window": 4,
+            "std_window": 5,
+            "atr_period": 2,
+            "armed_zscore": 1.35,
+            "entry_zscore": 1.5,
+            "min_score": 3,
+            "low_volatility_filter_pct": 0.0020,
+            "stop_atr_multiplier": 1.2,
+            "take_profit_rr": 1.55,
+            "min_stop_pct": 0.01,
+            "max_stop_pct": 0.035,
+            "min_take_profit_rr": 1.5,
+            "max_take_profit_rr": 2.05,
+            "zscore_retrace_delta": 0.28,
+            "cooldown_bars": 1,
+        },
+    }
+    engine = SignalEngine(config, mock_logger)
+
+    base = 100.0
+    candles = []
+    for i in range(50):
+        c = {
+            "symbol": "BTCUSDT",
+            "timestamp": datetime(2026, 6, 15, 12, i, tzinfo=timezone.utc),
+            "close": base,
+            "high": base + 0.5,
+            "low": base - 0.5,
+            "volume": 1000.0,
+        }
+        candles.append(c)
+    engine.seed_history(candles)
+
+    spike_candle = {
+        "symbol": "BTCUSDT",
+        "timestamp": datetime(2026, 6, 15, 13, 0, tzinfo=timezone.utc),
+        "close": base * 1.04,
+        "high": base * 1.05,
+        "low": base * 1.03,
+        "volume": 5000.0,
+    }
+    result = engine.on_candle(spike_candle, has_position=False)
+    if result["action"] == "SHORT":
+        assert result["symbol"] == "BTCUSDT"
+        assert result["stop"] > result["entry"]
+        assert result["tp"] < result["entry"]
+        assert result["score"] >= config["strategy"]["min_score"]
+        assert "meta" in result
+        assert engine.state == "TRIGGERED"
