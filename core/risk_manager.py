@@ -66,6 +66,14 @@ class RiskManager:
             notional = raw_quantity * entry
 
         quantity = max(raw_quantity, 0.0)
+        notional = quantity * entry
+        margin_required = notional / max(1, self.leverage)
+        if margin_required > self.balance * 0.95:
+            safe_quantity = (self.balance * 0.95 * max(1, self.leverage)) / entry
+            quantity = min(quantity, safe_quantity)
+            notional = quantity * entry
+            margin_required = notional / max(1, self.leverage)
+
         estimated_loss_at_stop = quantity * risk_distance
         estimated_gain_at_target = quantity * reward_distance
         reward_risk_ratio = (reward_distance / risk_distance) if risk_distance > 0 else 0.0
