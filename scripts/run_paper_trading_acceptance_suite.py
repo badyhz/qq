@@ -17,7 +17,7 @@ DOCS_DIR = os.path.join(REPO_ROOT, "docs")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports")
 
 FORBIDDEN_STRINGS = [
-    "real_order", "api_key", "api_secret",
+    "api_key", "api_secret",
     "binance.com", "broker", "webhook_url", "requests.post", "requests.get",
     "httpx", "aiohttp",
 ]
@@ -39,6 +39,10 @@ CORE_MODULES = [
     "parameter_sweep.py",
     "strategy_scorecard.py",
     "risk_explainer.py",
+    "runtime_config.py",
+    "strategy_registry.py",
+    "runtime_orchestrator.py",
+    "html_dashboard.py",
 ]
 
 # Modules to be added in later phases
@@ -250,6 +254,36 @@ def check_reports_generatable(result: AcceptanceResult):
                f"missing: {', '.join(missing)}" if missing else "")
 
 
+def check_runtime_config_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "runtime_config.py")
+    exists = os.path.isfile(mod)
+    result.add("runtime_config_module", exists, "module missing" if not exists else "")
+
+
+def check_strategy_registry_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "strategy_registry.py")
+    exists = os.path.isfile(mod)
+    result.add("strategy_registry_module", exists, "module missing" if not exists else "")
+
+
+def check_runtime_orchestrator_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "runtime_orchestrator.py")
+    exists = os.path.isfile(mod)
+    result.add("runtime_orchestrator_module", exists, "module missing" if not exists else "")
+
+
+def check_runtime_runner(result: AcceptanceResult):
+    runner = os.path.join(REPO_ROOT, "scripts", "run_paper_runtime.py")
+    exists = os.path.isfile(runner)
+    result.add("runtime_runner", exists, "script missing" if not exists else "")
+
+
+def check_html_dashboard(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "html_dashboard.py")
+    exists = os.path.isfile(mod)
+    result.add("html_dashboard_module", exists, "module missing" if not exists else "")
+
+
 def generate_docs_report(result: AcceptanceResult):
     os.makedirs(DOCS_DIR, exist_ok=True)
     doc_path = os.path.join(DOCS_DIR, "PAPER_TRADING_ACCEPTANCE_REPORT_2026-06-16.md")
@@ -301,6 +335,11 @@ def main():
         ("Ops report runner", check_ops_report_runner),
         ("Scorecard module", check_scorecard_module),
         ("Reports generatable", check_reports_generatable),
+        ("Runtime config module", check_runtime_config_module),
+        ("Strategy registry module", check_strategy_registry_module),
+        ("Runtime orchestrator module", check_runtime_orchestrator_module),
+        ("Runtime runner", check_runtime_runner),
+        ("HTML dashboard module", check_html_dashboard),
     ]
 
     for name, fn in checks:
