@@ -13,6 +13,7 @@ from core.paper_trading.performance_metrics import PerformanceMetrics, compute_m
 from core.paper_trading.strategy_scorecard import Scorecard, score_strategy
 from core.paper_trading.local_alert_bridge import LocalAlertBridge, AlertLevel
 from core.paper_trading.portfolio_risk import PortfolioRiskConfig
+from core.paper_trading.run_history import record_from_result, append_record
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,8 @@ class RuntimeResult:
 def run_paper_runtime(
     config: RuntimeConfig,
     registry: Optional[StrategyRegistry] = None,
+    write_history: bool = True,
+    history_path: Optional[str] = None,
 ) -> RuntimeResult:
     """Run the full paper trading runtime pipeline."""
     if registry is None:
@@ -126,7 +129,7 @@ def run_paper_runtime(
         )
         sc = score_strategy(agg)
 
-    return RuntimeResult(
+    result = RuntimeResult(
         status="OK" if fixtures_run > 0 else "NO_FIXTURES",
         strategy_name=config.strategy_name,
         fixtures_run=fixtures_run,
@@ -145,6 +148,12 @@ def run_paper_runtime(
         scorecard=sc,
         alerts=alerts.peek(),
     )
+
+    if write_history:
+        rec = record_from_result(result)
+        append_record(rec, history_path)
+
+    return result
 
 
 def _aggregate(metrics_list: List[PerformanceMetrics]) -> PerformanceMetrics:
