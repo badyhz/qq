@@ -1,0 +1,4 @@
+[
+  {"timestamp": "t0", "open": 50000, "high": 50200, "low": 49800, "close": 50100},
+  {"timestamp": "t1", "open": "not_a_number", "high": 50200, "low": 49800, "close": 50100}
+]
