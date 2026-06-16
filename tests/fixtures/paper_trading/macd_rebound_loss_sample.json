@@ -1,0 +1,22 @@
+[
+  {"timestamp": "2026-02-01T00:00", "open": 48000, "high": 48200, "low": 47900, "close": 48100, "volume": 100},
+  {"timestamp": "2026-02-01T01:00", "open": 48100, "high": 48500, "low": 48000, "close": 48400, "volume": 110},
+  {"timestamp": "2026-02-01T02:00", "open": 48400, "high": 48800, "low": 48300, "close": 48700, "volume": 120},
+  {"timestamp": "2026-02-01T03:00", "open": 48700, "high": 49100, "low": 48600, "close": 49000, "volume": 130},
+  {"timestamp": "2026-02-01T04:00", "open": 49000, "high": 49400, "low": 48900, "close": 49300, "volume": 140},
+  {"timestamp": "2026-02-01T05:00", "open": 49300, "high": 49700, "low": 49200, "close": 49600, "volume": 150},
+  {"timestamp": "2026-02-01T06:00", "open": 49600, "high": 49900, "low": 49500, "close": 49800, "volume": 160},
+  {"timestamp": "2026-02-01T07:00", "open": 49800, "high": 50100, "low": 49700, "close": 50000, "volume": 170},
+  {"timestamp": "2026-02-01T08:00", "open": 50000, "high": 50300, "low": 49900, "close": 50200, "volume": 180},
+  {"timestamp": "2026-02-01T09:00", "open": 50200, "high": 50500, "low": 50100, "close": 50400, "volume": 190},
+  {"timestamp": "2026-02-01T10:00", "open": 50400, "high": 50500, "low": 50300, "close": 50500, "volume": 180},
+  {"timestamp": "2026-02-01T11:00", "open": 48500, "high": 49000, "low": 48400, "close": 48900, "volume": 300},
+  {"timestamp": "2026-02-01T12:00", "open": 48900, "high": 49000, "low": 48400, "close": 48500, "volume": 220},
+  {"timestamp": "2026-02-01T13:00", "open": 48500, "high": 48700, "low": 48200, "close": 48300, "volume": 210},
+  {"timestamp": "2026-02-01T14:00", "open": 48300, "high": 48500, "low": 47800, "close": 48000, "volume": 230},
+  {"timestamp": "2026-02-01T15:00", "open": 48000, "high": 48200, "low": 47500, "close": 47600, "volume": 200},
+  {"timestamp": "2026-02-01T16:00", "open": 47600, "high": 47800, "low": 47200, "close": 47400, "volume": 190},
+  {"timestamp": "2026-02-01T17:00", "open": 47400, "high": 47600, "low": 47000, "close": 47100, "volume": 180},
+  {"timestamp": "2026-02-01T18:00", "open": 47100, "high": 47300, "low": 46800, "close": 46900, "volume": 170},
+  {"timestamp": "2026-02-01T19:00", "open": 46900, "high": 47100, "low": 46600, "close": 46700, "volume": 160}
+]
