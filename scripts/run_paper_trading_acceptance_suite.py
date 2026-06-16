@@ -31,14 +31,15 @@ CORE_MODULES = [
     "replay_engine.py",
     "paper_ledger.py",
     "alert_explainer.py",
-]
-
-# Modules to be added in later phases
-PLANNED_MODULES = [
     "account_state.py",
     "portfolio_risk.py",
     "lifecycle.py",
+    "local_alert_bridge.py",
+    "performance_metrics.py",
 ]
+
+# Modules to be added in later phases
+PLANNED_MODULES: list[str] = []
 
 
 class AcceptanceResult:
@@ -204,6 +205,18 @@ def check_report_generated(result: AcceptanceResult):
                "report missing" if not exists else "missing safety footer")
 
 
+def check_multi_fixture_runner(result: AcceptanceResult):
+    runner = os.path.join(REPO_ROOT, "scripts", "run_paper_multi_fixture_replay.py")
+    exists = os.path.isfile(runner)
+    result.add("multi_fixture_runner", exists, "script missing" if not exists else "")
+
+
+def check_security_scan_tests(result: AcceptanceResult):
+    test_file = os.path.join(REPO_ROOT, "tests", "unit", "test_paper_security_scan.py")
+    exists = os.path.isfile(test_file)
+    result.add("security_scan_tests", exists, "test file missing" if not exists else "")
+
+
 def generate_docs_report(result: AcceptanceResult):
     os.makedirs(DOCS_DIR, exist_ok=True)
     doc_path = os.path.join(DOCS_DIR, "PAPER_TRADING_ACCEPTANCE_REPORT_2026-06-16.md")
@@ -249,6 +262,8 @@ def main():
         ("Planned modules", check_planned_modules),
         ("Fixtures exist", check_fixtures_exist),
         ("Report generated", check_report_generated),
+        ("Multi-fixture runner", check_multi_fixture_runner),
+        ("Security scan tests", check_security_scan_tests),
     ]
 
     for name, fn in checks:
