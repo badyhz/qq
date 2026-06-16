@@ -1,0 +1,14 @@
+{
+  "mode": "paper_only",
+  "strategy_name": "macd_rebound",
+  "fixture_paths": [],
+  "output_dir": "reports",
+  "max_risk_per_trade_pct": 1.0,
+  "max_position_pct": 10.0,
+  "min_rr_ratio": 1.5,
+  "max_open_plans": 5,
+  "max_total_exposure": 50000.0,
+  "max_daily_loss": 50000.0,
+  "enable_local_alerts": true,
+  "enable_html_report": true
+}
