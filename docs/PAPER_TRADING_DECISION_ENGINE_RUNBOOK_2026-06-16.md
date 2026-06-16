@@ -64,15 +64,33 @@ Outputs:
 - `reports/paper_trading_ops_report.json`
 - `reports/paper_trading_ops_report.md`
 
+### Paper runtime
+
+```bash
+python3 scripts/run_paper_runtime.py
+```
+
+One-command full paper runtime: loads fixtures, runs strategy, computes metrics,
+scorecard, alerts. Outputs:
+- `reports/paper_trading_runtime_result.json`
+- `reports/paper_trading_runtime_report.md`
+
+With custom config:
+```bash
+python3 scripts/run_paper_runtime.py --config tests/fixtures/paper_trading/runtime_config_sample.json
+```
+
 ### Acceptance suite
 
 ```bash
 python3 scripts/run_paper_trading_acceptance_suite.py
 ```
 
-Runs 16 checks: compileall, paper tests, dry-run, no-secrets, no-forbidden-imports,
+Runs 21 checks: compileall, paper tests, dry-run, no-secrets, no-forbidden-imports,
 human approval gate, core modules, fixtures, report, multi-fixture runner, security scan,
-parameter sweep runner, ops report runner, scorecard module, reports generatable.
+parameter sweep runner, ops report runner, scorecard module, reports generatable,
+runtime config module, strategy registry module, runtime orchestrator module, runtime runner,
+HTML dashboard module.
 
 ### Unit tests
 
@@ -109,6 +127,21 @@ avg_rr_actual, max_drawdown, max_consecutive_losses.
 In-memory alert queue with INFO/WARNING/CRITICAL levels. No network, no persistence.
 Use `push()`, `drain()`, `peek()`, `has_critical()`.
 
+### Runtime Config (`core/paper_trading/runtime_config.py`)
+Paper-only configuration: strategy_name, fixture_paths, risk params, alert flags.
+Supports JSON loading, default config, validation. Mode must be "paper_only".
+
+### Strategy Registry (`core/paper_trading/strategy_registry.py`)
+Local strategy lookup. Built-in: macd_rebound. No dynamic imports, no network.
+Register custom strategies with `registry.register(name, signal_fn, meta)`.
+
+### Runtime Orchestrator (`core/paper_trading/runtime_orchestrator.py`)
+Full pipeline: config + registry → fixtures → replay → metrics → scorecard → alerts.
+Returns `RuntimeResult` with all stats, score, rating, safety flags.
+
+### HTML Dashboard (`core/paper_trading/html_dashboard.py`)
+Self-contained inline-CSS HTML report from RuntimeResult. No CDN, no external links.
+
 ### Strategy Scorecard (`core/paper_trading/strategy_scorecard.py`)
 Rates strategy quality A/B/C/D/REJECT based on performance metrics.
 Factors: win_rate, profit_factor, drawdown, expectancy, trade count, stability.
@@ -138,6 +171,32 @@ Empty arrays produce zero-bar replays. Malformed data raises ValueError/TypeErro
 - Read API keys or secrets
 - Send alerts to external services
 - Access live market data
+
+## How to Interpret Rating
+
+| Rating | Score Range | Meaning |
+|--------|-----------|---------|
+| A | 75+ | Strong strategy, good for further testing |
+| B | 55-74 | Decent strategy, needs more samples |
+| C | 35-54 | Marginal, review parameters |
+| D | 20-34 | Weak, likely unprofitable |
+| REJECT | <20 | Do not use |
+
+Small samples (<5 trades) are capped at B. Negative expectancy → C/D/REJECT.
+
+## How to Do a Daily Paper Run
+
+```bash
+# Quick check
+python3 scripts/run_paper_runtime.py
+
+# Full analysis
+python3 scripts/run_paper_parameter_sweep.py
+python3 scripts/run_paper_trading_ops_report.py
+
+# View results
+open reports/paper_trading_dashboard.html
+```
 
 ## How to Judge if Strategy Can Advance
 
