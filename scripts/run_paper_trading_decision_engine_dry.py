@@ -56,6 +56,7 @@ def main():
         sys.exit(1)
 
     bars = load_bars_from_fixture(FIXTURE_PATH)
+    print(f"Fixture: {os.path.basename(FIXTURE_PATH)}")
     print(f"Loaded {len(bars)} bars from fixture")
 
     # Configure
@@ -81,21 +82,48 @@ def main():
     # Run replay
     result = run_replay(bars, macd_rebound_signal, replay_config)
 
+    # Compute derived stats
+    plans_rejected = result.plans_created - result.plans_approved
+    plans_waiting = result.plans_approved - result.trades_executed
+    summary = result.ledger.summary()
+
     print(f"Bars processed: {result.bars_processed}")
     print(f"Signals generated: {result.signals_generated}")
     print(f"Plans created: {result.plans_created}")
     print(f"Plans approved: {result.plans_approved}")
+    print(f"Plans rejected: {plans_rejected}")
+    print(f"Plans waiting approval: {plans_waiting}")
     print(f"Trades executed: {result.trades_executed}")
     print()
 
     # Ledger summary
-    summary = result.ledger.summary()
     print("=== Ledger Summary ===")
     for k, v in summary.items():
         print(f"  {k}: {v}")
     print()
 
-    # Generate report
+    # JSON summary
+    json_summary = {
+        "fixture": os.path.basename(FIXTURE_PATH),
+        "bars_processed": result.bars_processed,
+        "signals_generated": result.signals_generated,
+        "plans_created": result.plans_created,
+        "plans_approved": result.plans_approved,
+        "plans_rejected": plans_rejected,
+        "plans_waiting_approval": plans_waiting,
+        "trades_executed": result.trades_executed,
+        "win_rate": summary["win_rate"],
+        "total_pnl": summary["total_pnl"],
+        "max_drawdown": summary["max_drawdown"],
+        "exit_reason_distribution": summary["exit_reasons"],
+    }
+    json_path = os.path.join(os.path.dirname(REPORT_PATH), "paper_trading_decision_engine_summary.json")
+    os.makedirs(os.path.dirname(json_path), exist_ok=True)
+    with open(json_path, "w") as f:
+        json.dump(json_summary, f, indent=2)
+    print(f"JSON summary: {json_path}")
+
+    # Generate markdown report
     os.makedirs(os.path.dirname(REPORT_PATH), exist_ok=True)
     with open(REPORT_PATH, "w") as f:
         f.write("# Paper Trading Decision Engine — Dry Run Report\n\n")
@@ -103,21 +131,27 @@ def main():
         f.write(f"**Mode:** paper-only / dry-run / no real orders\n\n")
         f.write("## Replay Results\n\n")
         f.write(f"| Metric | Value |\n|--------|-------|\n")
+        f.write(f"| Fixture | {os.path.basename(FIXTURE_PATH)} |\n")
         f.write(f"| Bars processed | {result.bars_processed} |\n")
         f.write(f"| Signals generated | {result.signals_generated} |\n")
         f.write(f"| Plans created | {result.plans_created} |\n")
         f.write(f"| Plans approved | {result.plans_approved} |\n")
+        f.write(f"| Plans rejected | {plans_rejected} |\n")
+        f.write(f"| Plans waiting approval | {plans_waiting} |\n")
         f.write(f"| Trades executed | {result.trades_executed} |\n\n")
         f.write("## Ledger Summary\n\n")
         f.write(f"| Metric | Value |\n|--------|-------|\n")
         for k, v in summary.items():
             f.write(f"| {k} | {v} |\n")
         f.write("\n## Safety\n\n")
+        f.write("- NO_REAL_ORDER\n")
+        f.write("- NO_REAL_HTTP\n")
+        f.write("- NO_SECRET_READ\n")
+        f.write("- NO_TESTNET\n")
+        f.write("- NO_LIVE\n")
+        f.write("- WAITING_FOR_HUMAN_APPROVAL\n")
         f.write("- paper_only=true\n")
         f.write("- dry_run_only=true\n")
-        f.write("- no real orders\n")
-        f.write("- no network calls\n")
-        f.write("- no webhook\n")
 
     print(f"Report written to: {REPORT_PATH}")
     print()
