@@ -80,17 +80,30 @@ With custom config:
 python3 scripts/run_paper_runtime.py --config tests/fixtures/paper_trading/runtime_config_sample.json
 ```
 
+### Daily ops (one-click)
+
+```bash
+python3 scripts/run_paper_daily_ops.py
+```
+
+Runs all paper runners (dry-run, multi-fixture, parameter sweep, ops report, runtime) in sequence.
+Generates dashboard index. Outputs:
+- `reports/paper_trading_daily_ops.json`
+- `reports/paper_trading_daily_ops.md`
+- `reports/paper_trading_index.html`
+
 ### Acceptance suite
 
 ```bash
 python3 scripts/run_paper_trading_acceptance_suite.py
 ```
 
-Runs 21 checks: compileall, paper tests, dry-run, no-secrets, no-forbidden-imports,
-human approval gate, core modules, fixtures, report, multi-fixture runner, security scan,
+Runs 27 checks: compileall, paper tests, dry-run, no-secrets, no-forbidden-imports,
+human approval gate, core modules (22), fixtures, report, multi-fixture runner, security scan,
 parameter sweep runner, ops report runner, scorecard module, reports generatable,
 runtime config module, strategy registry module, runtime orchestrator module, runtime runner,
-HTML dashboard module.
+HTML dashboard module, run history module, dashboard index module, daily ops runner,
+daily ops report, history file, dashboard index file.
 
 ### Unit tests
 
@@ -152,6 +165,40 @@ Human-readable explanations for rejection reasons: RR_TOO_LOW, MAX_OPEN_PLANS,
 MAX_TOTAL_EXPOSURE, DUPLICATE_SYMBOL_DIRECTION, MAX_DAILY_LOSS, CONSECUTIVE_LOSS_COOLDOWN,
 MALFORMED_FIXTURE, NO_SIGNAL.
 
+### Run History (`core/paper_trading/run_history.py`)
+JSONL append-only history of runtime runs. Supports: append_record, read_history (with limit),
+filter_by_date, compare_last_two (trend delta), compute_trend (rising/falling/flat).
+Default path: `reports/paper_trading_run_history.jsonl`.
+
+### Dashboard Index (`core/paper_trading/dashboard_index.py`)
+Scans reports directory for paper_trading .md and .html files. Generates self-contained
+index HTML with report list, sizes, timestamps. No external resources.
+
+### Review Queue (`core/paper_trading/review_queue.py`)
+Local JSONL queue for operator review. Candidates have statuses:
+- **PENDING_REVIEW** — Awaiting operator decision
+- **WATCHLIST** — Interesting, observe further
+- **REJECTED** — Does not meet criteria
+- **EXPIRED** — Auto-expired after 24 hours
+- **PAPER_APPROVED** — Paper review passed (NOT real orders)
+
+Supports: append_candidate, read_queue (with status filter), read_pending,
+mark_watchlist, mark_rejected, mark_paper_approved, expire_old, queue_summary.
+
+### Candidate Ranker (`core/paper_trading/candidate_ranker.py`)
+Scores and prioritizes review candidates. Output: HIGH / MEDIUM / LOW / REJECT priority.
+Factors: strategy_score, rating, RR ratio, sample size, drawdown, profit factor, duplicate symbol.
+A/B rating can reach HIGH/MEDIUM. C only LOW. D/REJECT always REJECT.
+
+### Operator Decision Pack (`core/paper_trading/operator_decision_pack.py`)
+Combines ranked candidates into a human-readable review package.
+Outputs: dict, markdown, HTML. Includes: grouped candidates, risk explanations,
+allowed actions (WATCHLIST / REJECTED / PAPER_APPROVED), safety declarations.
+
+### Operator Review Runner (`scripts/run_paper_operator_review.py`)
+One-command operator review: runs runtime → creates candidates → ranks → generates decision pack.
+Outputs: JSON + Markdown + HTML + queue JSONL.
+
 ### Fixture Validation
 Empty and malformed fixtures are tested in `test_paper_fixture_validation.py`.
 Empty arrays produce zero-bar replays. Malformed data raises ValueError/TypeError.
@@ -187,16 +234,34 @@ Small samples (<5 trades) are capped at B. Negative expectancy → C/D/REJECT.
 ## How to Do a Daily Paper Run
 
 ```bash
-# Quick check
-python3 scripts/run_paper_runtime.py
+# One-click daily ops (runs all runners + operator review + generates index)
+python3 scripts/run_paper_daily_ops.py
 
-# Full analysis
+# Or individual runners:
+python3 scripts/run_paper_runtime.py
 python3 scripts/run_paper_parameter_sweep.py
 python3 scripts/run_paper_trading_ops_report.py
+python3 scripts/run_paper_operator_review.py
 
 # View results
+open reports/paper_trading_index.html
+open reports/paper_trading_operator_review.html
 open reports/paper_trading_dashboard.html
 ```
+
+## Operator Review Workflow
+
+After daily ops, the operator reviews candidates:
+
+1. Open `reports/paper_trading_operator_review.html`
+2. Review HIGH/MEDIUM priority candidates
+3. For each candidate, decide:
+   - **WATCHLIST** — Interesting, observe further
+   - **REJECTED** — Does not meet criteria
+   - **PAPER_APPROVED** — Paper review passed
+4. PAPER_APPROVED does NOT create real orders — it's a paper-only review status
+
+## Why Still Cannot Do Testnet/Live
 
 ## How to Judge if Strategy Can Advance
 
