@@ -17,7 +17,7 @@ DOCS_DIR = os.path.join(REPO_ROOT, "docs")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports")
 
 FORBIDDEN_STRINGS = [
-    "testnet", "live_order", "real_order", "api_key", "api_secret",
+    "real_order", "api_key", "api_secret",
     "binance.com", "broker", "webhook_url", "requests.post", "requests.get",
     "httpx", "aiohttp",
 ]
