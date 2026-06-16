@@ -31,13 +31,26 @@ Outputs:
 - `reports/paper_trading_decision_engine_report.md`
 - `reports/paper_trading_decision_engine_summary.json`
 
+### Multi-fixture replay runner
+
+```bash
+python3 scripts/run_paper_multi_fixture_replay.py
+```
+
+Runs all fixtures from `tests/fixtures/paper_trading/` through the MACD rebound signal.
+Outputs:
+- `reports/paper_trading_multi_fixture_summary.json`
+- `reports/paper_trading_multi_fixture_report.md`
+
 ### Acceptance suite
 
 ```bash
 python3 scripts/run_paper_trading_acceptance_suite.py
 ```
 
-Runs: compileall, paper tests, dry-run, no-secrets scan, module inventory, fixture check.
+Runs 12 checks: compileall, paper tests, dry-run, no-secrets scan, no-forbidden-imports,
+human approval gate, core modules, planned modules, fixtures, report, multi-fixture runner,
+security scan tests.
 
 ### Unit tests
 
@@ -45,14 +58,38 @@ Runs: compileall, paper tests, dry-run, no-secrets scan, module inventory, fixtu
 python3 -m pytest tests/unit/ -k "paper or signal_to_plan or human_approval" -v
 ```
 
+### Security scan
+
+```bash
+python3 -m pytest tests/unit/test_paper_security_scan.py -v
+```
+
+Static analysis: no HTTP, no forbidden imports, no secrets, no subprocess, no socket.
+
 ## How to Read Reports
 
 The markdown report includes:
 - Replay results (bars, signals, plans, trades)
 - Ledger summary (win_rate, pnl, drawdown, exit_reasons)
+- Performance metrics (profit_factor, expectancy, avg_win, avg_loss, consecutive_losses)
+- Alerts (local alert bridge — INFO/WARNING/CRITICAL)
 - Safety footer (NO_REAL_ORDER, NO_REAL_HTTP, etc.)
 
 The JSON summary has the same data in machine-readable format.
+
+## Key Modules
+
+### Performance Metrics (`core/paper_trading/performance_metrics.py`)
+Computes from PaperLedger: win_rate, profit_factor, expectancy, avg_win, avg_loss,
+avg_rr_actual, max_drawdown, max_consecutive_losses.
+
+### Local Alert Bridge (`core/paper_trading/local_alert_bridge.py`)
+In-memory alert queue with INFO/WARNING/CRITICAL levels. No network, no persistence.
+Use `push()`, `drain()`, `peek()`, `has_critical()`.
+
+### Fixture Validation
+Empty and malformed fixtures are tested in `test_paper_fixture_validation.py`.
+Empty arrays produce zero-bar replays. Malformed data raises ValueError/TypeError.
 
 ## Current Limitations
 
