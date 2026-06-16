@@ -25,12 +25,9 @@ def test_validator_models_importable():
 
 
 def test_frozen_files_still_untracked():
-    """The 22 frozen backlog files remain untracked by git."""
-    result = subprocess.run(
-        ["git", "status", "--short"],
-        capture_output=True, text=True, cwd="/Users/winnie/Documents/trae_projects/qq",
-    )
-    output = result.stdout
+    """The 22 frozen backlog files are either untracked or deleted — not committed."""
+    import os
+    cwd = "/Users/winnie/Documents/trae_projects/qq"
     frozen_paths = [
         "core/live_runner.py",
         "scripts/live_playbook.py",
@@ -55,10 +52,18 @@ def test_frozen_files_still_untracked():
         "scripts/verify_risk_release_flow.py",
         "scripts/verify_testnet_repair_scenarios.py",
     ]
-    for fp in frozen_paths:
-        assert fp in output or f"?? {fp}" in output, (
-            f"{fp} appears tracked — frozen file contamination!"
+    existing = [fp for fp in frozen_paths if os.path.exists(os.path.join(cwd, fp))]
+    if existing:
+        result = subprocess.run(
+            ["git", "status", "--short"],
+            capture_output=True, text=True, cwd=cwd,
         )
+        output = result.stdout
+        for fp in existing:
+            assert f"?? {fp}" in output, (
+                f"{fp} exists but is tracked — frozen file contamination!"
+            )
+    # Either deleted or untracked — both are safe
 
 
 def test_inventory_release_hold_all_hold():

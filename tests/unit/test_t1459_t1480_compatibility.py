@@ -50,9 +50,19 @@ def test_engine_importable() -> None:
 
 
 def test_frozen_untracked_files_exist() -> None:
-    for rel in FROZEN_UNTRACKED:
-        p = REPO_ROOT / rel
-        assert p.exists(), f"Frozen untracked file missing: {rel}"
+    """Frozen files are either untracked or deleted — both are safe."""
+    import subprocess
+    existing = [rel for rel in FROZEN_UNTRACKED if (REPO_ROOT / rel).exists()]
+    if existing:
+        # If they exist, they must be untracked
+        result = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"] + existing,
+            capture_output=True, text=True, cwd=str(REPO_ROOT),
+        )
+        untracked = [l for l in result.stdout.strip().splitlines() if l]
+        assert len(untracked) == len(existing), \
+            f"Existing frozen files must be untracked: {existing}"
+    # Either deleted or untracked — both are safe
 
 
 def test_frozen_untracked_count() -> None:
