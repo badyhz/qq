@@ -36,6 +36,9 @@ CORE_MODULES = [
     "lifecycle.py",
     "local_alert_bridge.py",
     "performance_metrics.py",
+    "parameter_sweep.py",
+    "strategy_scorecard.py",
+    "risk_explainer.py",
 ]
 
 # Modules to be added in later phases
@@ -217,6 +220,36 @@ def check_security_scan_tests(result: AcceptanceResult):
     result.add("security_scan_tests", exists, "test file missing" if not exists else "")
 
 
+def check_parameter_sweep_runner(result: AcceptanceResult):
+    runner = os.path.join(REPO_ROOT, "scripts", "run_paper_parameter_sweep.py")
+    exists = os.path.isfile(runner)
+    result.add("parameter_sweep_runner", exists, "script missing" if not exists else "")
+
+
+def check_ops_report_runner(result: AcceptanceResult):
+    runner = os.path.join(REPO_ROOT, "scripts", "run_paper_trading_ops_report.py")
+    exists = os.path.isfile(runner)
+    result.add("ops_report_runner", exists, "script missing" if not exists else "")
+
+
+def check_scorecard_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "strategy_scorecard.py")
+    exists = os.path.isfile(mod)
+    result.add("scorecard_module", exists, "module missing" if not exists else "")
+
+
+def check_reports_generatable(result: AcceptanceResult):
+    """Verify key reports can be generated."""
+    required = [
+        "paper_trading_decision_engine_report.md",
+        "paper_trading_multi_fixture_report.md",
+        "paper_trading_ops_report.md",
+    ]
+    missing = [r for r in required if not os.path.isfile(os.path.join(REPORT_DIR, r))]
+    result.add("reports_generatable", len(missing) == 0,
+               f"missing: {', '.join(missing)}" if missing else "")
+
+
 def generate_docs_report(result: AcceptanceResult):
     os.makedirs(DOCS_DIR, exist_ok=True)
     doc_path = os.path.join(DOCS_DIR, "PAPER_TRADING_ACCEPTANCE_REPORT_2026-06-16.md")
@@ -264,6 +297,10 @@ def main():
         ("Report generated", check_report_generated),
         ("Multi-fixture runner", check_multi_fixture_runner),
         ("Security scan tests", check_security_scan_tests),
+        ("Parameter sweep runner", check_parameter_sweep_runner),
+        ("Ops report runner", check_ops_report_runner),
+        ("Scorecard module", check_scorecard_module),
+        ("Reports generatable", check_reports_generatable),
     ]
 
     for name, fn in checks:
