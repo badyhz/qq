@@ -8,6 +8,8 @@ from core.paper_trading.risk_sizing import RiskSizingConfig, apply_risk_sizing
 from core.paper_trading.exit_rules import ExitRuleConfig, evaluate_exits
 from core.paper_trading.paper_ledger import PaperLedger, LedgerEntry
 from core.paper_trading.human_approval_gate import HumanApprovalGate
+from core.paper_trading.account_state import AccountState
+from core.paper_trading.portfolio_risk import PortfolioRiskConfig, check_portfolio_risk
 
 
 @dataclass
@@ -25,7 +27,9 @@ class ReplayBar:
 class ReplayConfig:
     risk_config: RiskSizingConfig = field(default_factory=RiskSizingConfig)
     exit_config: ExitRuleConfig = field(default_factory=ExitRuleConfig)
+    portfolio_config: PortfolioRiskConfig = field(default_factory=PortfolioRiskConfig)
     auto_approve: bool = True  # paper mode: auto-approve for simulation
+    use_portfolio_risk: bool = False  # enable account/portfolio risk checks
 
 
 @dataclass
@@ -36,6 +40,8 @@ class ReplayResult:
     plans_approved: int
     trades_executed: int
     ledger: PaperLedger
+    plans_portfolio_rejected: int = 0
+    account: Optional[AccountState] = None
 
 
 def load_bars_from_fixture(fixture_path: str) -> List[ReplayBar]:
@@ -73,10 +79,17 @@ def run_replay(
     """
     ledger = PaperLedger()
     gate = HumanApprovalGate()
+    account = AccountState(
+        max_open_plans=config.portfolio_config.max_open_plans,
+        max_daily_loss=config.portfolio_config.max_daily_loss,
+        max_total_exposure=config.portfolio_config.max_total_exposure,
+        consecutive_loss_cooldown=config.portfolio_config.consecutive_loss_cooldown,
+    )
     active_plans: List[OrderPlan] = []
     signals_generated = 0
     plans_created = 0
     plans_approved = 0
+    plans_portfolio_rejected = 0
     trades_executed = 0
 
     for i, bar in enumerate(bars):
@@ -115,6 +128,10 @@ def run_replay(
                 trades_executed += 1
                 closed_plans.append(plan)
 
+                # Update account state
+                if config.use_portfolio_risk:
+                    account.close_plan(plan, exit_signal.pnl)
+
         active_plans = [p for p in active_plans if p not in closed_plans]
 
         # Generate signal
@@ -142,10 +159,25 @@ def run_replay(
             ))
             continue
 
+        # Portfolio risk check
+        if config.use_portfolio_risk:
+            risk_result = check_portfolio_risk(plan, account, config.portfolio_config)
+            if not risk_result.approved:
+                plan = plan.with_status(OrderStatus.CANCELLED)
+                plans_portfolio_rejected += 1
+                ledger.record(LedgerEntry(
+                    plan=plan, entry_bar=i, exit_bar=i,
+                    exit_price=0, exit_reason=ExitReason.SIGNAL_INVALIDATED,
+                    pnl=0, rr_actual=0,
+                ))
+                continue
+
         # plan is already WAITING_FOR_HUMAN_APPROVAL from apply_risk_sizing
         if config.auto_approve:
             plans_approved += 1
             active_plans.append(plan)
+            if config.use_portfolio_risk:
+                account.reserve_margin(plan)
         # In non-auto mode, plan stays WAITING_FOR_HUMAN_APPROVAL
 
     # Close remaining active plans at last bar
@@ -167,12 +199,16 @@ def run_replay(
                 rr_actual=0,
             ))
             trades_executed += 1
+            if config.use_portfolio_risk:
+                account.close_plan(plan, 0)
 
     return ReplayResult(
         bars_processed=len(bars),
         signals_generated=signals_generated,
         plans_created=plans_created,
         plans_approved=plans_approved,
+        plans_portfolio_rejected=plans_portfolio_rejected,
         trades_executed=trades_executed,
         ledger=ledger,
+        account=account if config.use_portfolio_risk else None,
     )
