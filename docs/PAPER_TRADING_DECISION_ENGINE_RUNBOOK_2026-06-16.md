@@ -42,15 +42,37 @@ Outputs:
 - `reports/paper_trading_multi_fixture_summary.json`
 - `reports/paper_trading_multi_fixture_report.md`
 
+### Parameter sweep
+
+```bash
+python3 scripts/run_paper_parameter_sweep.py
+```
+
+Runs 486 parameter combinations across all fixtures. Scores each by win_rate, profit_factor,
+expectancy, drawdown. Outputs:
+- `reports/paper_trading_parameter_sweep.json`
+- `reports/paper_trading_parameter_sweep.md`
+
+### Ops report
+
+```bash
+python3 scripts/run_paper_trading_ops_report.py
+```
+
+Aggregates dry-run, multi-fixture, and parameter sweep into one ops report.
+Outputs:
+- `reports/paper_trading_ops_report.json`
+- `reports/paper_trading_ops_report.md`
+
 ### Acceptance suite
 
 ```bash
 python3 scripts/run_paper_trading_acceptance_suite.py
 ```
 
-Runs 12 checks: compileall, paper tests, dry-run, no-secrets scan, no-forbidden-imports,
-human approval gate, core modules, planned modules, fixtures, report, multi-fixture runner,
-security scan tests.
+Runs 16 checks: compileall, paper tests, dry-run, no-secrets, no-forbidden-imports,
+human approval gate, core modules, fixtures, report, multi-fixture runner, security scan,
+parameter sweep runner, ops report runner, scorecard module, reports generatable.
 
 ### Unit tests
 
@@ -87,6 +109,16 @@ avg_rr_actual, max_drawdown, max_consecutive_losses.
 In-memory alert queue with INFO/WARNING/CRITICAL levels. No network, no persistence.
 Use `push()`, `drain()`, `peek()`, `has_critical()`.
 
+### Strategy Scorecard (`core/paper_trading/strategy_scorecard.py`)
+Rates strategy quality A/B/C/D/REJECT based on performance metrics.
+Factors: win_rate, profit_factor, drawdown, expectancy, trade count, stability.
+Small samples capped at B. Negative expectancy → C/D/REJECT.
+
+### Risk Explainer (`core/paper_trading/risk_explainer.py`)
+Human-readable explanations for rejection reasons: RR_TOO_LOW, MAX_OPEN_PLANS,
+MAX_TOTAL_EXPOSURE, DUPLICATE_SYMBOL_DIRECTION, MAX_DAILY_LOSS, CONSECUTIVE_LOSS_COOLDOWN,
+MALFORMED_FIXTURE, NO_SIGNAL.
+
 ### Fixture Validation
 Empty and malformed fixtures are tested in `test_paper_fixture_validation.py`.
 Empty arrays produce zero-bar replays. Malformed data raises ValueError/TypeError.
@@ -106,6 +138,29 @@ Empty arrays produce zero-bar replays. Malformed data raises ValueError/TypeErro
 - Read API keys or secrets
 - Send alerts to external services
 - Access live market data
+
+## How to Judge if Strategy Can Advance
+
+Before considering testnet, ALL of these must be true:
+
+1. **Scorecard rating A or B** — Strategy quality must be high
+2. **Sufficient samples** — At least 20 trades across multiple fixtures
+3. **Positive expectancy** — Expected value per trade > 0
+4. **Controlled drawdown** — Max drawdown < 5% of equity
+5. **Stable win rate** — Win rate > 50% with good RR
+6. **No critical alerts** — No consecutive loss cooldowns or daily loss hits
+7. **Parameter robustness** — Top parameter sets perform consistently across fixtures
+8. **Human approval** — Explicit operator sign-off required
+
+## Why Still Cannot Do Testnet/Live
+
+- **No real market data** — Fixtures are synthetic/historical, not live feeds
+- **No slippage modeling** — Real fills differ from paper fills
+- **No latency simulation** — Real execution has delays
+- **No exchange edge cases** — Rate limits, partial fills, disconnections
+- **No regulatory compliance** — KYC, tax reporting, jurisdiction rules
+- **Safety gate not yet built** — No testnet/live transition guard exists
+- **Human approval required** — Cannot proceed without explicit operator authorization
 
 ## Next Steps (Future)
 
