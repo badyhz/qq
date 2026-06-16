@@ -56,7 +56,7 @@ class TestMultiFixtureRunner:
         assert "PAPER_ONLY" in content
 
     def test_all_fixtures_processed(self):
-        """All JSON fixtures in the directory are processed."""
+        """All JSON fixtures in the directory are processed (excluding non-fixture configs)."""
         result = subprocess.run(
             [sys.executable, SCRIPT],
             capture_output=True, text=True, timeout=60,
@@ -67,7 +67,8 @@ class TestMultiFixtureRunner:
         )
         with open(report_path) as f:
             data = json.load(f)
-        fixture_count = len([f for f in os.listdir(FIXTURE_DIR) if f.endswith(".json")])
+        SKIP = {"runtime_config_sample.json"}
+        fixture_count = len([f for f in os.listdir(FIXTURE_DIR) if f.endswith(".json") and f not in SKIP])
         assert data["total_fixtures"] == fixture_count
 
     def test_safety_flags_in_report(self):

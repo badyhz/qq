@@ -87,11 +87,12 @@ def main():
         auto_approve=True,
     )
 
-    # Find all fixtures
+    # Find all fixtures (exclude non-fixture configs)
+    SKIP = {"runtime_config_sample.json"}
     fixtures = sorted([
         os.path.join(FIXTURE_DIR, f)
         for f in os.listdir(FIXTURE_DIR)
-        if f.endswith(".json")
+        if f.endswith(".json") and f not in SKIP
     ])
     print(f"Found {len(fixtures)} fixtures\n")
 

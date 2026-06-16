@@ -43,6 +43,11 @@ CORE_MODULES = [
     "strategy_registry.py",
     "runtime_orchestrator.py",
     "html_dashboard.py",
+    "run_history.py",
+    "dashboard_index.py",
+    "review_queue.py",
+    "candidate_ranker.py",
+    "operator_decision_pack.py",
 ]
 
 # Modules to be added in later phases
@@ -284,6 +289,148 @@ def check_html_dashboard(result: AcceptanceResult):
     result.add("html_dashboard_module", exists, "module missing" if not exists else "")
 
 
+def check_run_history_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "run_history.py")
+    exists = os.path.isfile(mod)
+    has_append = False
+    if exists:
+        with open(mod) as f:
+            content = f.read()
+        has_append = "append_record" in content and "read_history" in content
+    result.add("run_history_module", exists and has_append,
+               "module missing" if not exists else "missing append/read" if not has_append else "")
+
+
+def check_dashboard_index_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "dashboard_index.py")
+    exists = os.path.isfile(mod)
+    has_scan = False
+    if exists:
+        with open(mod) as f:
+            content = f.read()
+        has_scan = "scan_reports" in content and "generate_index_html" in content
+    result.add("dashboard_index_module", exists and has_scan,
+               "module missing" if not exists else "missing scan/generate" if not has_scan else "")
+
+
+def check_daily_ops_runner(result: AcceptanceResult):
+    runner = os.path.join(REPO_ROOT, "scripts", "run_paper_daily_ops.py")
+    exists = os.path.isfile(runner)
+    result.add("daily_ops_runner", exists, "script missing" if not exists else "")
+
+
+def check_daily_ops_report(result: AcceptanceResult):
+    report = os.path.join(REPORT_DIR, "paper_trading_daily_ops.json")
+    exists = os.path.isfile(report)
+    has_safety = False
+    if exists:
+        with open(report) as f:
+            content = f.read()
+        has_safety = "passed" in content and "runners" in content
+    result.add("daily_ops_report", exists and has_safety,
+               "report missing" if not exists else "missing fields" if not has_safety else "")
+
+
+def check_history_file(result: AcceptanceResult):
+    hist = os.path.join(REPORT_DIR, "paper_trading_run_history.jsonl")
+    exists = os.path.isfile(hist)
+    result.add("history_file", exists, "history file missing" if not exists else "")
+
+
+def check_dashboard_index_file(result: AcceptanceResult):
+    index = os.path.join(REPORT_DIR, "paper_trading_index.html")
+    exists = os.path.isfile(index)
+    result.add("dashboard_index_file", exists, "index file missing" if not exists else "")
+
+
+def check_review_queue_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "review_queue.py")
+    exists = os.path.isfile(mod)
+    has_statuses = False
+    if exists:
+        with open(mod) as f:
+            content = f.read()
+        has_statuses = "PENDING_REVIEW" in content and "PAPER_APPROVED" in content
+    result.add("review_queue_module", exists and has_statuses,
+               "module missing" if not exists else "missing statuses" if not has_statuses else "")
+
+
+def check_candidate_ranker_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "candidate_ranker.py")
+    exists = os.path.isfile(mod)
+    has_priority = False
+    if exists:
+        with open(mod) as f:
+            content = f.read()
+        has_priority = "HIGH" in content and "REJECT" in content
+    result.add("candidate_ranker_module", exists and has_priority,
+               "module missing" if not exists else "missing priority" if not has_priority else "")
+
+
+def check_operator_decision_pack_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "operator_decision_pack.py")
+    exists = os.path.isfile(mod)
+    result.add("operator_decision_pack_module", exists,
+               "module missing" if not exists else "")
+
+
+def check_operator_review_runner(result: AcceptanceResult):
+    runner = os.path.join(REPO_ROOT, "scripts", "run_paper_operator_review.py")
+    exists = os.path.isfile(runner)
+    result.add("operator_review_runner", exists, "script missing" if not exists else "")
+
+
+def check_operator_review_json(result: AcceptanceResult):
+    report = os.path.join(REPORT_DIR, "paper_trading_operator_review.json")
+    exists = os.path.isfile(report)
+    result.add("operator_review_json", exists, "report missing" if not exists else "")
+
+
+def check_operator_review_md(result: AcceptanceResult):
+    report = os.path.join(REPORT_DIR, "paper_trading_operator_review.md")
+    exists = os.path.isfile(report)
+    result.add("operator_review_md", exists, "report missing" if not exists else "")
+
+
+def check_operator_review_html(result: AcceptanceResult):
+    report = os.path.join(REPORT_DIR, "paper_trading_operator_review.html")
+    exists = os.path.isfile(report)
+    result.add("operator_review_html", exists, "report missing" if not exists else "")
+
+
+def check_review_queue_jsonl(result: AcceptanceResult):
+    queue = os.path.join(REPORT_DIR, "paper_trading_review_queue.jsonl")
+    exists = os.path.isfile(queue)
+    result.add("review_queue_jsonl", exists, "queue file missing" if not exists else "")
+
+
+def check_no_real_order_strings(result: AcceptanceResult):
+    """Check operator review files don't contain real order strings."""
+    violations = []
+    for fname in ["paper_trading_operator_review.html", "paper_trading_operator_review.md"]:
+        fpath = os.path.join(REPORT_DIR, fname)
+        if not os.path.isfile(fpath):
+            continue
+        with open(fpath) as f:
+            content = f.read().lower()
+        for forbidden in ["submit_order", "place_order", "execute_trade", "api.binance"]:
+            if forbidden in content:
+                violations.append(f"{fname}: contains '{forbidden}'")
+    result.add("no_real_order_strings", len(violations) == 0,
+               "; ".join(violations[:3]) if violations else "")
+
+
+def check_human_review_footer(result: AcceptanceResult):
+    report = os.path.join(REPORT_DIR, "paper_trading_operator_review.md")
+    has_footer = False
+    if os.path.isfile(report):
+        with open(report) as f:
+            content = f.read()
+        has_footer = "HUMAN_REVIEW_REQUIRED" in content
+    result.add("human_review_footer", has_footer,
+               "missing HUMAN_REVIEW_REQUIRED" if not has_footer else "")
+
+
 def generate_docs_report(result: AcceptanceResult):
     os.makedirs(DOCS_DIR, exist_ok=True)
     doc_path = os.path.join(DOCS_DIR, "PAPER_TRADING_ACCEPTANCE_REPORT_2026-06-16.md")
@@ -340,6 +487,22 @@ def main():
         ("Runtime orchestrator module", check_runtime_orchestrator_module),
         ("Runtime runner", check_runtime_runner),
         ("HTML dashboard module", check_html_dashboard),
+        ("Run history module", check_run_history_module),
+        ("Dashboard index module", check_dashboard_index_module),
+        ("Daily ops runner", check_daily_ops_runner),
+        ("Daily ops report", check_daily_ops_report),
+        ("History file", check_history_file),
+        ("Dashboard index file", check_dashboard_index_file),
+        ("Review queue module", check_review_queue_module),
+        ("Candidate ranker module", check_candidate_ranker_module),
+        ("Operator decision pack module", check_operator_decision_pack_module),
+        ("Operator review runner", check_operator_review_runner),
+        ("Operator review JSON", check_operator_review_json),
+        ("Operator review MD", check_operator_review_md),
+        ("Operator review HTML", check_operator_review_html),
+        ("Review queue JSONL", check_review_queue_jsonl),
+        ("No real order strings", check_no_real_order_strings),
+        ("Human review footer", check_human_review_footer),
     ]
 
     for name, fn in checks:
