@@ -12,6 +12,8 @@ from core.paper_trading.replay_engine import (
     ReplayBar, ReplayConfig, load_bars_from_fixture, run_replay,
 )
 from core.paper_trading.alert_explainer import explain_alert, format_alert_text
+from core.paper_trading.performance_metrics import compute_metrics
+from core.paper_trading.local_alert_bridge import LocalAlertBridge, AlertLevel
 
 
 FIXTURE_PATH = os.path.join(
@@ -87,6 +89,18 @@ def main():
     plans_waiting = result.plans_approved - result.trades_executed
     summary = result.ledger.summary()
 
+    # Performance metrics
+    metrics = compute_metrics(result.ledger)
+
+    # Local alert bridge
+    alerts = LocalAlertBridge()
+    if metrics.max_consecutive_losses >= 3:
+        alerts.critical("risk", f"Consecutive losses: {metrics.max_consecutive_losses}", "dry_run")
+    if metrics.win_rate < 0.3 and metrics.total_trades >= 3:
+        alerts.warning("performance", f"Low win rate: {metrics.win_rate:.1%}", "dry_run")
+    if metrics.total_pnl < 0:
+        alerts.warning("pnl", f"Negative PnL: {metrics.total_pnl:.2f}", "dry_run")
+
     print(f"Bars processed: {result.bars_processed}")
     print(f"Signals generated: {result.signals_generated}")
     print(f"Plans created: {result.plans_created}")
@@ -102,6 +116,24 @@ def main():
         print(f"  {k}: {v}")
     print()
 
+    # Performance metrics
+    print("=== Performance Metrics ===")
+    print(f"  win_rate: {metrics.win_rate:.2%}")
+    print(f"  profit_factor: {metrics.profit_factor:.2f}")
+    print(f"  expectancy: {metrics.expectancy:.2f}")
+    print(f"  avg_win: {metrics.avg_win:.2f}")
+    print(f"  avg_loss: {metrics.avg_loss:.2f}")
+    print(f"  avg_rr_actual: {metrics.avg_rr_actual:.2f}")
+    print(f"  max_consecutive_losses: {metrics.max_consecutive_losses}")
+    print()
+
+    # Alerts
+    if alerts.count > 0:
+        print("=== Alerts ===")
+        for alert in alerts.peek():
+            print(f"  [{alert.level.value}] {alert.category}: {alert.message}")
+        print()
+
     # JSON summary
     json_summary = {
         "fixture": os.path.basename(FIXTURE_PATH),
@@ -116,6 +148,14 @@ def main():
         "total_pnl": summary["total_pnl"],
         "max_drawdown": summary["max_drawdown"],
         "exit_reason_distribution": summary["exit_reasons"],
+        "performance_metrics": {
+            "profit_factor": round(metrics.profit_factor, 2) if metrics.profit_factor != float("inf") else "inf",
+            "expectancy": round(metrics.expectancy, 2),
+            "avg_win": round(metrics.avg_win, 2),
+            "avg_loss": round(metrics.avg_loss, 2),
+            "avg_rr_actual": round(metrics.avg_rr_actual, 2),
+            "max_consecutive_losses": metrics.max_consecutive_losses,
+        },
     }
     json_path = os.path.join(os.path.dirname(REPORT_PATH), "paper_trading_decision_engine_summary.json")
     os.makedirs(os.path.dirname(json_path), exist_ok=True)
@@ -143,6 +183,19 @@ def main():
         f.write(f"| Metric | Value |\n|--------|-------|\n")
         for k, v in summary.items():
             f.write(f"| {k} | {v} |\n")
+        f.write("\n## Performance Metrics\n\n")
+        f.write(f"| Metric | Value |\n|--------|-------|\n")
+        f.write(f"| win_rate | {metrics.win_rate:.2%} |\n")
+        f.write(f"| profit_factor | {metrics.profit_factor:.2f} |\n")
+        f.write(f"| expectancy | {metrics.expectancy:.2f} |\n")
+        f.write(f"| avg_win | {metrics.avg_win:.2f} |\n")
+        f.write(f"| avg_loss | {metrics.avg_loss:.2f} |\n")
+        f.write(f"| avg_rr_actual | {metrics.avg_rr_actual:.2f} |\n")
+        f.write(f"| max_consecutive_losses | {metrics.max_consecutive_losses} |\n")
+        if alerts.count > 0:
+            f.write("\n## Alerts\n\n")
+            for alert in alerts.peek():
+                f.write(f"- [{alert.level.value}] {alert.category}: {alert.message}\n")
         f.write("\n## Safety\n\n")
         f.write("- NO_REAL_ORDER\n")
         f.write("- NO_REAL_HTTP\n")
