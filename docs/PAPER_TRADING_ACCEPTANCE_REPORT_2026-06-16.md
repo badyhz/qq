@@ -8,7 +8,7 @@
 | Check | Status |
 |-------|--------|
 | compileall | PASS |
-| paper_unit_tests | PASS |
+| paper_unit_tests | FAIL |
 | dry_run_runner | PASS |
 | no_secrets_or_network | PASS |
 | no_forbidden_imports | PASS |
@@ -44,8 +44,18 @@
 | review_queue_jsonl | PASS |
 | no_real_order_strings | PASS |
 | human_review_footer | PASS |
+| release_manifest_module | PASS |
+| artifact_validator_module | PASS |
+| rc_runner | PASS |
+| rc_json | PASS |
+| rc_md | PASS |
+| html_no_external | PASS |
 
-**Total:** 37/37 passed
+**Total:** 42/43 passed
+
+## Failures
+
+- **paper_unit_tests:** TIMEOUT
 
 ## Safety
 

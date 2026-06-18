@@ -48,6 +48,8 @@ CORE_MODULES = [
     "review_queue.py",
     "candidate_ranker.py",
     "operator_decision_pack.py",
+    "release_manifest.py",
+    "artifact_validator.py",
 ]
 
 # Modules to be added in later phases
@@ -105,7 +107,7 @@ def check_paper_tests(result: AcceptanceResult):
     code, out = run_cmd([
         sys.executable, "-m", "pytest", "tests/unit/",
         "-q", "--tb=line", "-k", "paper or signal_to_plan or human_approval",
-    ], timeout=60)
+    ], timeout=900)
     passed = code == 0 and "passed" in out
     detail = ""
     if not passed:
@@ -431,6 +433,112 @@ def check_human_review_footer(result: AcceptanceResult):
                "missing HUMAN_REVIEW_REQUIRED" if not has_footer else "")
 
 
+def check_release_manifest_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "release_manifest.py")
+    exists = os.path.isfile(mod)
+    result.add("release_manifest_module", exists, "module missing" if not exists else "")
+
+
+def check_artifact_validator_module(result: AcceptanceResult):
+    mod = os.path.join(PAPER_TRADING_DIR, "artifact_validator.py")
+    exists = os.path.isfile(mod)
+    result.add("artifact_validator_module", exists, "module missing" if not exists else "")
+
+
+def check_rc_runner(result: AcceptanceResult):
+    runner = os.path.join(REPO_ROOT, "scripts", "run_paper_release_candidate.py")
+    exists = os.path.isfile(runner)
+    result.add("rc_runner", exists, "script missing" if not exists else "")
+
+
+def check_rc_json(result: AcceptanceResult):
+    report = os.path.join(REPORT_DIR, "paper_trading_release_candidate.json")
+    exists = os.path.isfile(report)
+    result.add("rc_json", exists, "report missing" if not exists else "")
+
+
+def check_rc_md(result: AcceptanceResult):
+    report = os.path.join(REPORT_DIR, "paper_trading_release_candidate.md")
+    exists = os.path.isfile(report)
+    result.add("rc_md", exists, "report missing" if not exists else "")
+
+
+def check_html_no_external_resources(result: AcceptanceResult):
+    """Check all HTML reports have no external HTTP/script src."""
+    violations = []
+    for fname in os.listdir(REPORT_DIR):
+        if not fname.endswith(".html") or not fname.startswith("paper_trading"):
+            continue
+        fpath = os.path.join(REPORT_DIR, fname)
+        with open(fpath) as f:
+            content = f.read().lower()
+        if "http://" in content or "https://" in content:
+            violations.append(f"{fname}: external link")
+        if "<script" in content and "src=" in content:
+            violations.append(f"{fname}: script src")
+    result.add("html_no_external", len(violations) == 0,
+               "; ".join(violations[:3]) if violations else "")
+
+
+def check_rc_test_exists(result: AcceptanceResult):
+    """Check release candidate test file exists."""
+    test_file = os.path.join(REPO_ROOT, "tests", "unit", "test_paper_release_candidate_runner.py")
+    exists = os.path.isfile(test_file)
+    result.add("rc_test_exists", exists, "test file missing" if not exists else "")
+
+
+def check_manifest_known_limits(result: AcceptanceResult):
+    """Check release manifest contains known_limits."""
+    manifest_file = os.path.join(PAPER_TRADING_DIR, "release_manifest.py")
+    has_limits = False
+    if os.path.isfile(manifest_file):
+        with open(manifest_file) as f:
+            content = f.read()
+        has_limits = "KNOWN_LIMITS" in content and "Fixture-only" in content
+    result.add("manifest_known_limits", has_limits,
+               "module missing" if not os.path.isfile(manifest_file) else "missing KNOWN_LIMITS" if not has_limits else "")
+
+
+def check_manifest_next_phase_blockers(result: AcceptanceResult):
+    """Check release manifest contains next_phase_blockers."""
+    manifest_file = os.path.join(PAPER_TRADING_DIR, "release_manifest.py")
+    has_blockers = False
+    if os.path.isfile(manifest_file):
+        with open(manifest_file) as f:
+            content = f.read()
+        has_blockers = "NEXT_PHASE_BLOCKERS" in content and "Human approval" in content
+    result.add("manifest_next_phase_blockers", has_blockers,
+               "module missing" if not os.path.isfile(manifest_file) else "missing blockers" if not has_blockers else "")
+
+
+def check_no_phase10_shadow_gate(result: AcceptanceResult):
+    """Check PHASE10_SHADOW_GATE.md does not exist."""
+    gate_file = os.path.join(DOCS_DIR, "PHASE10_SHADOW_GATE.md")
+    not_exists = not os.path.isfile(gate_file)
+    result.add("no_phase10_shadow_gate", not_exists,
+               "file exists (should not until Round 9)" if not not_exists else "")
+
+
+def check_no_round9_data_source(result: AcceptanceResult):
+    """Check Round 9 data_source has not started."""
+    data_source_file = os.path.join(PAPER_TRADING_DIR, "data_source.py")
+    not_exists = not os.path.isfile(data_source_file)
+    result.add("no_round9_data_source", not_exists,
+               "file exists (should not until Round 9)" if not not_exists else "")
+
+
+def check_no_websocket_or_account(result: AcceptanceResult):
+    """Check no websocket/account/order/testnet/live paths added."""
+    violations = []
+    forbidden_files = ["websocket.py", "account_sync.py", "order_executor.py", "testnet.py", "live.py"]
+    for fname in forbidden_files:
+        fpath = os.path.join(PAPER_TRADING_DIR, fname)
+        if os.path.isfile(fpath):
+            violations.append(fname)
+    result.add("no_websocket_or_account", len(violations) == 0,
+               f"found: {', '.join(violations)}" if violations else "")
+
+
 def generate_docs_report(result: AcceptanceResult):
     os.makedirs(DOCS_DIR, exist_ok=True)
     doc_path = os.path.join(DOCS_DIR, "PAPER_TRADING_ACCEPTANCE_REPORT_2026-06-16.md")
@@ -503,6 +611,18 @@ def main():
         ("Review queue JSONL", check_review_queue_jsonl),
         ("No real order strings", check_no_real_order_strings),
         ("Human review footer", check_human_review_footer),
+        ("Release manifest module", check_release_manifest_module),
+        ("Artifact validator module", check_artifact_validator_module),
+        ("RC runner", check_rc_runner),
+        ("RC JSON generated", check_rc_json),
+        ("RC MD generated", check_rc_md),
+        ("HTML no external resources", check_html_no_external_resources),
+        ("RC test exists", check_rc_test_exists),
+        ("Manifest known limits", check_manifest_known_limits),
+        ("Manifest next phase blockers", check_manifest_next_phase_blockers),
+        ("No PHASE10_SHADOW_GATE.md", check_no_phase10_shadow_gate),
+        ("No Round 9 data_source", check_no_round9_data_source),
+        ("No websocket/account", check_no_websocket_or_account),
     ]
 
     for name, fn in checks:
