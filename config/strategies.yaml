@@ -1,0 +1,75 @@
+# Strategy Library Configuration
+# Phase 10D: Strategy Library / Enable-Disable Switchboard
+#
+# This file defines trading strategies and their configurations.
+# Each strategy can be enabled/disabled independently.
+#
+# SAFETY: No secrets, no webhooks, no order paths in this file.
+
+version: 1
+default_mode: paper
+default_alert: feishu_payload_only
+
+data_apis:
+  binance_usdm_klines:
+    type: binance_public_klines
+    market: usdm_futures
+    readonly: true
+    requires_secret: false
+    allows_orders: false
+    default_limit: 120
+
+strategies:
+  macd_rebound_watch:
+    enabled: true
+    strategy_type: macd_rebound_watch
+    description: "Watch for MACD histogram turning green on short timeframes"
+    data_api: binance_usdm_klines
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - BNBUSDT
+      - SUIUSDT
+      - 1000PEPEUSDT
+    timeframes:
+      - 5m
+      - 15m
+      - 1h
+    mode: paper
+    alert:
+      feishu_payload: true
+      auto_send: false
+
+  weak_short_watch:
+    enabled: true
+    strategy_type: weak_short_watch
+    description: "Watch for weakness signals and short opportunities"
+    data_api: binance_usdm_klines
+    symbols:
+      - XRPUSDT
+      - ARBUSDT
+      - DOGEUSDT
+    timeframes:
+      - 15m
+      - 1h
+    mode: paper
+    alert:
+      feishu_payload: true
+      auto_send: false
+
+  breakout_pullback_watch:
+    enabled: false
+    strategy_type: breakout_pullback_watch
+    description: "Watch for breakout pullback entries (placeholder, not implemented)"
+    data_api: binance_usdm_klines
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+    timeframes:
+      - 15m
+      - 1h
+    mode: paper
+    alert:
+      feishu_payload: true
+      auto_send: false
