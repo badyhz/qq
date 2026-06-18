@@ -73,17 +73,17 @@ class TestDataSourceInterface:
 
 
 class TestCreateDataSource:
+    def test_create_fixture_source(self):
+        config = DataSourceConfig(mode="fixture")
+        source = create_data_source(config)
+        assert source.source_name == "fixture"
+
+    def test_create_snapshot_source(self):
+        config = DataSourceConfig(mode="snapshot")
+        source = create_data_source(config)
+        assert source.source_name == "snapshot"
+
     def test_invalid_mode_raises(self):
         config = DataSourceConfig(mode="invalid")
         with pytest.raises(ValueError):
-            create_data_source(config)
-
-    def test_fixture_source_requires_adapter(self):
-        config = DataSourceConfig(mode="fixture")
-        with pytest.raises(ModuleNotFoundError):
-            create_data_source(config)
-
-    def test_snapshot_source_requires_adapter(self):
-        config = DataSourceConfig(mode="snapshot")
-        with pytest.raises(ModuleNotFoundError):
             create_data_source(config)
