@@ -21,7 +21,9 @@ from core.paper_trading.shadow_web_console import (
     _find_latest, _today_str, _ts,
     load_latest_positions, load_latest_scorecard,
     load_latest_sample_gate, load_recent_actions,
-    load_strategy_switchboard,
+    load_strategy_switchboard, load_strategy_config,
+    validate_config_change_request, create_config_change_request,
+    append_config_change_request, render_config_change_result,
 )
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -114,12 +116,52 @@ class ShadowConsoleHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path.startswith("/action/"):
+        if path == "/action/request-config-change":
+            self._handle_config_change()
+        elif path.startswith("/action/"):
             action = path[len("/action/"):]
             result = run_allowed_action(action, self.repo_root, self.report_dir)
             self._send_json(result)
         else:
             self._send_json({"error": "Not found."}, 404)
+
+    def _handle_config_change(self):
+        """Handle config change request form submission."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        form = parse_qs(body, keep_blank_values=True)
+        # Flatten single-value lists
+        flat = {k: v[0] if v else "" for k, v in form.items()}
+
+        config = load_strategy_config(self.config_path)
+        switchboard = load_strategy_switchboard(self.config_path)
+        config_snapshot = {}
+        if config:
+            strategies = config.get("strategies", {})
+            sid = flat.get("strategy_id", "")
+            if sid in strategies:
+                cfg = strategies[sid]
+                config_snapshot = {
+                    "enabled": cfg.get("enabled", False),
+                    "strategy_type": cfg.get("strategy_type", ""),
+                    "mode": cfg.get("mode", ""),
+                    "symbols": cfg.get("symbols", []),
+                    "timeframes": cfg.get("timeframes", []),
+                    "auto_send": cfg.get("alert", {}).get("auto_send", False),
+                }
+
+        cleaned, errors = validate_config_change_request(flat, switchboard)
+        if errors:
+            error_html = '<div class="result-header fail">Validation errors:</div><ul>'
+            error_html += "".join(f"<li>{e}</li>" for e in errors)
+            error_html += "</ul>"
+            self._send_html(error_html)
+            return
+
+        request = create_config_change_request(cleaned, config_snapshot)
+        append_config_change_request(request, self.report_dir)
+        result_html = render_config_change_result(request)
+        self._send_html(result_html)
 
 
 def main():
