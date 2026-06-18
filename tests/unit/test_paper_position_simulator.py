@@ -7,7 +7,8 @@ import py_compile
 import pytest
 
 from core.paper_trading.paper_position_simulator import (
-    simulate_intent_only, simulate_with_klines, _calc_pnl, _update_position,
+    simulate_intent_only, simulate_with_klines,
+    simulate_existing_positions_update_only, _calc_pnl, _update_position,
 )
 from core.paper_trading.paper_position import open_position, dict_to_position
 from core.paper_trading.data_source import MarketBar
@@ -369,6 +370,87 @@ class TestOverlapGuard:
         assert r1.lifecycle_stats["overlap_keys_count"] == 0  # no existing
         r2 = simulate_intent_only([], "2026-06-18", existing_positions=r1.positions)
         assert r2.lifecycle_stats["overlap_keys_count"] == 2
+
+
+class TestUpdateOnly:
+    def test_no_new_positions_created(self):
+        """Update-only mode never creates new positions."""
+        pos = open_position(_make_intent())
+        existing = [pos.to_dict()]
+        existing[0]["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.16, 1.13, 1.14, timestamp=200)]
+        r = simulate_existing_positions_update_only(
+            existing, {"XRPUSDT_15m": bars}, "2026-06-18",
+        )
+        assert r.lifecycle_stats["new_positions_count"] == 0
+        assert r.position_count == 1
+
+    def test_updates_open_position_with_future_tp(self):
+        """Update-only can trigger TP on existing OPEN position."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10, timestamp=200)]
+        r = simulate_existing_positions_update_only(
+            [pos_dict], {"XRPUSDT_15m": bars}, "2026-06-18",
+        )
+        assert r.positions[0]["status"] == "TAKE_PROFIT_HIT"
+
+    def test_updates_open_position_with_future_sl(self):
+        """Update-only can trigger SL on existing OPEN position."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.16, 1.19, 1.14, 1.17, timestamp=200)]
+        r = simulate_existing_positions_update_only(
+            [pos_dict], {"XRPUSDT_15m": bars}, "2026-06-18",
+        )
+        assert r.positions[0]["status"] == "STOP_LOSS_HIT"
+
+    def test_keeps_open_if_no_future_bars(self):
+        """Update-only keeps OPEN if no future bars available."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 10000
+        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.16, 1.13, 1.14, timestamp=5000)]
+        r = simulate_existing_positions_update_only(
+            [pos_dict], {"XRPUSDT_15m": bars}, "2026-06-18",
+        )
+        assert r.positions[0]["status"] == "OPEN"
+        assert r.lifecycle_stats["positions_skipped_no_future_bars"] == 1
+
+    def test_keeps_closed_unchanged(self):
+        """Update-only does not modify closed positions."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["status"] = "STOP_LOSS_HIT"
+        pos_dict["closed_at"] = "2026-01-01"
+        bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10, timestamp=99999)]
+        r = simulate_existing_positions_update_only(
+            [pos_dict], {"XRPUSDT_15m": bars}, "2026-06-18",
+        )
+        assert r.positions[0]["status"] == "STOP_LOSS_HIT"
+        assert r.lifecycle_stats["positions_skipped_closed"] == 1
+
+    def test_empty_positions(self):
+        r = simulate_existing_positions_update_only([], {}, "2026-06-18")
+        assert r.position_count == 0
+        assert r.lifecycle_stats["new_positions_count"] == 0
+        assert r.lifecycle_stats["update_only"] is True
+
+    def test_mode_is_update_only(self):
+        r = simulate_existing_positions_update_only([], {}, "2026-06-18")
+        assert r.mode == "update_only"
+
+    def test_skipped_missing_bars(self):
+        """Positions without matching bars are counted as skipped_missing_bars."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        r = simulate_existing_positions_update_only(
+            [pos_dict], {}, "2026-06-18",
+        )
+        assert r.lifecycle_stats["positions_skipped_missing_bars"] == 1
 
 
 class TestNoForbiddenPatterns:

@@ -285,6 +285,100 @@ def simulate_with_klines(
     )
 
 
+def simulate_existing_positions_update_only(
+    existing_positions: list[dict[str, Any]],
+    bars_by_symbol_tf: dict[str, list[MarketBar]],
+    date_str: str,
+    timeout_bars: int = 24,
+    future_only: bool = True,
+) -> SimulationResult:
+    """Update only existing OPEN positions. Never creates new positions.
+
+    Used for position management without new signal scanning.
+    """
+    all_positions = list(existing_positions)
+    updated_count = 0
+    skipped_no_future = 0
+    skipped_closed = 0
+    skipped_missing_bars = 0
+
+    result_positions = []
+    for pos_dict in all_positions:
+        status = pos_dict.get("status", "OPEN")
+
+        # Closed positions stay closed
+        if status in CLOSED_STATUSES:
+            skipped_closed += 1
+            result_positions.append(pos_dict)
+            continue
+
+        # Get bars for this symbol/timeframe
+        sym = pos_dict.get("symbol", "")
+        tf = pos_dict.get("timeframe", "")
+        key = f"{sym}_{tf}"
+        bars = bars_by_symbol_tf.get(key, [])
+
+        if not bars:
+            skipped_missing_bars += 1
+            result_positions.append(pos_dict)
+            continue
+
+        # Filter to future-only bars
+        opened_bar_time = pos_dict.get("opened_bar_time")
+        if future_only and opened_bar_time is not None:
+            future_bars = [b for b in bars if b.timestamp > opened_bar_time]
+        elif future_only and opened_bar_time is None:
+            skipped_no_future += 1
+            result_positions.append(pos_dict)
+            continue
+        else:
+            future_bars = bars
+
+        if not future_bars:
+            skipped_no_future += 1
+            result_positions.append(pos_dict)
+            continue
+
+        # Reconstruct PaperPosition for update
+        pos = dict_to_position(pos_dict)
+        updated = _update_position(pos, future_bars, timeout_bars)
+        result_positions.append(updated)
+        updated_count += 1
+
+    counts = _count_statuses(result_positions)
+
+    return SimulationResult(
+        date=date_str,
+        mode="update_only",
+        position_count=len(result_positions),
+        open_count=counts["OPEN"],
+        tp_hit_count=counts["TAKE_PROFIT_HIT"],
+        sl_hit_count=counts["STOP_LOSS_HIT"],
+        timeout_count=counts["TIMEOUT_EXIT"],
+        invalid_count=0,
+        positions=result_positions,
+        summary=_build_summary(result_positions),
+        lifecycle_stats={
+            "new_positions_count": 0,
+            "existing_positions_count": len(all_positions),
+            "deduped_intents_count": 0,
+            "positions_updated_count": updated_count,
+            "positions_skipped_no_future_bars": skipped_no_future,
+            "positions_skipped_newly_opened": 0,
+            "positions_skipped_overlap_open": 0,
+            "skipped_overlap_intents": [],
+            "overlap_guard_enabled": True,
+            "overlap_keys_count": 0,
+            "positions_skipped_closed": skipped_closed,
+            "positions_skipped_missing_bars": skipped_missing_bars,
+            "update_only": True,
+            "future_only": future_only,
+            "allow_update_newly_opened": False,
+        },
+        safety_flags=list(POSITION_SAFETY_FLAGS),
+    )
+
+
 def _update_position(
     pos: PaperPosition,
     bars: list[MarketBar],
