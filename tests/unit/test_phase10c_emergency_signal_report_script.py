@@ -1,4 +1,4 @@
-"""Tests for phase10c emergency signal report script — structure only."""
+"""Tests for phase10c emergency watchlist script — structure only."""
 from __future__ import annotations
 
 import ast
@@ -10,7 +10,7 @@ import pytest
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "run_phase10c_emergency_signal_report.py")
 
 
-class TestEmergencySignalReportScript:
+class TestEmergencyWatchlistScript:
     def test_script_exists(self):
         assert os.path.isfile(SCRIPT)
 
@@ -28,20 +28,21 @@ class TestEmergencySignalReportScript:
             content = f.read()
         assert "--offline-sample" in content
 
-    def test_default_symbols(self):
+    def test_default_symbols_30(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("emergency", SCRIPT)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        assert len(mod.DEFAULT_SYMBOLS) >= 10
+        assert len(mod.DEFAULT_SYMBOLS) >= 20
         assert "BTCUSDT" in mod.DEFAULT_SYMBOLS
-        assert "ETHUSDT" in mod.DEFAULT_SYMBOLS
+        assert "1000BONKUSDT" in mod.DEFAULT_SYMBOLS
 
-    def test_default_timeframes(self):
+    def test_default_timeframes_5m_15m_1h(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("emergency", SCRIPT)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
+        assert "5m" in mod.DEFAULT_TIMEFRAMES
         assert "15m" in mod.DEFAULT_TIMEFRAMES
         assert "1h" in mod.DEFAULT_TIMEFRAMES
 
@@ -52,6 +53,16 @@ class TestEmergencySignalReportScript:
         assert "_signal_report.md" in content
         assert "_candidates.csv" in content
         assert "_shadow_ledger.jsonl" in content
+
+    def test_watch_state_order_defined(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("emergency", SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        assert hasattr(mod, "WATCH_STATE_ORDER")
+        for ws in ["LONG_READY", "LONG_WATCH", "NEAR_TURN_UP", "SHORT_WATCH",
+                    "WEAK_AVOID", "CHOPPY_AVOID", "DATA_REJECT"]:
+            assert ws in mod.WATCH_STATE_ORDER
 
     def test_no_websocket_imports(self):
         with open(SCRIPT) as f:
@@ -82,6 +93,24 @@ class TestEmergencySignalReportScript:
         assert ".env" not in content
         assert "os.environ" not in content
         assert "os.getenv" not in content
+
+    def test_csv_has_watch_state_fields(self):
+        with open(SCRIPT) as f:
+            content = f.read()
+        assert "watch_state" in content
+        assert "setup_type" in content
+        assert "turning_score" in content
+        assert "weakness_score" in content
+        assert "risk_score" in content
+        assert "distance_to_invalidation_pct" in content
+
+    def test_json_has_summary_fields(self):
+        with open(SCRIPT) as f:
+            content = f.read()
+        assert "summary_by_watch_state" in content
+        assert "top_turning_candidates" in content
+        assert "top_weakness_candidates" in content
+        assert "multi_timeframe_alignment" in content
 
     def test_safety_flags_present(self):
         import importlib.util

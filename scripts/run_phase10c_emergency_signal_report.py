@@ -1,4 +1,4 @@
-"""Phase 10C-3E emergency readonly signal report — real market data + signal analysis."""
+"""Phase 10C-3F emergency readonly watchlist — real market data + enhanced signal analysis."""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from collections import Counter
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -26,13 +27,18 @@ DEFAULT_SYMBOLS = [
     "DOGEUSDT", "LINKUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT",
     "WIFUSDT", "OPUSDT", "ARBUSDT", "INJUSDT", "NEARUSDT",
     "FETUSDT", "TIAUSDT", "APTUSDT", "ORDIUSDT", "1000PEPEUSDT",
+    "LTCUSDT", "BCHUSDT", "ETCUSDT", "FILUSDT", "SEIUSDT",
+    "JUPUSDT", "PYTHUSDT", "ENAUSDT", "WLDUSDT", "1000BONKUSDT",
 ]
-DEFAULT_TIMEFRAMES = ["15m", "1h"]
+DEFAULT_TIMEFRAMES = ["5m", "15m", "1h"]
 DEFAULT_LIMIT = 120
 
 SAFETY_FLAGS = ["PAPER_ONLY", "PUBLIC_READONLY_ONLY", "NO_SECRET", "NO_ACCOUNT",
                 "NO_ORDER", "NO_REAL_ORDER", "NO_TESTNET", "NO_LIVE",
                 "NO_WEBSOCKET", "NO_PRIVATE_ENDPOINT"]
+
+WATCH_STATE_ORDER = ["LONG_READY", "LONG_WATCH", "NEAR_TURN_UP",
+                     "SHORT_WATCH", "WEAK_AVOID", "CHOPPY_AVOID", "DATA_REJECT"]
 
 
 def _today_str() -> str:
@@ -71,7 +77,7 @@ def _fetch_and_analyze(adapter, symbols, timeframes, limit):
             sig = analyze_bars(bars)
             if sig:
                 results.append(sig)
-                print(f"OK → {sig.priority} {sig.trend_bias} {sig.macd_state}")
+                print(f"OK → {sig.watch_state} {sig.priority} {sig.trend_bias}")
             else:
                 print("ANALYSIS_FAIL")
             time.sleep(0.3)
@@ -82,18 +88,32 @@ def _fetch_and_analyze(adapter, symbols, timeframes, limit):
 def _generate_offline_results(symbols, timeframes):
     """Generate mock signal results for offline sample."""
     results = []
+    states = ["LONG_READY", "LONG_WATCH", "NEAR_TURN_UP", "SHORT_WATCH",
+              "WEAK_AVOID", "CHOPPY_AVOID", "LONG_WATCH", "NEAR_TURN_UP",
+              "SHORT_WATCH", "WEAK_AVOID"]
     for i, sym in enumerate(symbols):
         for tf in timeframes:
+            ws = states[i % len(states)]
             results.append(SignalResult(
                 symbol=sym, timeframe=tf, last_close=50000.0 + i * 100,
-                trend_bias="BULLISH" if i % 3 == 0 else "NEUTRAL",
-                macd_state="HIST_EXPANDING_GREEN" if i % 2 == 0 else "NEUTRAL",
+                trend_bias="BULLISH" if ws in ("LONG_READY", "LONG_WATCH") else
+                           "BEARISH" if ws in ("SHORT_WATCH", "WEAK_AVOID") else "NEUTRAL",
+                macd_state="HIST_EXPANDING_GREEN" if ws in ("LONG_READY",) else
+                           "HIST_SHRINKING_RED" if ws == "NEAR_TURN_UP" else "NEUTRAL",
                 rsi_state="NEUTRAL", volume_state="NORMAL",
-                priority="MEDIUM" if i % 3 != 2 else "LOW",
+                priority="HIGH" if ws == "LONG_READY" else "MEDIUM" if ws in ("LONG_WATCH", "NEAR_TURN_UP") else "LOW",
                 entry_observation=50000.0 + i * 100,
                 invalidation_level=49000.0 + i * 100,
                 risk_notes="offline mock",
                 reasons=["offline sample data"],
+                watch_state=ws,
+                setup_type="LONG_BREAKOUT" if ws == "LONG_READY" else "NO_TRADE",
+                turning_score=70 if ws in ("LONG_READY", "NEAR_TURN_UP") else 30,
+                weakness_score=60 if ws in ("SHORT_WATCH", "WEAK_AVOID") else 20,
+                risk_score=40,
+                distance_to_invalidation_pct=2.0,
+                distance_to_recent_high_pct=3.0,
+                distance_to_recent_low_pct=1.5,
             ))
     return results, []
 
@@ -112,15 +132,72 @@ def _to_shadow_record(sig: SignalResult, ts: float) -> ShadowRecord:
     )
 
 
+def _sig_to_dict(r: SignalResult) -> dict:
+    return {
+        "symbol": r.symbol, "timeframe": r.timeframe, "priority": r.priority,
+        "last_close": r.last_close, "trend_bias": r.trend_bias,
+        "macd_state": r.macd_state, "rsi_state": r.rsi_state,
+        "volume_state": r.volume_state, "entry_observation": r.entry_observation,
+        "invalidation_level": r.invalidation_level, "risk_notes": r.risk_notes,
+        "reasons": r.reasons,
+        "watch_state": r.watch_state, "setup_type": r.setup_type,
+        "turning_score": r.turning_score, "weakness_score": r.weakness_score,
+        "risk_score": r.risk_score,
+        "distance_to_invalidation_pct": r.distance_to_invalidation_pct,
+        "distance_to_recent_high_pct": r.distance_to_recent_high_pct,
+        "distance_to_recent_low_pct": r.distance_to_recent_low_pct,
+    }
+
+
+def _write_candidate_md(f, r: SignalResult):
+    f.write(f"### {r.symbol} ({r.timeframe}) — {r.watch_state} / {r.priority}\n\n")
+    f.write(f"- **Last Close:** {r.last_close}\n")
+    f.write(f"- **Trend:** {r.trend_bias}\n")
+    f.write(f"- **MACD:** {r.macd_state}\n")
+    f.write(f"- **RSI:** {r.rsi_state}\n")
+    f.write(f"- **Volume:** {r.volume_state}\n")
+    f.write(f"- **Setup:** {r.setup_type}\n")
+    f.write(f"- **Entry Observation:** {r.entry_observation}\n")
+    f.write(f"- **Invalidation:** {r.invalidation_level}\n")
+    f.write(f"- **Dist to Inv:** {r.distance_to_invalidation_pct}%\n")
+    f.write(f"- **Dist to High:** {r.distance_to_recent_high_pct}%\n")
+    f.write(f"- **Dist to Low:** {r.distance_to_recent_low_pct}%\n")
+    f.write(f"- **Turning Score:** {r.turning_score}\n")
+    f.write(f"- **Weakness Score:** {r.weakness_score}\n")
+    f.write(f"- **Risk Score:** {r.risk_score}\n")
+    f.write(f"- **Risk:** {r.risk_notes}\n")
+    f.write(f"- **Reasons:** {', '.join(r.reasons)}\n\n")
+
+
 def _write_reports(date_str, results, errors, mode):
     """Write JSON, MD, CSV, and shadow ledger reports."""
     os.makedirs(REPORT_DIR, exist_ok=True)
 
-    # Categorize
-    high = [r for r in results if r.priority == "HIGH"]
-    medium = [r for r in results if r.priority == "MEDIUM"]
-    low = [r for r in results if r.priority == "LOW"]
-    reject = [r for r in results if r.priority == "REJECT"]
+    # Categorize by watch_state
+    by_ws: dict[str, list[SignalResult]] = {ws: [] for ws in WATCH_STATE_ORDER}
+    for r in results:
+        ws = r.watch_state if r.watch_state in by_ws else "CHOPPY_AVOID"
+        by_ws[ws].append(r)
+
+    ws_counts = {ws: len(lst) for ws, lst in by_ws.items()}
+
+    # Multi-timeframe alignment
+    sym_tf_map: dict[str, list[SignalResult]] = {}
+    for r in results:
+        sym_tf_map.setdefault(r.symbol, []).append(r)
+    mtf_alignment = {}
+    for sym, sigs in sym_tf_map.items():
+        states = [s.watch_state for s in sigs]
+        if len(set(states)) == 1:
+            mtf_alignment[sym] = states[0]
+        else:
+            mtf_alignment[sym] = "MIXED"
+
+    # Top candidates
+    top_turning = sorted(results, key=lambda r: r.turning_score, reverse=True)[:10]
+    top_weakness = sorted(results, key=lambda r: r.weakness_score, reverse=True)[:10]
+    top_long = [r for r in results if r.watch_state in ("LONG_READY", "LONG_WATCH")]
+    top_long.sort(key=lambda r: r.turning_score, reverse=True)
 
     # JSON
     json_data = {
@@ -128,10 +205,11 @@ def _write_reports(date_str, results, errors, mode):
         "mode": mode,
         "safety_flags": SAFETY_FLAGS,
         "total_analyzed": len(results),
-        "high_count": len(high),
-        "medium_count": len(medium),
-        "low_count": len(low),
-        "reject_count": len(reject),
+        "summary_by_watch_state": ws_counts,
+        "top_turning_candidates": [_sig_to_dict(r) for r in top_turning],
+        "top_weakness_candidates": [_sig_to_dict(r) for r in top_weakness],
+        "top_long_candidates": [_sig_to_dict(r) for r in top_long[:10]],
+        "multi_timeframe_alignment": mtf_alignment,
         "errors": errors,
         "candidates": [_sig_to_dict(r) for r in results],
     }
@@ -144,12 +222,18 @@ def _write_reports(date_str, results, errors, mode):
     csv_path = os.path.join(REPORT_DIR, f"{date_str}_candidates.csv")
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["symbol", "timeframe", "priority", "last_close", "trend_bias",
-                         "macd_state", "rsi_state", "volume_state", "invalidation_level",
+        writer.writerow(["symbol", "timeframe", "watch_state", "setup_type", "priority",
+                         "last_close", "trend_bias", "macd_state", "rsi_state", "volume_state",
+                         "turning_score", "weakness_score", "risk_score",
+                         "invalidation_level", "distance_to_invalidation_pct",
+                         "distance_to_recent_high_pct", "distance_to_recent_low_pct",
                          "risk_notes", "reasons"])
         for r in results:
-            writer.writerow([r.symbol, r.timeframe, r.priority, r.last_close, r.trend_bias,
-                             r.macd_state, r.rsi_state, r.volume_state, r.invalidation_level,
+            writer.writerow([r.symbol, r.timeframe, r.watch_state, r.setup_type, r.priority,
+                             r.last_close, r.trend_bias, r.macd_state, r.rsi_state, r.volume_state,
+                             r.turning_score, r.weakness_score, r.risk_score,
+                             r.invalidation_level, r.distance_to_invalidation_pct,
+                             r.distance_to_recent_high_pct, r.distance_to_recent_low_pct,
                              r.risk_notes, "; ".join(r.reasons)])
     print(f"CSV: {csv_path}")
 
@@ -165,7 +249,7 @@ def _write_reports(date_str, results, errors, mode):
     # Markdown
     md_path = os.path.join(REPORT_DIR, f"{date_str}_signal_report.md")
     with open(md_path, "w") as f:
-        f.write(f"# Emergency Readonly Signal Report — {date_str}\n\n")
+        f.write(f"# Emergency Watchlist Report — {date_str}\n\n")
         f.write(f"**Mode:** {mode}\n")
         f.write(f"**Analyzed:** {len(results)} symbol/timeframe combinations\n")
         f.write(f"**Gate Decision:** {gate_result.decision}\n\n")
@@ -174,101 +258,107 @@ def _write_reports(date_str, results, errors, mode):
         for flag in SAFETY_FLAGS:
             f.write(f"- {flag}\n")
 
-        f.write("\n## Summary\n\n")
-        f.write(f"| Priority | Count |\n|---|---|\n")
-        f.write(f"| HIGH | {len(high)} |\n")
-        f.write(f"| MEDIUM | {len(medium)} |\n")
-        f.write(f"| LOW | {len(low)} |\n")
-        f.write(f"| REJECT | {len(reject)} |\n")
+        f.write("\n## 1. Overview\n\n")
+        f.write(f"| Watch State | Count |\n|---|---|\n")
+        for ws in WATCH_STATE_ORDER:
+            f.write(f"| {ws} | {ws_counts[ws]} |\n")
 
-        if high:
-            f.write("\n## HIGH Candidates\n\n")
-            for r in high:
+        # LONG_READY
+        if by_ws["LONG_READY"]:
+            f.write("\n## 2. LONG_READY — Strong Buy Candidates\n\n")
+            for r in by_ws["LONG_READY"]:
                 _write_candidate_md(f, r)
 
-        if medium:
-            f.write("\n## MEDIUM Candidates\n\n")
-            for r in medium:
+        # LONG_WATCH
+        if by_ws["LONG_WATCH"]:
+            f.write("\n## 3. LONG_WATCH — Buy Watch\n\n")
+            for r in sorted(by_ws["LONG_WATCH"], key=lambda x: x.turning_score, reverse=True):
                 _write_candidate_md(f, r)
 
-        if low:
-            f.write("\n## LOW Observations\n\n")
-            for r in low:
+        # NEAR_TURN_UP
+        if by_ws["NEAR_TURN_UP"]:
+            f.write("\n## 4. NEAR_TURN_UP — Approaching Turn\n\n")
+            for r in sorted(by_ws["NEAR_TURN_UP"], key=lambda x: x.turning_score, reverse=True):
                 _write_candidate_md(f, r)
 
-        if reject:
-            f.write("\n## REJECT / Data Issues\n\n")
-            for r in reject:
+        # SHORT_WATCH
+        if by_ws["SHORT_WATCH"]:
+            f.write("\n## 5. SHORT_WATCH — Bearish/Weak\n\n")
+            for r in sorted(by_ws["SHORT_WATCH"], key=lambda x: x.weakness_score, reverse=True):
                 _write_candidate_md(f, r)
+
+        # WEAK_AVOID
+        if by_ws["WEAK_AVOID"]:
+            f.write("\n## 6. WEAK_AVOID — Do Not Touch\n\n")
+            for r in sorted(by_ws["WEAK_AVOID"], key=lambda x: x.weakness_score, reverse=True):
+                _write_candidate_md(f, r)
+
+        # CHOPPY_AVOID
+        if by_ws["CHOPPY_AVOID"]:
+            f.write("\n## 7. CHOPPY_AVOID — Choppy/Avoid\n\n")
+            for r in by_ws["CHOPPY_AVOID"]:
+                _write_candidate_md(f, r)
+
+        # DATA_REJECT
+        if by_ws["DATA_REJECT"]:
+            f.write("\n## 8. DATA_REJECT — Data Issues\n\n")
+            for r in by_ws["DATA_REJECT"]:
+                _write_candidate_md(f, r)
+
+        # Multi-timeframe alignment
+        f.write("\n## 9. Multi-Timeframe Alignment\n\n")
+        f.write("| Symbol | Alignment |\n|---|---|\n")
+        for sym, align in sorted(mtf_alignment.items()):
+            f.write(f"| {sym} | {align} |\n")
+
+        # Risk
+        f.write("\n## 10. Risk Disclaimer\n\n")
+        f.write("This is a readonly observation report.\n")
+        f.write("It is NOT a trading recommendation.\n")
+        f.write("It is NOT testnet or live trading.\n")
+        f.write("No orders are placed. No accounts are accessed.\n")
+        f.write("Always do your own research and risk management.\n")
 
         if errors:
             f.write("\n## Errors\n\n")
             for e in errors:
                 f.write(f"- {e['symbol']} {e['timeframe']}: {e['error']}\n")
-
-        f.write("\n## Disclaimer\n\n")
-        f.write("This is a readonly observation report.\n")
-        f.write("It is NOT a trading recommendation.\n")
-        f.write("It is NOT testnet or live trading.\n")
-        f.write("No orders are placed. No accounts are accessed.\n")
     print(f"Markdown: {md_path}")
 
-    return gate_result
-
-
-def _write_candidate_md(f, r: SignalResult):
-    f.write(f"### {r.symbol} ({r.timeframe}) — {r.priority}\n\n")
-    f.write(f"- **Last Close:** {r.last_close}\n")
-    f.write(f"- **Trend:** {r.trend_bias}\n")
-    f.write(f"- **MACD:** {r.macd_state}\n")
-    f.write(f"- **RSI:** {r.rsi_state}\n")
-    f.write(f"- **Volume:** {r.volume_state}\n")
-    f.write(f"- **Entry Observation:** {r.entry_observation}\n")
-    f.write(f"- **Invalidation:** {r.invalidation_level}\n")
-    f.write(f"- **Risk:** {r.risk_notes}\n")
-    f.write(f"- **Reasons:** {', '.join(r.reasons)}\n\n")
-
-
-def _sig_to_dict(r: SignalResult) -> dict:
-    return {
-        "symbol": r.symbol, "timeframe": r.timeframe, "priority": r.priority,
-        "last_close": r.last_close, "trend_bias": r.trend_bias,
-        "macd_state": r.macd_state, "rsi_state": r.rsi_state,
-        "volume_state": r.volume_state, "entry_observation": r.entry_observation,
-        "invalidation_level": r.invalidation_level, "risk_notes": r.risk_notes,
-        "reasons": r.reasons,
-    }
+    return gate_result, ws_counts
 
 
 def run_offline(symbols, timeframes):
-    print(f"=== Phase 10C-3E Emergency Signal Report (offline) ===\n")
+    print(f"=== Phase 10C-3F Emergency Watchlist (offline) ===\n")
     results, errors = _generate_offline_results(symbols, timeframes)
     date_str = _today_str()
-    gate = _write_reports(date_str, results, errors, "offline_sample")
+    gate, ws_counts = _write_reports(date_str, results, errors, "offline_sample")
     print(f"\nGate: {gate.decision}")
-    print(f"HIGH: {len([r for r in results if r.priority == 'HIGH'])}")
-    print(f"MEDIUM: {len([r for r in results if r.priority == 'MEDIUM'])}")
+    for ws, cnt in ws_counts.items():
+        if cnt > 0:
+            print(f"  {ws}: {cnt}")
     print("\n=== Offline Complete ===")
     return 0
 
 
 def run_real_http(symbols, timeframes, limit):
-    print(f"=== Phase 10C-3E Emergency Signal Report (real HTTP) ===\n")
+    print(f"=== Phase 10C-3F Emergency Watchlist (real HTTP) ===\n")
     config = DataSourceConfig(mode="snapshot", network_enabled=True)
     adapter = BinancePublicKlineAdapter(config)
     results, errors = _fetch_and_analyze(adapter, symbols, timeframes, limit)
     date_str = _today_str()
-    gate = _write_reports(date_str, results, errors, "real_public_http")
+    gate, ws_counts = _write_reports(date_str, results, errors, "real_public_http")
     print(f"\nGate: {gate.decision}")
-    print(f"HIGH: {len([r for r in results if r.priority == 'HIGH'])}")
-    print(f"MEDIUM: {len([r for r in results if r.priority == 'MEDIUM'])}")
+    for ws, cnt in ws_counts.items():
+        if cnt > 0:
+            print(f"  {ws}: {cnt}")
     print(f"Errors: {len(errors)}")
     print("\n=== Real HTTP Complete ===")
     return 0
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Phase 10C-3E emergency readonly signal report")
+    parser = argparse.ArgumentParser(description="Phase 10C-3F emergency readonly watchlist")
     parser.add_argument("--allow-public-http", action="store_true")
     parser.add_argument("--offline-sample", action="store_true")
     parser.add_argument("--symbols", type=str, default=",".join(DEFAULT_SYMBOLS))
