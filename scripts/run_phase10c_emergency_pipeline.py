@@ -29,6 +29,14 @@ SAFETY_FLAGS = [
 ]
 
 
+# Chinese direction labels
+DIRECTION_CN = {
+    "LONG_OBSERVE": "多头观察",
+    "SHORT_OBSERVE": "空头观察",
+    "NO_TRADE": "不交易",
+}
+
+
 def _today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
@@ -55,6 +63,101 @@ def _run_step(step_name: str, cmd: list[str]) -> tuple[int, str]:
         return 1, f"TIMEOUT after 300s"
     except Exception as e:
         return 1, str(e)
+
+
+def _generate_human_summary(plans: list[dict]) -> dict[str, Any]:
+    """Generate human-readable summary from focused plans."""
+    watch_now = []
+    wait_confirmation = []
+    short_observe = []
+    avoid = []
+
+    for p in plans:
+        symbol = p.get("symbol", "")
+        tf = p.get("timeframe", "")
+        direction = p.get("direction", "NO_TRADE")
+        direction_cn = DIRECTION_CN.get(direction, direction)
+        decision = p.get("plan_decision", "AVOID")
+        reason = p.get("reason", "")
+
+        entry = {"symbol": symbol, "tf": tf, "direction": direction_cn, "reason": reason}
+
+        if decision == "WATCH":
+            if direction == "SHORT_OBSERVE":
+                short_observe.append(entry)
+            else:
+                watch_now.append(entry)
+        elif decision == "WAIT":
+            wait_confirmation.append(entry)
+        else:
+            avoid.append(entry)
+
+    # Build watch now summary
+    watch_lines = []
+    for w in watch_now:
+        reason_cn = _reason_short(w["reason"], w["direction"])
+        watch_lines.append(f"- {w['symbol']} {w['tf']}：{reason_cn}")
+
+    # Build wait summary
+    wait_symbols = sorted(set(w["symbol"] for w in wait_confirmation))
+    wait_line = f"- {', '.join(wait_symbols)}：等待 1h MACD 进一步确认" if wait_symbols else "- 暂无"
+
+    # Build short summary
+    short_lines = []
+    for s in short_observe:
+        short_lines.append(f"- {s['symbol']} {s['tf']}：空头信号观察中")
+
+    # Build human summary text
+    lines = ["今日只读盯盘摘要", ""]
+    if watch_lines:
+        lines.append("1. 当前可观察：")
+        lines.extend(watch_lines)
+        lines.append("")
+    if wait_line:
+        lines.append("2. 继续等待：")
+        lines.append(wait_line)
+        lines.append("")
+    if short_lines:
+        lines.append("3. 弱势观察：")
+        lines.extend(short_lines)
+        lines.append("")
+    lines.append("4. 安全边界：")
+    lines.append("- 只读行情")
+    lines.append("- paper-only")
+    lines.append("- 不下单")
+    lines.append("- 不 testnet/live")
+    lines.append("- 飞书默认 dry-run")
+
+    human_text = "\n".join(lines)
+
+    return {
+        "human_summary": human_text,
+        "watch_now_summary": [f"{w['symbol']} {w['tf']}：{w['direction']}" for w in watch_now],
+        "wait_confirmation_summary": wait_symbols,
+        "short_observe_summary": [f"{s['symbol']} {s['tf']}：空头观察" for s in short_observe],
+        "safety_summary": "只读行情 / paper-only / 不下单 / 不 testnet/live / 飞书默认 dry-run",
+    }
+
+
+def _reason_short(reason: str, direction: str) -> str:
+    """Short Chinese reason for summary."""
+    if not reason:
+        return "信号分析完成"
+    r = reason.lower()
+    if "macd" in r and ("green" in r or "bullish" in r or "expanding" in r):
+        return "短周期转强，纸面观察"
+    if "macd" in r and ("red" in r or "bearish" in r):
+        return "短周期偏弱"
+    if "turning" in r or "near_turn" in r:
+        return "即将转折，等待确认"
+    if "short" in r:
+        return "空头信号观察中"
+    if "long" in r:
+        return "多头信号增强"
+    return "信号分析中"
+
+
+from typing import Any
 
 
 def run_pipeline(
@@ -174,6 +277,20 @@ def run_pipeline(
         except Exception:
             pass
 
+    # Read focused plan preview for human summary
+    preview_file = os.path.join(REPORT_DIR, f"{date_str}_focused_paper_plan_preview.json")
+    plans = []
+    if os.path.isfile(preview_file):
+        try:
+            with open(preview_file) as f:
+                preview_data = json.load(f)
+                plans = preview_data.get("plans", [])
+        except Exception:
+            pass
+
+    # Generate human summary
+    human_summary = _generate_human_summary(plans)
+
     # Write pipeline result
     os.makedirs(REPORT_DIR, exist_ok=True)
 
@@ -194,6 +311,11 @@ def run_pipeline(
         "safety_flags": SAFETY_FLAGS,
         "final_status": final_status,
         "errors": errors,
+        "human_summary": human_summary["human_summary"],
+        "watch_now_summary": human_summary["watch_now_summary"],
+        "wait_confirmation_summary": human_summary["wait_confirmation_summary"],
+        "short_observe_summary": human_summary["short_observe_summary"],
+        "safety_summary": human_summary["safety_summary"],
     }
 
     json_path = os.path.join(REPORT_DIR, f"{date_str}_emergency_pipeline_result.json")
@@ -203,46 +325,51 @@ def run_pipeline(
 
     md_path = os.path.join(REPORT_DIR, f"{date_str}_emergency_pipeline_result.md")
     with open(md_path, "w") as f:
-        f.write(f"# Emergency One-Click Pipeline Result — {date_str}\n\n")
-        f.write(f"## Summary\n\n")
-        f.write(f"- **Mode:** {mode}\n")
+        f.write(f"# 一键盯盘 Pipeline 结果 — {date_str}\n\n")
+        f.write(f"## 摘要\n\n")
+        f.write(f"- **模式:** {mode}\n")
         f.write(f"- **allow_public_http:** {allow_public_http}\n")
         f.write(f"- **offline_sample:** {offline_sample}\n")
-        f.write(f"- **Final Status:** {final_status}\n")
-        f.write(f"- **Payload Count:** {payload_count}\n")
-        f.write(f"- **Send Attempted:** False\n")
-        f.write(f"- **Actually Sent:** False\n\n")
+        f.write(f"- **最终状态:** {final_status}\n")
+        f.write(f"- **提醒数量:** {payload_count}\n")
+        f.write(f"- **发送尝试:** 否\n")
+        f.write(f"- **实际发送:** 否\n\n")
 
-        f.write(f"## Step Results\n\n")
-        f.write("| Step | Status |\n|---|---|\n")
+        f.write(f"## 今日只读盯盘摘要\n\n")
+        f.write("```text\n")
+        f.write(human_summary["human_summary"])
+        f.write("\n```\n\n")
+
+        f.write(f"## 步骤结果\n\n")
+        f.write("| 步骤 | 状态 |\n|---|---|\n")
         for s in steps:
             f.write(f"| {s['name']} | {s['status']} |\n")
 
         if errors:
-            f.write(f"\n## Errors\n\n")
+            f.write(f"\n## 错误\n\n")
             for err in errors:
                 f.write(f"- **{err['step']}:** {err['error'][:200]}\n")
 
-        f.write(f"\n## Generated Reports\n\n")
+        f.write(f"\n## 生成的报告\n\n")
         for r in reports_generated:
             f.write(f"- `{r}`\n")
 
-        f.write(f"\n## Payload Summary\n\n")
-        f.write(f"- **payload_count:** {payload_count}\n")
-        f.write(f"- **send_attempted:** False\n")
-        f.write(f"- **actually_sent:** False\n")
+        f.write(f"\n## 提醒摘要\n\n")
+        f.write(f"- **提醒数量:** {payload_count}\n")
+        f.write(f"- **发送尝试:** 否\n")
+        f.write(f"- **实际发送:** 否\n")
 
-        f.write(f"\n## Feishu Send Gate Dry-run\n\n")
-        f.write("Send gate executed in dry-run mode.\n")
-        f.write("No webhook URL provided. No real send.\n")
+        f.write(f"\n## 飞书发送门禁\n\n")
+        f.write("发送门禁以 dry-run 模式执行。\n")
+        f.write("未提供 webhook URL，未真实发送。\n")
 
-        f.write(f"\n## Safety\n\n")
-        f.write("- Paper-only observation pipeline\n")
-        f.write("- Readonly-only market data\n")
-        f.write("- No account, no order, no testnet, no live\n")
-        f.write("- No websocket, no secret, no .env\n")
-        f.write("- No real Feishu send\n")
-        f.write("- Manual Feishu send remains separate\n")
+        f.write(f"\n## 安全边界\n\n")
+        f.write("- 纸面观察，不下单\n")
+        f.write("- 只读行情数据\n")
+        f.write("- 不涉及账户、订单、testnet、live\n")
+        f.write("- 不读取 websocket、secret、.env\n")
+        f.write("- 不真实发送飞书\n")
+        f.write("- 手动飞书发送保持独立\n")
     print(f"Pipeline Markdown: {md_path}")
 
     # Print summary

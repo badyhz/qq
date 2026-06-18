@@ -64,7 +64,7 @@ def test_feishu_card_shape() -> None:
     assert card["msg_type"] == "interactive"
     assert card["card"]["header"]["template"] == "orange"
     assert "BNBUSDT" in card["card"]["header"]["title"]["content"]
-    assert "No webhook sent" in card["card"]["elements"][-1]["elements"][0]["content"]
+    assert "纸面观察" in card["card"]["elements"][-1]["elements"][0]["content"]
 
 
 def test_wait_plans_are_skipped_not_alerted() -> None:
@@ -76,7 +76,36 @@ def test_wait_plans_are_skipped_not_alerted() -> None:
 def test_markdown_contains_safety_and_preview() -> None:
     result = build_payloads_from_preview(_preview())
     md = render_markdown(result)
-    assert "Phase 10C-3J" in md
-    assert "[PAPER WATCH] BNBUSDT 5m LONG_OBSERVE" in md
-    assert "No webhook send attempted" in md
-    assert "Not a trading recommendation" in md
+    assert "纸面观察提醒" in md
+    assert "BNBUSDT" in md
+    assert "多头观察" in md
+    assert "纸面观察" in md
+    assert "不下单" in md
+
+
+def test_chinese_fields_in_message() -> None:
+    result = build_payloads_from_preview(_preview())
+    msg = result["payloads"][0]["message_text"]
+    assert "观察价" in msg
+    assert "失效价" in msg
+    assert "目标观察" in msg
+    assert "风险距离" in msg
+    assert "目标空间" in msg
+    assert "只观察" in msg or "处理建议" in msg
+    assert "paper-only" in msg
+
+
+def test_chinese_title_in_payload() -> None:
+    result = build_payloads_from_preview(_preview())
+    title = result["payloads"][0]["title"]
+    assert "多头观察" in title
+    assert "PAPER WATCH" in title
+    assert "BNBUSDT" in title
+
+
+def test_no_order_words_in_output() -> None:
+    result = build_payloads_from_preview(_preview())
+    msg = result["payloads"][0]["message_text"]
+    forbidden = ["submit", "buy", "sell", "execute", "place_order", "cancel_order"]
+    for word in forbidden:
+        assert word not in msg.lower(), f"forbidden word '{word}' in message"

@@ -30,6 +30,40 @@ PAYLOAD_SAFETY_FLAGS = [
     "NOT_TRADING_RECOMMENDATION",
 ]
 
+# Chinese direction labels
+DIRECTION_CN = {
+    "LONG_OBSERVE": "多头观察",
+    "SHORT_OBSERVE": "空头观察",
+    "NO_TRADE": "不交易",
+}
+
+# Chinese status labels
+STATUS_CN = {
+    "TRIGGERED": "已触发",
+    "WAITING": "等待确认",
+    "INVALIDATED": "已失效",
+    "SHORT_TRIGGERED": "空头已触发",
+    "SHORT_WAITING": "空头等待",
+    "SHORT_INVALIDATED": "空头失效",
+    "DATA_ERROR": "数据异常",
+}
+
+# Chinese decision labels
+DECISION_CN = {
+    "WATCH": "可观察",
+    "WAIT": "继续等待",
+    "AVOID": "不参与",
+}
+
+# Chinese timeframe labels
+TIMEFRAME_CN = {
+    "5m": "5分钟",
+    "15m": "15分钟",
+    "1h": "1小时",
+    "4h": "4小时",
+    "1d": "日线",
+}
+
 
 @dataclass(frozen=True)
 class FeishuPaperAlertPayload:
@@ -113,7 +147,8 @@ def build_plan_payload(plan: dict[str, Any]) -> FeishuPaperAlertPayload:
     symbol = str(plan.get("symbol") or "")
     timeframe = str(plan.get("timeframe") or "")
     direction = str(plan.get("direction") or "NO_TRADE")
-    title = f"[PAPER WATCH] {symbol} {timeframe} {direction}"
+    direction_cn = DIRECTION_CN.get(direction, direction)
+    title = f"[PAPER WATCH] {symbol} {timeframe} {direction_cn}"
     created_at = _utc_now_iso()
     message = _message_text(plan)
     dedup_key = _dedup_key(symbol, timeframe, direction, plan)
@@ -142,37 +177,33 @@ def build_plan_payload(plan: dict[str, Any]) -> FeishuPaperAlertPayload:
 def render_markdown(payload_file: dict[str, Any]) -> str:
     """Render a human-readable preview of generated paper alert payloads."""
     lines = [
-        f"# Phase 10C-3J Feishu-Ready Paper Alert Payload - {payload_file.get('date', '')}",
+        f"# 纸面观察提醒 - {payload_file.get('date', '')}",
         "",
-        f"**Source mode:** {payload_file.get('source_mode', '')}",
-        f"**Payload scope:** {payload_file.get('payload_scope', '')}",
-        f"**Payload count:** {payload_file.get('payload_count', 0)}",
+        f"**数据来源:** {payload_file.get('source_mode', '')}",
+        f"**提醒范围:** {payload_file.get('payload_scope', '')}",
+        f"**提醒数量:** {payload_file.get('payload_count', 0)}",
         "",
-        "## Decision Summary",
+        "## 决策摘要",
         "",
-        "| Decision | Count |",
+        "| 决策 | 数量 |",
         "|---|---:|",
     ]
     counts = payload_file.get("decision_counts", {})
     for decision in ["WATCH", "WAIT", "AVOID"]:
-        lines.append(f"| {decision} | {int(counts.get(decision, 0) or 0)} |")
+        cn = DECISION_CN.get(decision, decision)
+        lines.append(f"| {cn} | {int(counts.get(decision, 0) or 0)} |")
 
-    lines.extend(["", "## Payload Preview", ""])
+    lines.extend(["", "## 观察提醒预览", ""])
     payloads = payload_file.get("payloads", [])
     if not payloads:
-        lines.append("No WATCH payloads generated.")
+        lines.append("暂无观察提醒。")
     for payload in payloads:
+        symbol = payload.get('symbol', '')
+        tf = payload.get('timeframe', '')
+        direction = payload.get('direction', 'NO_TRADE')
+        direction_cn = DIRECTION_CN.get(direction, direction)
         lines.extend([
-            f"### {payload.get('title', '')}",
-            "",
-            f"- priority: {payload.get('priority', '')}",
-            f"- symbol: {payload.get('symbol', '')}",
-            f"- timeframe: {payload.get('timeframe', '')}",
-            f"- direction: {payload.get('direction', '')}",
-            f"- dry_run_only: {payload.get('dry_run_only')}",
-            f"- actually_sent: {payload.get('actually_sent')}",
-            f"- webhook_send_attempted: {payload.get('webhook_send_attempted')}",
-            f"- not_order_payload: {payload.get('not_order_payload')}",
+            f"### {symbol}｜{tf}｜{direction_cn}",
             "",
             "```text",
             str(payload.get("message_text", "")),
@@ -181,14 +212,15 @@ def render_markdown(payload_file: dict[str, Any]) -> str:
         ])
 
     lines.extend([
-        "## Safety",
+        "## 安全边界",
         "",
-        "- Paper-only observation alert payload.",
-        "- No webhook send attempted.",
-        "- No secrets, accounts, orders, testnet, or live trading.",
-        "- Not a trading recommendation.",
+        "- 纸面观察，不下单",
+        "- 不发送 webhook",
+        "- 不读取 secret / .env",
+        "- 不涉及账户、订单、testnet、live",
+        "- 不构成交易建议",
         "",
-        "## Verdict",
+        "## 验证",
         "",
         str(payload_file.get("final_verdict", "")),
         "",
@@ -197,17 +229,72 @@ def render_markdown(payload_file: dict[str, Any]) -> str:
 
 
 def _message_text(plan: dict[str, Any]) -> str:
+    symbol = plan.get('symbol', '')
+    tf = plan.get('timeframe', '')
+    direction = plan.get('direction', 'NO_TRADE')
+    direction_cn = DIRECTION_CN.get(direction, direction)
+    tf_cn = TIMEFRAME_CN.get(tf, tf)
+    reason = plan.get('reason', '')
+    reason_cn = _reason_to_chinese(reason, direction)
+
     return (
-        f"{plan.get('symbol')} {plan.get('timeframe')} {plan.get('direction')} | "
-        f"entry_observation={plan.get('entry_observation')} | "
-        f"invalidation_level={plan.get('invalidation_level')} | "
-        f"take_profit_observation={plan.get('take_profit_observation')} | "
-        f"rr={plan.get('rr_ratio')} | "
-        f"risk={plan.get('risk_distance_pct')}% | "
-        f"reward={plan.get('reward_distance_pct')}% | "
-        f"reason={plan.get('reason')} | "
-        "paper-only; no order; no webhook sent"
+        f"状态：纸面观察，不下单\n"
+        f"触发：{reason_cn}\n"
+        f"观察价：{plan.get('entry_observation')}\n"
+        f"失效价：{plan.get('invalidation_level')}\n"
+        f"目标观察：{plan.get('take_profit_observation')}\n"
+        f"R:R：{plan.get('rr_ratio')}\n"
+        f"风险距离：{plan.get('risk_distance_pct')}%\n"
+        f"目标空间：{plan.get('reward_distance_pct')}%\n"
+        f"\n"
+        f"处理建议：{_suggestion_cn(direction, tf)}\n"
+        f"安全边界：paper-only / readonly-only / no order / no testnet / no live"
     )
+
+
+def _reason_to_chinese(reason: str, direction: str) -> str:
+    """Convert reason string to Chinese description."""
+    if not reason:
+        return "信号分析完成"
+    reason_lower = reason.lower()
+    if "macd" in reason_lower and ("green" in reason_lower or "bullish" in reason_lower or "expanding" in reason_lower):
+        if direction == "SHORT_OBSERVE":
+            return "MACD 红柱扩张，短周期偏弱"
+        return "MACD 绿柱扩张，短周期开始转强"
+    if "macd" in reason_lower and ("red" in reason_lower or "bearish" in reason_lower):
+        return "MACD 红柱扩张，短周期偏弱"
+    if "turning" in reason_lower or "near_turn" in reason_lower:
+        return "MACD 即将转折，等待确认"
+    if "weakness" in reason_lower:
+        return "弱势信号，MACD 持续走弱"
+    if "long_ready" in reason_lower or "long_watch" in reason_lower:
+        return "多头信号增强，观察中"
+    if "short_watch" in reason_lower:
+        return "空头信号增强，观察中"
+    if "degraded" in reason_lower:
+        return "信号走弱，已失效"
+    if "still" in reason_lower:
+        return "信号维持，继续等待确认"
+    # Fallback: keep original but truncate
+    return reason[:60] if len(reason) > 60 else reason
+
+
+def _suggestion_cn(direction: str, tf: str) -> str:
+    """Generate Chinese suggestion based on direction and timeframe."""
+    if direction == "SHORT_OBSERVE":
+        if tf in ("5m",):
+            return "空头观察中；等 15m 共振确认再行动。"
+        if tf in ("15m",):
+            return "空头观察中；等 1h 确认趋势。"
+        return "空头信号观察中；不追空。"
+    # LONG_OBSERVE
+    if tf in ("5m",):
+        return "只观察；未再次确认前不追。"
+    if tf in ("15m",):
+        return "优先等 5m 与 15m 共振，不单独追高。"
+    if tf in ("1h",):
+        return "等待 1h 级别确认，不急于入场。"
+    return "只观察；确认后再行动。"
 
 
 def _feishu_card(title: str, message: str, plan: dict[str, Any], created_at: str) -> dict[str, Any]:
@@ -223,20 +310,20 @@ def _feishu_card(title: str, message: str, plan: dict[str, Any], created_at: str
                 {
                     "tag": "div",
                     "fields": [
-                        _field("Entry", plan.get("entry_observation")),
-                        _field("Invalidation", plan.get("invalidation_level")),
-                        _field("Take Profit", plan.get("take_profit_observation")),
+                        _field("观察价", plan.get("entry_observation")),
+                        _field("失效价", plan.get("invalidation_level")),
+                        _field("目标观察", plan.get("take_profit_observation")),
                         _field("R:R", plan.get("rr_ratio")),
                     ],
                 },
-                {"tag": "div", "text": {"tag": "plain_text", "content": f"Created: {created_at}"}},
+                {"tag": "div", "text": {"tag": "plain_text", "content": f"生成时间: {created_at}"}},
                 {"tag": "hr"},
                 {
                     "tag": "note",
                     "elements": [
                         {
                             "tag": "plain_text",
-                            "content": "DRY RUN ONLY. No webhook sent. Not a trading recommendation.",
+                            "content": "纸面观察，不下单。不构成交易建议。",
                         }
                     ],
                 },

@@ -185,6 +185,19 @@ def run_send_gate(
     # Validate payload
     valid, issues = validate_payload_file(payload_data)
     if not valid:
+        # Check if only issue is empty payloads (valid in dry-run)
+        only_empty = len(issues) == 1 and "payloads list is empty" in issues[0]
+        if only_empty:
+            # Empty payloads is valid - no alerts to send
+            return SendResult(
+                date=date_str, payload_count=0,
+                dry_run=True, allow_send=allow_send,
+                webhook_url_provided=webhook_url is not None,
+                send_attempted=False, sent_count=0, failed_count=0,
+                errors=[],
+                safety_passed=True, actually_sent=False,
+                safety_flags=list(SEND_GATE_SAFETY_FLAGS),
+            )
         return SendResult(
             date=date_str, payload_count=0,
             dry_run=True, allow_send=allow_send,
