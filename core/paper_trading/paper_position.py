@@ -24,6 +24,8 @@ POSITION_SAFETY_FLAGS = [
     "POSITION_SIMULATION_ONLY",
 ]
 
+CLOSED_STATUSES = {"TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT", "INVALID"}
+
 
 @dataclass(frozen=True)
 class PaperPosition:
@@ -46,6 +48,7 @@ class PaperPosition:
     max_risk_pct: float
     paper_equity_preview: float
     opened_at: str
+    opened_bar_time: Optional[int]
     closed_at: Optional[str]
     exit_price: Optional[float]
     exit_reason: Optional[str]
@@ -55,6 +58,9 @@ class PaperPosition:
     r_multiple: float
     source_trade_intent_status: str
     risk_gate_status: str
+    lifecycle_mode: str
+    last_checked_at: Optional[str]
+    last_checked_bar_time: Optional[int]
     safety_flags: list[str]
     created_at: str
 
@@ -78,6 +84,7 @@ class PaperPosition:
             "max_risk_pct": self.max_risk_pct,
             "paper_equity_preview": self.paper_equity_preview,
             "opened_at": self.opened_at,
+            "opened_bar_time": self.opened_bar_time,
             "closed_at": self.closed_at,
             "exit_price": self.exit_price,
             "exit_reason": self.exit_reason,
@@ -87,6 +94,9 @@ class PaperPosition:
             "r_multiple": self.r_multiple,
             "source_trade_intent_status": self.source_trade_intent_status,
             "risk_gate_status": self.risk_gate_status,
+            "lifecycle_mode": self.lifecycle_mode,
+            "last_checked_at": self.last_checked_at,
+            "last_checked_bar_time": self.last_checked_bar_time,
             "safety_flags": list(self.safety_flags),
             "created_at": self.created_at,
         }
@@ -110,6 +120,7 @@ def open_position(intent: dict[str, Any], paper_equity: float = 10000.0) -> Opti
         return None
 
     now = datetime.now(timezone.utc).isoformat()
+    now_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
     entry = float(intent.get("entry_price") or 0)
     sl = float(intent.get("stop_loss") or 0)
     tp = float(intent.get("take_profit") or 0)
@@ -136,6 +147,7 @@ def open_position(intent: dict[str, Any], paper_equity: float = 10000.0) -> Opti
         max_risk_pct=float(intent.get("max_risk_pct") or 0),
         paper_equity_preview=paper_equity,
         opened_at=now,
+        opened_bar_time=now_ts,
         closed_at=None,
         exit_price=None,
         exit_reason=None,
@@ -145,6 +157,48 @@ def open_position(intent: dict[str, Any], paper_equity: float = 10000.0) -> Opti
         r_multiple=0.0,
         source_trade_intent_status=intent_status,
         risk_gate_status=str(intent.get("risk_gate_status") or ""),
+        lifecycle_mode="future_only",
+        last_checked_at=None,
+        last_checked_bar_time=None,
         safety_flags=list(POSITION_SAFETY_FLAGS),
         created_at=now,
+    )
+
+
+def dict_to_position(d: dict[str, Any]) -> PaperPosition:
+    """Reconstruct a PaperPosition from a dict (e.g. from JSON)."""
+    return PaperPosition(
+        position_id=d["position_id"],
+        intent_id=d["intent_id"],
+        date=d["date"],
+        source=d["source"],
+        strategy_id=d["strategy_id"],
+        strategy_type=d["strategy_type"],
+        symbol=d["symbol"],
+        timeframe=d["timeframe"],
+        side=d["side"],
+        status=d["status"],
+        entry_price=d["entry_price"],
+        stop_loss=d["stop_loss"],
+        take_profit=d["take_profit"],
+        rr_ratio=d["rr_ratio"],
+        position_size_preview=d["position_size_preview"],
+        max_risk_pct=d["max_risk_pct"],
+        paper_equity_preview=d["paper_equity_preview"],
+        opened_at=d["opened_at"],
+        opened_bar_time=d.get("opened_bar_time"),
+        closed_at=d.get("closed_at"),
+        exit_price=d.get("exit_price"),
+        exit_reason=d.get("exit_reason"),
+        unrealized_pnl=d.get("unrealized_pnl", 0.0),
+        realized_pnl=d.get("realized_pnl", 0.0),
+        realized_pnl_pct=d.get("realized_pnl_pct", 0.0),
+        r_multiple=d.get("r_multiple", 0.0),
+        source_trade_intent_status=d.get("source_trade_intent_status", ""),
+        risk_gate_status=d.get("risk_gate_status", ""),
+        lifecycle_mode=d.get("lifecycle_mode", "future_only"),
+        last_checked_at=d.get("last_checked_at"),
+        last_checked_bar_time=d.get("last_checked_bar_time"),
+        safety_flags=d.get("safety_flags", list(POSITION_SAFETY_FLAGS)),
+        created_at=d.get("created_at", ""),
     )

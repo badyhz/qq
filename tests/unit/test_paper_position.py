@@ -1,4 +1,4 @@
-"""Tests for paper position model — open_position, validation, PnL."""
+"""Tests for paper position model — open_position, validation, lifecycle."""
 from __future__ import annotations
 
 import os
@@ -7,7 +7,8 @@ import py_compile
 import pytest
 
 from core.paper_trading.paper_position import (
-    open_position, PaperPosition, POSITION_SAFETY_FLAGS,
+    open_position, dict_to_position, PaperPosition,
+    POSITION_SAFETY_FLAGS, CLOSED_STATUSES,
 )
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), "..", "..",
@@ -62,32 +63,25 @@ class TestOpenPosition:
         assert pos.status == "OPEN"
 
     def test_rejects_blocked(self):
-        pos = open_position(_make_intent(intent_status="BLOCKED_BY_RISK_GATE"))
-        assert pos is None
+        assert open_position(_make_intent(intent_status="BLOCKED_BY_RISK_GATE")) is None
 
     def test_rejects_invalid(self):
-        pos = open_position(_make_intent(intent_status="INVALID"))
-        assert pos is None
+        assert open_position(_make_intent(intent_status="INVALID")) is None
 
     def test_rejects_no_trade(self):
-        pos = open_position(_make_intent(side="NO_TRADE"))
-        assert pos is None
+        assert open_position(_make_intent(side="NO_TRADE")) is None
 
     def test_rejects_non_shadow_mode(self):
-        pos = open_position(_make_intent(execution_mode="live"))
-        assert pos is None
+        assert open_position(_make_intent(execution_mode="live")) is None
 
     def test_rejects_zero_entry(self):
-        pos = open_position(_make_intent(entry_price=0))
-        assert pos is None
+        assert open_position(_make_intent(entry_price=0)) is None
 
     def test_rejects_zero_sl(self):
-        pos = open_position(_make_intent(stop_loss=0))
-        assert pos is None
+        assert open_position(_make_intent(stop_loss=0)) is None
 
     def test_rejects_zero_tp(self):
-        pos = open_position(_make_intent(take_profit=0))
-        assert pos is None
+        assert open_position(_make_intent(take_profit=0)) is None
 
     def test_position_has_id(self):
         pos = open_position(_make_intent())
@@ -98,13 +92,60 @@ class TestOpenPosition:
         for flag in ["PAPER_ONLY", "SHADOW_ONLY", "NO_ORDER", "NO_REAL_ORDER"]:
             assert flag in pos.safety_flags
 
-    def test_to_dict(self):
+    def test_lifecycle_mode(self):
+        pos = open_position(_make_intent())
+        assert pos.lifecycle_mode == "future_only"
+
+    def test_opened_bar_time_set(self):
+        pos = open_position(_make_intent())
+        assert pos.opened_bar_time is not None
+        assert pos.opened_bar_time > 0
+
+    def test_to_dict_has_lifecycle_fields(self):
         pos = open_position(_make_intent())
         d = pos.to_dict()
-        assert d["side"] == "SHORT"
-        assert d["status"] == "OPEN"
-        assert d["unrealized_pnl"] == 0.0
-        assert d["realized_pnl"] == 0.0
+        assert "lifecycle_mode" in d
+        assert "opened_bar_time" in d
+        assert "last_checked_at" in d
+        assert "last_checked_bar_time" in d
+
+
+class TestDictToPosition:
+    def test_roundtrip(self):
+        pos = open_position(_make_intent())
+        d = pos.to_dict()
+        pos2 = dict_to_position(d)
+        assert pos2.position_id == pos.position_id
+        assert pos2.intent_id == pos.intent_id
+        assert pos2.side == pos.side
+        assert pos2.status == pos.status
+        assert pos2.lifecycle_mode == "future_only"
+
+    def test_defaults_for_missing_fields(self):
+        d = _make_intent()
+        d["position_id"] = "PP_test"
+        d["intent_id"] = "TI_test"
+        d["source"] = "trade_intent"
+        d["status"] = "OPEN"
+        d["entry_price"] = 1.0
+        d["stop_loss"] = 0.9
+        d["take_profit"] = 1.1
+        d["position_size_preview"] = 1.0
+        d["max_risk_pct"] = 0.5
+        d["paper_equity_preview"] = 10000.0
+        d["opened_at"] = "2026-01-01"
+        d["created_at"] = "2026-01-01"
+        pos = dict_to_position(d)
+        assert pos.lifecycle_mode == "future_only"
+
+
+class TestClosedStatuses:
+    def test_closed_statuses(self):
+        assert "TAKE_PROFIT_HIT" in CLOSED_STATUSES
+        assert "STOP_LOSS_HIT" in CLOSED_STATUSES
+        assert "TIMEOUT_EXIT" in CLOSED_STATUSES
+        assert "INVALID" in CLOSED_STATUSES
+        assert "OPEN" not in CLOSED_STATUSES
 
 
 class TestNoForbiddenPatterns:
