@@ -229,7 +229,252 @@ def append_action_log(result: dict, report_dir: str) -> None:
         pass
 
 
-def render_dashboard_html(status: dict[str, Any]) -> str:
+def _escape_html(text: str) -> str:
+    """Escape HTML special characters."""
+    import html as html_mod
+    return html_mod.escape(str(text))
+
+
+def load_latest_positions(report_dir: str) -> list[dict]:
+    """Load positions from latest quarantine JSON."""
+    path = _find_latest(report_dir, "_paper_positions_quarantine.json")
+    if not path or not os.path.isfile(path):
+        return []
+    data = _load_json(path)
+    if not data:
+        return []
+    return data.get("positions", [])
+
+
+def load_latest_scorecard(report_dir: str) -> dict:
+    """Load scorecard data from latest scorecard JSON."""
+    path = _find_latest(report_dir, "_paper_performance_scorecard.json")
+    if not path or not os.path.isfile(path):
+        return {}
+    data = _load_json(path)
+    if not data:
+        return {}
+    return {
+        "global_metrics": data.get("global_metrics", {}),
+        "strategy_scorecards": data.get("strategy_scorecards", []),
+    }
+
+
+def load_latest_sample_gate(report_dir: str) -> dict:
+    """Load sample gate data from latest gate JSON."""
+    path = _find_latest(report_dir, "_shadow_sample_gate.json")
+    if not path or not os.path.isfile(path):
+        return {}
+    data = _load_json(path)
+    if not data:
+        return {}
+    return data
+
+
+def load_recent_actions(report_dir: str, limit: int = 10) -> list[dict]:
+    """Load recent actions from JSONL log."""
+    path = _find_latest(report_dir, "_shadow_web_console_actions.jsonl")
+    if not path or not os.path.isfile(path):
+        return []
+    actions = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        actions.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+    except Exception:
+        return []
+    return actions[-limit:]
+
+
+_STATUS_ORDER = {
+    "OPEN": 0, "TAKE_PROFIT_HIT": 1, "STOP_LOSS_HIT": 2,
+    "TIMEOUT_EXIT": 3, "LEGACY": 4,
+}
+
+
+def _position_sort_key(p: dict) -> tuple:
+    s = p.get("status", "OPEN")
+    order = _STATUS_ORDER.get(s, 5)
+    excluded = p.get("excluded_from_performance_stats", False)
+    return (order, 1 if excluded else 0)
+
+
+def render_positions_table(positions: list[dict], limit: int = 50) -> str:
+    """Render positions as HTML table."""
+    if not positions:
+        return "<p>No positions found.</p>"
+
+    sorted_pos = sorted(positions, key=_position_sort_key)[:limit]
+
+    rows = []
+    for p in sorted_pos:
+        status = p.get("status", "")
+        excluded = p.get("excluded_from_performance_stats", False)
+        row_class = "excluded" if excluded else status.lower()
+        rows.append(
+            f'<tr class="{row_class}">'
+            f"<td>{_escape_html(status)}</td>"
+            f"<td>{_escape_html(p.get('strategy_id', ''))}</td>"
+            f"<td>{_escape_html(p.get('symbol', ''))}</td>"
+            f"<td>{_escape_html(p.get('timeframe', ''))}</td>"
+            f"<td>{_escape_html(p.get('side', ''))}</td>"
+            f"<td>{p.get('entry_price', '')}</td>"
+            f"<td>{p.get('stop_loss', '')}</td>"
+            f"<td>{p.get('take_profit', '')}</td>"
+            f"<td>{p.get('unrealized_pnl', 0):.4f}</td>"
+            f"<td>{p.get('realized_pnl', 0):.4f}</td>"
+            f"<td>{p.get('r_multiple', 0):.2f}</td>"
+            f"<td>{_escape_html(p.get('quarantine_status', ''))}</td>"
+            f"<td>{'Yes' if excluded else 'No'}</td>"
+            f"</tr>"
+        )
+
+    table = f"""<table>
+<thead><tr>
+<th>Status</th><th>Strategy</th><th>Symbol</th><th>TF</th><th>Side</th>
+<th>Entry</th><th>SL</th><th>TP</th><th>Unreal PnL</th><th>Real PnL</th>
+<th>R</th><th>Quarantine</th><th>Excluded</th>
+</tr></thead>
+<tbody>
+{''.join(rows)}
+</tbody></table>"""
+
+    # Stats cards
+    open_count = sum(1 for p in positions if p.get("status") == "OPEN")
+    tp_count = sum(1 for p in positions if p.get("status") == "TAKE_PROFIT_HIT")
+    sl_count = sum(1 for p in positions if p.get("status") == "STOP_LOSS_HIT")
+    timeout_count = sum(1 for p in positions if p.get("status") == "TIMEOUT_EXIT")
+    quarantined = sum(1 for p in positions if p.get("excluded_from_performance_stats", False))
+    clean = len(positions) - quarantined
+
+    cards = f"""<div class="status-grid">
+  <div class="status-item"><div class="status-label">OPEN</div><div class="status-value">{open_count}</div></div>
+  <div class="status-item"><div class="status-label">TP HIT</div><div class="status-value ok">{tp_count}</div></div>
+  <div class="status-item"><div class="status-label">SL HIT</div><div class="status-value blocked">{sl_count}</div></div>
+  <div class="status-item"><div class="status-label">TIMEOUT</div><div class="status-value warn">{timeout_count}</div></div>
+  <div class="status-item"><div class="status-label">Quarantined</div><div class="status-value warn">{quarantined}</div></div>
+  <div class="status-item"><div class="status-label">Clean</div><div class="status-value ok">{clean}</div></div>
+</div>"""
+
+    return cards + table
+
+
+def render_scorecard_table(scorecards: list[dict], sample_status: str = "") -> str:
+    """Render strategy scorecards as HTML table."""
+    if not scorecards:
+        return "<p>No strategy scorecards found.</p>"
+
+    rows = []
+    for sc in scorecards:
+        rows.append(
+            f"<tr>"
+            f"<td>{_escape_html(sc.get('strategy_id', ''))}</td>"
+            f"<td>{_escape_html(sc.get('strategy_type', ''))}</td>"
+            f"<td>{sc.get('position_count', 0)}</td>"
+            f"<td>{sc.get('open_count', 0)}</td>"
+            f"<td>{sc.get('closed_count', 0)}</td>"
+            f"<td>{sc.get('tp_count', 0)}</td>"
+            f"<td>{sc.get('sl_count', 0)}</td>"
+            f"<td>{sc.get('timeout_count', 0)}</td>"
+            f"<td>{sc.get('win_rate', 0):.2%}</td>"
+            f"<td>{sc.get('profit_factor', 0):.2f}</td>"
+            f"<td>{sc.get('expectancy_r', 0):.2f}</td>"
+            f"<td>{_escape_html(sc.get('sample_status', ''))}</td>"
+            f"<td>{_escape_html(sc.get('strategy_status', ''))}</td>"
+            f"<td>{sc.get('strategy_score', 0):.2f}</td>"
+            f"</tr>"
+        )
+
+    table = f"""<table>
+<thead><tr>
+<th>Strategy</th><th>Type</th><th>Total</th><th>Open</th><th>Closed</th>
+<th>TP</th><th>SL</th><th>Timeout</th><th>Win Rate</th><th>PF</th>
+<th>Exp R</th><th>Sample</th><th>Status</th><th>Score</th>
+</tr></thead>
+<tbody>
+{''.join(rows)}
+</tbody></table>"""
+
+    warning = ""
+    if sample_status == "INSUFFICIENT_CLOSED_SAMPLE":
+        warning = '<div class="next-action"><strong>样本不足</strong>，继续 shadow，不允许 testnet/live。</div>'
+
+    return warning + table
+
+
+def render_sample_gate_card(gate: dict) -> str:
+    """Render sample gate status card."""
+    if not gate:
+        return "<p>No sample gate data found.</p>"
+
+    sample = gate.get("sample_status", "UNKNOWN")
+    testnet = gate.get("testnet_gate_status", "UNKNOWN")
+    closed = gate.get("closed_clean_positions", 0)
+    reasons = gate.get("testnet_gate_reasons", [])
+
+    status_class = "blocked" if "BLOCKED" in testnet else "ok"
+
+    reasons_html = ""
+    if reasons:
+        items = "".join(f"<li>{_escape_html(r)}</li>" for r in reasons)
+        reasons_html = f"<ul>{items}</ul>"
+
+    return f"""<div class="status-grid">
+  <div class="status-item">
+    <div class="status-label">sample_status</div>
+    <div class="status-value {'blocked' if 'INSUFFICIENT' in sample else 'warn' if 'LOW' in sample else 'ok'}">{_escape_html(sample)}</div>
+  </div>
+  <div class="status-item">
+    <div class="status-label">testnet_gate_status</div>
+    <div class="status-value {status_class}">{_escape_html(testnet)}</div>
+  </div>
+  <div class="status-item">
+    <div class="status-label">closed_clean_positions</div>
+    <div class="status-value">{closed}</div>
+  </div>
+</div>
+{reasons_html}"""
+
+
+def render_recent_actions_table(actions: list[dict]) -> str:
+    """Render recent actions as HTML table."""
+    if not actions:
+        return "<p>No web console actions yet.</p>"
+
+    rows = []
+    for a in reversed(actions):
+        status_class = "ok" if a.get("status") == "PASS" else "blocked"
+        rows.append(
+            f"<tr>"
+            f"<td>{_escape_html(a.get('action', ''))}</td>"
+            f"<td>{_escape_html(a.get('started_at', ''))}</td>"
+            f"<td>{a.get('duration_seconds', 0)}s</td>"
+            f"<td>{a.get('exit_code', '')}</td>"
+            f'<td class="{status_class}">{_escape_html(a.get("status", ""))}</td>'
+            f"</tr>"
+        )
+
+    return f"""<table>
+<thead><tr>
+<th>Action</th><th>Started</th><th>Duration</th><th>Exit</th><th>Status</th>
+</tr></thead>
+<tbody>
+{''.join(rows)}
+</tbody></table>"""
+
+
+def render_dashboard_html(
+    status: dict[str, Any],
+    positions: Optional[list[dict]] = None,
+    scorecard: Optional[dict] = None,
+    sample_gate: Optional[dict] = None,
+    recent_actions: Optional[list[dict]] = None,
+) -> str:
     """Render dashboard HTML."""
     sample = status.get("sample_status", "UNKNOWN")
     gate = status.get("testnet_gate_status", "UNKNOWN")
@@ -249,8 +494,18 @@ def render_dashboard_html(status: dict[str, Any]) -> str:
     reasons_html = ""
     reasons = status.get("gate_reasons", [])
     if reasons:
-        items = "".join(f"<li>{r}</li>" for r in reasons)
+        items = "".join(f"<li>{_escape_html(r)}</li>" for r in reasons)
         reasons_html = f"<p>Gate reasons:</p><ul>{items}</ul>"
+
+    # Data sections
+    positions_html = render_positions_table(positions or [])
+    sc_data = scorecard or {}
+    scorecard_html = render_scorecard_table(
+        sc_data.get("strategy_scorecards", []),
+        sample_status=sc_data.get("global_metrics", {}).get("sample_status", sample),
+    )
+    sample_gate_html = render_sample_gate_card(sample_gate or {})
+    recent_actions_html = render_recent_actions_table(recent_actions or [])
 
     # Next action hint
     next_action = "继续 shadow collection。不要 testnet。不要 live。"
@@ -296,6 +551,18 @@ def render_dashboard_html(status: dict[str, Any]) -> str:
   .next-action {{ background: #0f3460; border: 1px solid #ffa500; border-radius: 6px;
                   padding: 12px; margin: 16px 0; color: #ffa500; }}
   .safety {{ color: #888; font-size: 0.8em; margin-top: 20px; border-top: 1px solid #333; padding-top: 10px; }}
+  table {{ width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.85em; }}
+  th, td {{ padding: 6px 8px; text-align: left; border-bottom: 1px solid #0f3460; }}
+  th {{ background: #0f3460; color: #00d4ff; position: sticky; top: 0; }}
+  tr:hover {{ background: #16213e; }}
+  tr.open {{ color: #e0e0e0; }}
+  tr.take_profit_hit {{ color: #44ff44; }}
+  tr.stop_loss_hit {{ color: #ff4444; }}
+  tr.timeout_exit {{ color: #ffa500; }}
+  tr.excluded {{ color: #666; }}
+  td.ok {{ color: #44ff44; }}
+  td.blocked {{ color: #ff4444; }}
+  .table-wrap {{ max-height: 400px; overflow-y: auto; margin: 10px 0; }}
 </style>
 </head>
 <body>
@@ -360,6 +627,24 @@ def render_dashboard_html(status: dict[str, Any]) -> str:
   <li><a href="#" onclick="loadReport('latest_scorecard'); return false;">Latest Scorecard</a></li>
 </ul>
 <div id="report-content" class="report-content"></div>
+
+<h2>Paper Positions</h2>
+<div class="table-wrap">
+{positions_html}
+</div>
+
+<h2>Strategy Scorecard</h2>
+<div class="table-wrap">
+{scorecard_html}
+</div>
+
+<h2>Sample Gate</h2>
+{sample_gate_html}
+
+<h2>Recent Actions</h2>
+<div class="table-wrap">
+{recent_actions_html}
+</div>
 
 <div class="safety">
   Paper-only | Shadow-only | Local-only | No order | No testnet | No live | No secret
