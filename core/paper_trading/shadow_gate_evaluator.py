@@ -136,18 +136,18 @@ def evaluate_shadow_gate(ledger: ShadowLedger) -> ShadowGateResult:
             decision = "EXTEND"
         reasons.append(f"LOW plans dominate: {low_ratio:.1%} > 50%")
 
-    # Negative expectancy => FAIL
-    if total_expectancy <= 0:
+    # Negative expectancy => FAIL (only when valid plans exist)
+    if valid_count > 0 and total_expectancy <= 0:
         decision = "FAIL"
         reasons.append(f"Total expectancy <= 0: {total_expectancy:.4f}")
 
-    # Low profit factor => FAIL
-    if profit_factor <= 1.2:
+    # Low profit factor => FAIL (only when there are both wins and losses)
+    if valid_count > 0 and losses and profit_factor <= 1.2:
         decision = "FAIL"
         reasons.append(f"Profit factor <= 1.2: {profit_factor:.4f}")
 
-    # HIGH expectancy <= 0 => FAIL
-    if high_expectancy <= 0:
+    # HIGH expectancy <= 0 => FAIL (only when HIGH plans exist)
+    if high_count > 0 and high_expectancy <= 0:
         decision = "FAIL"
         reasons.append(f"HIGH expectancy <= 0: {high_expectancy:.4f}")
 
