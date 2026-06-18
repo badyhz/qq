@@ -69,6 +69,12 @@ class TestNoForbiddenPatterns:
             assert f"import {path}" not in content
             assert f"from {path}" not in content
 
+    def test_contains_registry_write(self):
+        with open(SCRIPT_PATH) as f:
+            content = f.read()
+        assert "registry" in content.lower()
+        assert "append_registry_record" in content or "build_run_record" in content
+
 
 class TestBuildCommands:
     def test_offline_commands(self):
@@ -195,3 +201,20 @@ class TestRenderMarkdown:
         md = render_markdown(result)
         assert "step1" in md
         assert "PASS" in md
+
+    def test_contains_sample_gate_section(self):
+        result = {
+            "date": "2026-06-18",
+            "mode": "offline_sample",
+            "pipeline_status": "PASS",
+            "steps": [],
+            "summary": {
+                "closed_clean_positions": 0,
+                "sample_status": "INSUFFICIENT_CLOSED_SAMPLE",
+            },
+            "sample_gate_status": "BLOCKED_INSUFFICIENT_CLOSED_SAMPLE",
+            "sample_gate_reasons": ["closed_clean_positions=0 < 10"],
+        }
+        md = render_markdown(result)
+        assert "Sample Collection Gate" in md
+        assert "BLOCKED_INSUFFICIENT_CLOSED_SAMPLE" in md

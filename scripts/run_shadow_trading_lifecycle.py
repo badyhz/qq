@@ -18,6 +18,12 @@ import subprocess
 import sys
 from datetime import datetime
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from core.paper_trading.shadow_run_registry import (
+    build_run_record, append_registry_record, generate_run_id,
+    evaluate_gate, GATE_BLOCKED_INSUFFICIENT,
+)
+
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "strategies")
@@ -278,6 +284,29 @@ def render_markdown(result: dict) -> str:
     lines.append(f"- strategy_scorecard_rows: {summary.get('strategy_scorecard_rows', 'N/A')}")
     lines.append("")
 
+    # Sample Collection Gate
+    gate_status = result.get("sample_gate_status", "")
+    gate_reasons = result.get("sample_gate_reasons", [])
+    if gate_status:
+        lines.extend(["## Sample Collection Gate", ""])
+        lines.append("样本收集门禁")
+        lines.append("")
+        lines.append(f"- 当前 clean closed trades：{summary.get('closed_clean_positions', 0)}")
+        lines.append(f"- 当前 sample_status：{summary.get('sample_status', 'N/A')}")
+        lines.append(f"- 当前 testnet gate：{gate_status}")
+        lines.append("")
+        if gate_reasons:
+            for r in gate_reasons:
+                lines.append(f"- {r}")
+            lines.append("")
+        if gate_status != "PAPER_SAMPLE_READY_FOR_HUMAN_REVIEW":
+            lines.extend([
+                "结论：",
+                "样本不足，继续 shadow 收集。",
+                "不允许 testnet/live。",
+                "",
+            ])
+
     # Safety
     lines.extend([
         "## Safety",
@@ -345,7 +374,12 @@ def main():
     # Extract summary
     summary, missing_fields = _extract_summary(date_str, output_dir)
 
-    # Build result
+    # Registry and gate
+    run_id = generate_run_id()
+    closed = summary.get("closed_clean_positions", 0)
+    sample_status = summary.get("sample_status", "UNKNOWN")
+    gate_status, gate_reasons = evaluate_gate(closed, sample_status)
+
     pipeline_result = {
         "date": date_str,
         "mode": mode,
@@ -355,7 +389,23 @@ def main():
         "summary": summary,
         "missing_output_fields": missing_fields,
         "safety_flags": SAFETY_FLAGS,
+        "run_id": run_id,
+        "sample_gate_status": gate_status,
+        "sample_gate_reasons": gate_reasons,
     }
+
+    # Write registry (best-effort, must not block pipeline)
+    registry_written = False
+    registry_path = ""
+    try:
+        record = build_run_record(pipeline_result, run_id=run_id)
+        registry_path = append_registry_record(record, output_dir)
+        registry_written = True
+    except Exception as e:
+        print(f"WARNING: registry write failed: {e}")
+
+    pipeline_result["registry_written"] = registry_written
+    pipeline_result["registry_path"] = registry_path
 
     # Write JSON
     json_path = os.path.join(output_dir, f"{date_str}_shadow_lifecycle_result.json")
