@@ -21,6 +21,7 @@ class RuntimeConfig:
     max_daily_loss: float = 50000.0
     enable_local_alerts: bool = True
     enable_html_report: bool = True
+    data_source_mode: str = "fixture"  # "fixture" or "snapshot"
 
     def __post_init__(self):
         if self.mode != "paper_only":
@@ -50,6 +51,7 @@ def load_config_from_dict(data: dict) -> RuntimeConfig:
         max_daily_loss=float(data.get("max_daily_loss", 50000.0)),
         enable_local_alerts=bool(data.get("enable_local_alerts", True)),
         enable_html_report=bool(data.get("enable_html_report", True)),
+        data_source_mode=data.get("data_source_mode", "fixture"),
     )
 
 
