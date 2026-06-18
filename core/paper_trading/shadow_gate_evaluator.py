@@ -55,13 +55,14 @@ def evaluate_shadow_gate(ledger: ShadowLedger) -> ShadowGateResult:
     high_medium_ratio = (high_count + medium_count) / valid_count if valid_count > 0 else 0.0
     low_ratio = low_count / valid_count if valid_count > 0 else 0.0
 
-    # Calculate expectancy by priority
+    # Calculate expectancy by priority (only WIN/LOSS outcomes)
     def calc_expectancy(records_list):
-        if not records_list:
-            return 0.0
-        wins = [r for r in records_list if r.outcome == "WIN"]
-        losses = [r for r in records_list if r.outcome == "LOSS"]
-        win_rate = len(wins) / len(records_list)
+        trading = [r for r in records_list if r.outcome in ("WIN", "LOSS")]
+        if not trading:
+            return None  # No trading outcomes — not applicable
+        wins = [r for r in trading if r.outcome == "WIN"]
+        losses = [r for r in trading if r.outcome == "LOSS"]
+        win_rate = len(wins) / len(trading)
         avg_win = sum(r.pnl for r in wins) / len(wins) if wins else 0.0
         avg_loss = sum(r.pnl for r in losses) / len(losses) if losses else 0.0
         return (win_rate * avg_win) + ((1 - win_rate) * avg_loss)
@@ -136,8 +137,8 @@ def evaluate_shadow_gate(ledger: ShadowLedger) -> ShadowGateResult:
             decision = "EXTEND"
         reasons.append(f"LOW plans dominate: {low_ratio:.1%} > 50%")
 
-    # Negative expectancy => FAIL (only when valid plans exist)
-    if valid_count > 0 and total_expectancy <= 0:
+    # Negative expectancy => FAIL (only when trading outcomes exist)
+    if total_expectancy is not None and total_expectancy <= 0:
         decision = "FAIL"
         reasons.append(f"Total expectancy <= 0: {total_expectancy:.4f}")
 
@@ -146,8 +147,8 @@ def evaluate_shadow_gate(ledger: ShadowLedger) -> ShadowGateResult:
         decision = "FAIL"
         reasons.append(f"Profit factor <= 1.2: {profit_factor:.4f}")
 
-    # HIGH expectancy <= 0 => FAIL (only when HIGH plans exist)
-    if high_count > 0 and high_expectancy <= 0:
+    # HIGH expectancy <= 0 => FAIL (only when HIGH plans have trading outcomes)
+    if high_expectancy is not None and high_expectancy <= 0:
         decision = "FAIL"
         reasons.append(f"HIGH expectancy <= 0: {high_expectancy:.4f}")
 
@@ -169,10 +170,10 @@ def evaluate_shadow_gate(ledger: ShadowLedger) -> ShadowGateResult:
         low_count=low_count,
         high_medium_ratio=round(high_medium_ratio, 4),
         low_ratio=round(low_ratio, 4),
-        total_expectancy=round(total_expectancy, 4),
-        high_expectancy=round(high_expectancy, 4),
-        medium_expectancy=round(medium_expectancy, 4),
-        low_expectancy=round(low_expectancy, 4),
+        total_expectancy=round(total_expectancy or 0.0, 4),
+        high_expectancy=round(high_expectancy or 0.0, 4),
+        medium_expectancy=round(medium_expectancy or 0.0, 4),
+        low_expectancy=round(low_expectancy or 0.0, 4),
         profit_factor=round(profit_factor, 4) if profit_factor != float("inf") else float("inf"),
         max_drawdown=round(max_drawdown, 2),
         consecutive_losses=max_consecutive,
