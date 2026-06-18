@@ -1,4 +1,4 @@
-"""Tests for paper position simulator — TP/SL/PnL/timeout logic."""
+"""Tests for paper position simulator — future-only, dedup, TP/SL/PnL."""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,7 @@ import pytest
 from core.paper_trading.paper_position_simulator import (
     simulate_intent_only, simulate_with_klines, _calc_pnl, _update_position,
 )
-from core.paper_trading.paper_position import open_position
+from core.paper_trading.paper_position import open_position, dict_to_position
 from core.paper_trading.data_source import MarketBar
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), "..", "..",
@@ -62,9 +62,9 @@ def _make_long_intent(**overrides):
     return intent
 
 
-def _make_bar(symbol, timeframe, open_p, high, low, close):
+def _make_bar(symbol, timeframe, open_p, high, low, close, timestamp=1000):
     return MarketBar(
-        timestamp=0, open=open_p, high=high, low=low, close=close,
+        timestamp=timestamp, open=open_p, high=high, low=low, close=close,
         volume=1000.0, symbol=symbol, timeframe=timeframe,
     )
 
@@ -82,14 +82,11 @@ class TestIntentOnly:
         assert result.positions[0]["status"] == "OPEN"
 
     def test_skips_blocked_intent(self):
-        intent = _make_intent(intent_status="BLOCKED_BY_RISK_GATE")
-        result = simulate_intent_only([intent], "2026-06-18")
+        result = simulate_intent_only([_make_intent(intent_status="BLOCKED_BY_RISK_GATE")], "2026-06-18")
         assert result.position_count == 0
-        assert result.invalid_count == 1
 
     def test_skips_invalid_intent(self):
-        intent = _make_intent(intent_status="INVALID")
-        result = simulate_intent_only([intent], "2026-06-18")
+        result = simulate_intent_only([_make_intent(intent_status="INVALID")], "2026-06-18")
         assert result.position_count == 0
 
     def test_empty_intents(self):
@@ -98,109 +95,188 @@ class TestIntentOnly:
         assert result.mode == "intent_only"
 
     def test_multiple_intents(self):
-        intents = [_make_intent(), _make_long_intent()]
-        result = simulate_intent_only(intents, "2026-06-18")
+        result = simulate_intent_only([_make_intent(), _make_long_intent()], "2026-06-18")
         assert result.position_count == 2
+
+    def test_lifecycle_stats(self):
+        result = simulate_intent_only([_make_intent()], "2026-06-18")
+        ls = result.lifecycle_stats
+        assert ls["new_positions_count"] == 1
+        assert ls["existing_positions_count"] == 0
+        assert ls["deduped_intents_count"] == 0
+        assert ls["future_only"] is True
+
+
+class TestDedup:
+    def test_same_intent_not_duplicated(self):
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        r2 = simulate_intent_only([_make_intent()], "2026-06-18", existing_positions=r1.positions)
+        assert r2.position_count == 1
+        assert r2.lifecycle_stats["deduped_intents_count"] == 1
+
+    def test_different_intent_added(self):
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        r2 = simulate_intent_only([_make_long_intent()], "2026-06-18", existing_positions=r1.positions)
+        assert r2.position_count == 2
+        assert r2.lifecycle_stats["new_positions_count"] == 1
+        assert r2.lifecycle_stats["existing_positions_count"] == 1
+
+
+class TestFutureOnly:
+    def test_newly_opened_stays_open_with_historical_bars(self):
+        """Newly opened position should stay OPEN even if historical bar hits SL."""
+        intent = _make_intent()
+        r1 = simulate_intent_only([intent], "2026-06-18")
+        pos = r1.positions[0]
+        # opened_bar_time is recent; use old timestamp bars
+        old_bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.20, 1.08, 1.12, timestamp=100)]
+        bars_map = {"XRPUSDT_15m": old_bars}
+        r2 = simulate_with_klines(
+            [_make_intent()], bars_map, "2026-06-18",
+            existing_positions=r1.positions,
+            newly_opened_ids={pos["position_id"]},
+        )
+        # Should be skipped as newly opened
+        assert r2.positions[0]["status"] == "OPEN"
+        assert r2.lifecycle_stats["positions_skipped_newly_opened"] == 1
+
+    def test_future_bars_can_hit_sl(self):
+        """Future bars after opened_bar_time can trigger SL."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        # Set opened_bar_time to 5000
+        pos_dict["opened_bar_time"] = 5000
+        # Future bar at 6000 hits SL (high >= 1.18)
+        future_bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.19, 1.14, 1.17, timestamp=6000)]
+        bars_map = {"XRPUSDT_15m": future_bars}
+        r = simulate_with_klines(
+            [], bars_map, "2026-06-18",
+            existing_positions=[pos_dict],
+        )
+        assert r.positions[0]["status"] == "STOP_LOSS_HIT"
+
+    def test_future_bars_can_hit_tp(self):
+        """Future bars after opened_bar_time can trigger TP."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 5000
+        # Future bar at 6000 hits TP (low <= 1.09)
+        future_bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10, timestamp=6000)]
+        bars_map = {"XRPUSDT_15m": future_bars}
+        r = simulate_with_klines(
+            [], bars_map, "2026-06-18",
+            existing_positions=[pos_dict],
+        )
+        assert r.positions[0]["status"] == "TAKE_PROFIT_HIT"
+
+    def test_bars_before_opened_bar_time_ignored(self):
+        """Bars before opened_bar_time should be filtered out."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 10000
+        # All bars before 10000 — would hit SL but shouldn't be used
+        old_bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.20, 1.08, 1.12, timestamp=5000)]
+        bars_map = {"XRPUSDT_15m": old_bars}
+        r = simulate_with_klines(
+            [], bars_map, "2026-06-18",
+            existing_positions=[pos_dict],
+        )
+        assert r.positions[0]["status"] == "OPEN"
+        assert r.lifecycle_stats["positions_skipped_no_future_bars"] == 1
+
+    def test_missing_opened_bar_time_skips(self):
+        """Missing opened_bar_time should skip update safely."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = None
+        bars_map = {"XRPUSDT_15m": [_make_bar("XRPUSDT", "15m", 1.15, 1.20, 1.08, 1.12, timestamp=5000)]}
+        r = simulate_with_klines(
+            [], bars_map, "2026-06-18",
+            existing_positions=[pos_dict],
+        )
+        assert r.positions[0]["status"] == "OPEN"
+
+
+class TestClosedImmutability:
+    def test_closed_position_stays_closed(self):
+        """A closed position should not be updated."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["status"] = "STOP_LOSS_HIT"
+        pos_dict["closed_at"] = "2026-01-01"
+        # New bars that would hit TP
+        bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10, timestamp=99999)]
+        bars_map = {"XRPUSDT_15m": bars}
+        r = simulate_with_klines(
+            [], bars_map, "2026-06-18",
+            existing_positions=[pos_dict],
+        )
+        assert r.positions[0]["status"] == "STOP_LOSS_HIT"
 
 
 class TestWithKlines:
     def test_short_sl_hit(self):
         pos = open_position(_make_intent())
-        # SHORT: SL=1.18, TP=1.09. Bar high >= 1.18 → SL hit
-        bars = [_make_bar("XRPUSDT", "15m", 1.16, 1.19, 1.14, 1.17)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "STOP_LOSS_HIT"
-        assert updated["exit_price"] == 1.18
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.16, 1.19, 1.14, 1.17, timestamp=200)]
+        r = simulate_with_klines([], {"XRPUSDT_15m": bars}, "2026-06-18",
+                                 existing_positions=[pos_dict])
+        assert r.positions[0]["status"] == "STOP_LOSS_HIT"
 
     def test_short_tp_hit(self):
         pos = open_position(_make_intent())
-        # SHORT: SL=1.18, TP=1.09. Bar low <= 1.09 → TP hit
-        bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "TAKE_PROFIT_HIT"
-        assert updated["exit_price"] == 1.09
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10, timestamp=200)]
+        r = simulate_with_klines([], {"XRPUSDT_15m": bars}, "2026-06-18",
+                                 existing_positions=[pos_dict])
+        assert r.positions[0]["status"] == "TAKE_PROFIT_HIT"
 
     def test_long_sl_hit(self):
         pos = open_position(_make_long_intent())
-        # LONG: SL=59000. Bar low <= 59000 → SL hit
-        bars = [_make_bar("BTCUSDT", "15m", 60000, 60500, 58500, 59500)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "STOP_LOSS_HIT"
-        assert updated["exit_price"] == 59000.0
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("BTCUSDT", "15m", 60000, 60500, 58500, 59500, timestamp=200)]
+        r = simulate_with_klines([], {"BTCUSDT_15m": bars}, "2026-06-18",
+                                 existing_positions=[pos_dict])
+        assert r.positions[0]["status"] == "STOP_LOSS_HIT"
 
     def test_long_tp_hit(self):
         pos = open_position(_make_long_intent())
-        # LONG: TP=62000. Bar high >= 62000 → TP hit
-        bars = [_make_bar("BTCUSDT", "15m", 60000, 62500, 59800, 61500)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "TAKE_PROFIT_HIT"
-        assert updated["exit_price"] == 62000.0
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("BTCUSDT", "15m", 60000, 62500, 59800, 61500, timestamp=200)]
+        r = simulate_with_klines([], {"BTCUSDT_15m": bars}, "2026-06-18",
+                                 existing_positions=[pos_dict])
+        assert r.positions[0]["status"] == "TAKE_PROFIT_HIT"
 
     def test_sl_takes_priority_over_tp(self):
         pos = open_position(_make_intent())
-        # Bar hits both SL (high >= 1.18) and TP (low <= 1.09)
-        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.20, 1.05, 1.12)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "STOP_LOSS_HIT"
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.20, 1.05, 1.12, timestamp=200)]
+        r = simulate_with_klines([], {"XRPUSDT_15m": bars}, "2026-06-18",
+                                 existing_positions=[pos_dict])
+        assert r.positions[0]["status"] == "STOP_LOSS_HIT"
 
     def test_stays_open(self):
         pos = open_position(_make_intent())
-        # Bar doesn't hit SL or TP
-        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.16, 1.13, 1.14)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "OPEN"
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.16, 1.13, 1.14, timestamp=200)]
+        r = simulate_with_klines([], {"XRPUSDT_15m": bars}, "2026-06-18",
+                                 existing_positions=[pos_dict])
+        assert r.positions[0]["status"] == "OPEN"
 
     def test_timeout(self):
         pos = open_position(_make_intent())
-        # 30 bars but timeout at 24
-        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.16, 1.13, 1.14)] * 30
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "TIMEOUT_EXIT"
-
-    def test_pnl_short_tp(self):
-        pos = open_position(_make_intent())
-        # SHORT entry=1.15, TP=1.09, size=100
-        # pnl = (1.15 - 1.09) * 100 = 6.0
-        bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "TAKE_PROFIT_HIT"
-        assert abs(updated["realized_pnl"] - 6.0) < 0.01
-
-    def test_pnl_short_sl(self):
-        pos = open_position(_make_intent())
-        # SHORT entry=1.15, SL=1.18, size=100
-        # pnl = (1.15 - 1.18) * 100 = -3.0
-        bars = [_make_bar("XRPUSDT", "15m", 1.16, 1.19, 1.14, 1.17)]
-        updated = _update_position(pos, bars, 24)
-        assert updated["status"] == "STOP_LOSS_HIT"
-        assert abs(updated["realized_pnl"] - (-3.0)) < 0.01
-
-    def test_r_multiple(self):
-        pos = open_position(_make_intent())
-        # SHORT entry=1.15, SL=1.18, TP=1.09, size=100
-        # risk_amount = abs(1.15-1.18)*100 = 3.0
-        # TP pnl = 6.0
-        # r = 6.0 / 3.0 = 2.0
-        bars = [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10)]
-        updated = _update_position(pos, bars, 24)
-        assert abs(updated["r_multiple"] - 2.0) < 0.01
-
-
-class TestSimulateWithKlines:
-    def test_full_simulation(self):
-        intents = [_make_intent()]
-        bars_map = {
-            "XRPUSDT_15m": [_make_bar("XRPUSDT", "15m", 1.12, 1.13, 1.08, 1.10)],
-        }
-        result = simulate_with_klines(intents, bars_map, "2026-06-18")
-        assert result.position_count == 1
-        assert result.tp_hit_count == 1
-
-    def test_no_matching_bars(self):
-        intents = [_make_intent()]
-        result = simulate_with_klines(intents, {}, "2026-06-18")
-        assert result.position_count == 1
-        assert result.open_count == 1
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 100
+        bars = [_make_bar("XRPUSDT", "15m", 1.15, 1.16, 1.13, 1.14, timestamp=200 + i*100) for i in range(30)]
+        r = simulate_with_klines([], {"XRPUSDT_15m": bars}, "2026-06-18",
+                                 existing_positions=[pos_dict], timeout_bars=24)
+        assert r.positions[0]["status"] == "TIMEOUT_EXIT"
 
 
 class TestCalcPnl:

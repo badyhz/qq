@@ -4,6 +4,10 @@ Two modes:
 - intent_only: just open positions from intents, no market data
 - public_readonly_update: update positions with real kline data (SL/TP check)
 
+Future-only lifecycle: only bars after opened_bar_time can trigger TP/SL.
+Same-intent dedup: no duplicate positions for the same intent_id.
+Closed positions are never reopened.
+
 No orders, no accounts, no secrets, no testnet, no live.
 """
 from __future__ import annotations
@@ -13,7 +17,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from core.paper_trading.paper_position import open_position, PaperPosition
+from core.paper_trading.paper_position import (
+    open_position, dict_to_position, PaperPosition, CLOSED_STATUSES,
+)
 from core.paper_trading.data_source import MarketBar
 
 
@@ -29,6 +35,7 @@ class SimulationResult:
     invalid_count: int
     positions: list[dict[str, Any]]
     summary: dict[str, Any]
+    lifecycle_stats: dict[str, Any]
     safety_flags: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -45,6 +52,7 @@ class SimulationResult:
             },
             "positions": self.positions,
             "summary": self.summary,
+            "lifecycle_stats": self.lifecycle_stats,
             "safety_flags": list(self.safety_flags),
         }
 
@@ -52,41 +60,63 @@ class SimulationResult:
 def simulate_intent_only(
     intents: list[dict[str, Any]],
     date_str: str,
+    existing_positions: Optional[list[dict[str, Any]]] = None,
     paper_equity: float = 10000.0,
 ) -> SimulationResult:
-    """Open paper positions from SHADOW_READY intents. No market data."""
+    """Open paper positions from SHADOW_READY intents. No market data.
+
+    Deduplicates against existing positions by intent_id.
+    """
+    existing = existing_positions or []
+    existing_intent_ids = {p.get("intent_id") for p in existing}
+
     positions: list[dict[str, Any]] = []
-    open_count = 0
-    tp_count = 0
-    sl_count = 0
-    timeout_count = 0
+    new_count = 0
+    deduped = 0
     invalid_count = 0
 
     for intent in intents:
+        intent_id = intent.get("intent_id", "")
+
+        # Dedup: skip if already have a position for this intent
+        if intent_id in existing_intent_ids:
+            deduped += 1
+            continue
+
         pos = open_position(intent, paper_equity)
         if pos is None:
             invalid_count += 1
             continue
 
-        pos_dict = pos.to_dict()
-        positions.append(pos_dict)
-        if pos.status == "OPEN":
-            open_count += 1
+        positions.append(pos.to_dict())
+        new_count += 1
+
+    # Combine existing + new
+    all_positions = existing + positions
+    counts = _count_statuses(all_positions)
 
     return SimulationResult(
         date=date_str,
         mode="intent_only",
-        position_count=len(positions),
-        open_count=open_count,
-        tp_hit_count=tp_count,
-        sl_hit_count=sl_count,
-        timeout_count=timeout_count,
+        position_count=len(all_positions),
+        open_count=counts["OPEN"],
+        tp_hit_count=counts["TAKE_PROFIT_HIT"],
+        sl_hit_count=counts["STOP_LOSS_HIT"],
+        timeout_count=counts["TIMEOUT_EXIT"],
         invalid_count=invalid_count,
-        positions=positions,
-        summary=_build_summary(positions),
-        safety_flags=list(pos.safety_flags) if positions else [
-            "PAPER_ONLY", "SHADOW_ONLY", "NO_ORDER", "POSITION_SIMULATION_ONLY",
-        ],
+        positions=all_positions,
+        summary=_build_summary(all_positions),
+        lifecycle_stats={
+            "new_positions_count": new_count,
+            "existing_positions_count": len(existing),
+            "deduped_intents_count": deduped,
+            "positions_updated_count": 0,
+            "positions_skipped_no_future_bars": 0,
+            "positions_skipped_newly_opened": 0,
+            "future_only": True,
+            "allow_update_newly_opened": False,
+        },
+        safety_flags=list(POSITION_SAFETY_FLAGS),
     )
 
 
@@ -94,55 +124,120 @@ def simulate_with_klines(
     intents: list[dict[str, Any]],
     bars_by_symbol_tf: dict[str, list[MarketBar]],
     date_str: str,
+    existing_positions: Optional[list[dict[str, Any]]] = None,
     paper_equity: float = 10000.0,
     timeout_bars: int = 24,
+    future_only: bool = True,
+    allow_update_newly_opened: bool = False,
+    newly_opened_ids: Optional[set[str]] = None,
 ) -> SimulationResult:
-    """Open positions and update with kline data to check TP/SL."""
-    positions: list[dict[str, Any]] = []
-    open_count = 0
-    tp_count = 0
-    sl_count = 0
-    timeout_count = 0
+    """Open positions and update with kline data to check TP/SL.
+
+    future_only: only bars after opened_bar_time can trigger TP/SL.
+    allow_update_newly_opened: if False, newly opened positions stay OPEN.
+    """
+    existing = existing_positions or []
+    existing_intent_ids = {p.get("intent_id") for p in existing}
+    newly_opened = newly_opened_ids or set()
+
+    new_positions: list[dict[str, Any]] = []
+    deduped = 0
     invalid_count = 0
 
+    # Open new positions from intents
     for intent in intents:
+        intent_id = intent.get("intent_id", "")
+        if intent_id in existing_intent_ids:
+            deduped += 1
+            continue
+
         pos = open_position(intent, paper_equity)
         if pos is None:
             invalid_count += 1
             continue
 
-        key = f"{pos.symbol}_{pos.timeframe}"
+        new_positions.append(pos.to_dict())
+        newly_opened.add(pos.position_id)
+
+    # Combine existing + new for update
+    all_positions = existing + new_positions
+    updated_count = 0
+    skipped_no_future = 0
+    skipped_newly = 0
+
+    # Update positions with klines
+    result_positions = []
+    for pos_dict in all_positions:
+        status = pos_dict.get("status", "OPEN")
+
+        # Closed positions stay closed
+        if status in CLOSED_STATUSES:
+            result_positions.append(pos_dict)
+            continue
+
+        # Skip newly opened unless allowed
+        pid = pos_dict.get("position_id", "")
+        if pid in newly_opened and not allow_update_newly_opened:
+            skipped_newly += 1
+            result_positions.append(pos_dict)
+            continue
+
+        # Get bars for this symbol/timeframe
+        sym = pos_dict.get("symbol", "")
+        tf = pos_dict.get("timeframe", "")
+        key = f"{sym}_{tf}"
         bars = bars_by_symbol_tf.get(key, [])
 
-        if bars:
-            updated = _update_position(pos, bars, timeout_bars)
-        else:
-            updated = pos.to_dict()
+        if not bars:
+            result_positions.append(pos_dict)
+            continue
 
-        positions.append(updated)
-        status = updated.get("status", "OPEN")
-        if status == "OPEN":
-            open_count += 1
-        elif status == "TAKE_PROFIT_HIT":
-            tp_count += 1
-        elif status == "STOP_LOSS_HIT":
-            sl_count += 1
-        elif status == "TIMEOUT_EXIT":
-            timeout_count += 1
+        # Filter to future-only bars
+        opened_bar_time = pos_dict.get("opened_bar_time")
+        if future_only and opened_bar_time is not None:
+            future_bars = [b for b in bars if b.timestamp > opened_bar_time]
+        elif future_only and opened_bar_time is None:
+            # Missing opened_bar_time — skip update
+            skipped_no_future += 1
+            result_positions.append(pos_dict)
+            continue
         else:
-            invalid_count += 1
+            future_bars = bars
+
+        if not future_bars:
+            skipped_no_future += 1
+            result_positions.append(pos_dict)
+            continue
+
+        # Reconstruct PaperPosition for update
+        pos = dict_to_position(pos_dict)
+        updated = _update_position(pos, future_bars, timeout_bars)
+        result_positions.append(updated)
+        updated_count += 1
+
+    counts = _count_statuses(result_positions)
 
     return SimulationResult(
         date=date_str,
         mode="public_readonly_update",
-        position_count=len(positions),
-        open_count=open_count,
-        tp_hit_count=tp_count,
-        sl_hit_count=sl_count,
-        timeout_count=timeout_count,
+        position_count=len(result_positions),
+        open_count=counts["OPEN"],
+        tp_hit_count=counts["TAKE_PROFIT_HIT"],
+        sl_hit_count=counts["STOP_LOSS_HIT"],
+        timeout_count=counts["TIMEOUT_EXIT"],
         invalid_count=invalid_count,
-        positions=positions,
-        summary=_build_summary(positions),
+        positions=result_positions,
+        summary=_build_summary(result_positions),
+        lifecycle_stats={
+            "new_positions_count": len(new_positions),
+            "existing_positions_count": len(existing),
+            "deduped_intents_count": deduped,
+            "positions_updated_count": updated_count,
+            "positions_skipped_no_future_bars": skipped_no_future,
+            "positions_skipped_newly_opened": skipped_newly,
+            "future_only": future_only,
+            "allow_update_newly_opened": allow_update_newly_opened,
+        },
         safety_flags=list(POSITION_SAFETY_FLAGS),
     )
 
@@ -163,7 +258,6 @@ def _update_position(
 
     for i, bar in enumerate(bars):
         if i >= timeout_bars:
-            # Timeout
             exit_price = bar.close
             pnl = _calc_pnl(side, entry, exit_price, size)
             risk_amount = abs(entry - sl) * size
@@ -179,6 +273,8 @@ def _update_position(
                 "realized_pnl": round(pnl, 8),
                 "realized_pnl_pct": round(pnl / (entry * size) * 100, 4) if entry * size > 0 else 0.0,
                 "r_multiple": round(r_mult, 4),
+                "last_checked_at": now,
+                "last_checked_bar_time": bar.timestamp,
             })
             return result
 
@@ -193,7 +289,6 @@ def _update_position(
             hit_tp = bar.low <= tp
 
         if hit_sl:
-            # Conservative: SL takes priority
             exit_price = sl
             pnl = _calc_pnl(side, entry, exit_price, size)
             risk_amount = abs(entry - sl) * size
@@ -209,6 +304,8 @@ def _update_position(
                 "realized_pnl": round(pnl, 8),
                 "realized_pnl_pct": round(pnl / (entry * size) * 100, 4) if entry * size > 0 else 0.0,
                 "r_multiple": round(r_mult, 4),
+                "last_checked_at": now,
+                "last_checked_bar_time": bar.timestamp,
             })
             return result
 
@@ -228,15 +325,20 @@ def _update_position(
                 "realized_pnl": round(pnl, 8),
                 "realized_pnl_pct": round(pnl / (entry * size) * 100, 4) if entry * size > 0 else 0.0,
                 "r_multiple": round(r_mult, 4),
+                "last_checked_at": now,
+                "last_checked_bar_time": bar.timestamp,
             })
             return result
 
-    # Still open — compute unrealized PnL from last bar
+    # Still open
     if bars:
-        last_close = bars[-1].close
+        last_bar = bars[-1]
+        last_close = last_bar.close
         pnl = _calc_pnl(side, entry, last_close, size)
         result = pos.to_dict()
         result["unrealized_pnl"] = round(pnl, 8)
+        result["last_checked_at"] = now
+        result["last_checked_bar_time"] = last_bar.timestamp
         return result
 
     return pos.to_dict()
@@ -248,6 +350,15 @@ def _calc_pnl(side: str, entry: float, exit_price: float, size: float) -> float:
     elif side == "SHORT":
         return (entry - exit_price) * size
     return 0.0
+
+
+def _count_statuses(positions: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"OPEN": 0, "TAKE_PROFIT_HIT": 0, "STOP_LOSS_HIT": 0, "TIMEOUT_EXIT": 0, "INVALID": 0}
+    for p in positions:
+        s = p.get("status", "OPEN")
+        if s in counts:
+            counts[s] += 1
+    return counts
 
 
 def _build_summary(positions: list[dict[str, Any]]) -> dict[str, Any]:
