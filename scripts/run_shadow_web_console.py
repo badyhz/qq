@@ -21,10 +21,12 @@ from core.paper_trading.shadow_web_console import (
     _find_latest, _today_str, _ts,
     load_latest_positions, load_latest_scorecard,
     load_latest_sample_gate, load_recent_actions,
+    load_strategy_switchboard,
 )
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "strategies")
+CONFIG_PATH = os.path.join(REPO_ROOT, "config", "strategies.yaml")
 
 
 class ShadowConsoleHandler(BaseHTTPRequestHandler):
@@ -32,6 +34,7 @@ class ShadowConsoleHandler(BaseHTTPRequestHandler):
 
     repo_root: str = REPO_ROOT
     report_dir: str = REPORT_DIR
+    config_path: str = CONFIG_PATH
 
     def log_message(self, format, *args):
         """Suppress default HTTP logging."""
@@ -66,12 +69,14 @@ class ShadowConsoleHandler(BaseHTTPRequestHandler):
             scorecard = load_latest_scorecard(self.report_dir)
             sample_gate = load_latest_sample_gate(self.report_dir)
             recent_actions = load_recent_actions(self.report_dir)
+            switchboard = load_strategy_switchboard(self.config_path, scorecard)
             html = render_dashboard_html(
                 status,
                 positions=positions,
                 scorecard=scorecard,
                 sample_gate=sample_gate,
                 recent_actions=recent_actions,
+                strategy_switchboard=switchboard,
             )
             self._send_html(html)
         elif path == "/report":
@@ -142,12 +147,15 @@ def main():
         scorecard = load_latest_scorecard(report_dir)
         sample_gate = load_latest_sample_gate(report_dir)
         recent_actions = load_recent_actions(report_dir)
+        config_path = os.path.join(repo_root, "config", "strategies.yaml")
+        switchboard = load_strategy_switchboard(config_path, scorecard)
         html = render_dashboard_html(
             status,
             positions=positions,
             scorecard=scorecard,
             sample_gate=sample_gate,
             recent_actions=recent_actions,
+            strategy_switchboard=switchboard,
         )
         print(html[:500])
         print("...")
@@ -160,6 +168,8 @@ def main():
         print("Contains 'Strategy Scorecard':", "Strategy Scorecard" in html)
         print("Contains 'Sample Gate':", "Sample Gate" in html)
         print("Contains 'Recent Actions':", "Recent Actions" in html)
+        print("Contains 'Strategy Switchboard':", "Strategy Switchboard" in html)
+        print("Contains 'read-only':", "read-only" in html.lower() or "Read-only" in html)
         return 0
 
     # Update handler class attributes
