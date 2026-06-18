@@ -19,6 +19,8 @@ from core.paper_trading.shadow_web_console import (
     load_console_status, render_dashboard_html, run_allowed_action,
     render_report_file, is_safe_report_name, ALLOWED_ACTIONS, SAFETY_FLAGS,
     _find_latest, _today_str, _ts,
+    load_latest_positions, load_latest_scorecard,
+    load_latest_sample_gate, load_recent_actions,
 )
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -60,7 +62,17 @@ class ShadowConsoleHandler(BaseHTTPRequestHandler):
 
         if path == "/":
             status = load_console_status(self.report_dir)
-            html = render_dashboard_html(status)
+            positions = load_latest_positions(self.report_dir)
+            scorecard = load_latest_scorecard(self.report_dir)
+            sample_gate = load_latest_sample_gate(self.report_dir)
+            recent_actions = load_recent_actions(self.report_dir)
+            html = render_dashboard_html(
+                status,
+                positions=positions,
+                scorecard=scorecard,
+                sample_gate=sample_gate,
+                recent_actions=recent_actions,
+            )
             self._send_html(html)
         elif path == "/report":
             name_param = query.get("name", [""])[0]
@@ -126,7 +138,17 @@ def main():
 
     if args.smoke_render:
         status = load_console_status(report_dir)
-        html = render_dashboard_html(status)
+        positions = load_latest_positions(report_dir)
+        scorecard = load_latest_scorecard(report_dir)
+        sample_gate = load_latest_sample_gate(report_dir)
+        recent_actions = load_recent_actions(report_dir)
+        html = render_dashboard_html(
+            status,
+            positions=positions,
+            scorecard=scorecard,
+            sample_gate=sample_gate,
+            recent_actions=recent_actions,
+        )
         print(html[:500])
         print("...")
         print(f"HTML length: {len(html)} chars")
@@ -134,6 +156,10 @@ def main():
         print("Contains 'sample_status':", "sample_status" in html)
         print("Contains 'testnet_gate_status':", "testnet_gate_status" in html)
         print("Contains buttons:", "扫描新机会" in html and "只更新已有持仓" in html)
+        print("Contains 'Paper Positions':", "Paper Positions" in html)
+        print("Contains 'Strategy Scorecard':", "Strategy Scorecard" in html)
+        print("Contains 'Sample Gate':", "Sample Gate" in html)
+        print("Contains 'Recent Actions':", "Recent Actions" in html)
         return 0
 
     # Update handler class attributes
