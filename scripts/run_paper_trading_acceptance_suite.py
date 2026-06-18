@@ -519,12 +519,36 @@ def check_no_phase10_shadow_gate(result: AcceptanceResult):
                "file exists (should not until Round 9)" if not not_exists else "")
 
 
-def check_no_round9_data_source(result: AcceptanceResult):
-    """Check Round 9 data_source has not started."""
+def check_data_source_exists(result: AcceptanceResult):
+    """Check data_source.py exists (Round 9)."""
     data_source_file = os.path.join(PAPER_TRADING_DIR, "data_source.py")
-    not_exists = not os.path.isfile(data_source_file)
-    result.add("no_round9_data_source", not_exists,
-               "file exists (should not until Round 9)" if not not_exists else "")
+    exists = os.path.isfile(data_source_file)
+    result.add("data_source_exists", exists,
+               "module missing" if not exists else "")
+
+
+def check_fixture_adapter_exists(result: AcceptanceResult):
+    """Check fixture_adapter.py exists (Round 9)."""
+    adapter_file = os.path.join(PAPER_TRADING_DIR, "fixture_adapter.py")
+    exists = os.path.isfile(adapter_file)
+    result.add("fixture_adapter_exists", exists,
+               "module missing" if not exists else "")
+
+
+def check_snapshot_adapter_exists(result: AcceptanceResult):
+    """Check snapshot_adapter.py exists (Round 9)."""
+    adapter_file = os.path.join(PAPER_TRADING_DIR, "snapshot_adapter.py")
+    exists = os.path.isfile(adapter_file)
+    result.add("snapshot_adapter_exists", exists,
+               "module missing" if not exists else "")
+
+
+def check_data_source_safety_test_exists(result: AcceptanceResult):
+    """Check data source safety test exists (Round 9)."""
+    test_file = os.path.join(REPO_ROOT, "tests", "unit", "test_paper_data_source_safety.py")
+    exists = os.path.isfile(test_file)
+    result.add("data_source_safety_test", exists,
+               "test file missing" if not exists else "")
 
 
 def check_no_websocket_or_account(result: AcceptanceResult):
@@ -621,7 +645,10 @@ def main():
         ("Manifest known limits", check_manifest_known_limits),
         ("Manifest next phase blockers", check_manifest_next_phase_blockers),
         ("No PHASE10_SHADOW_GATE.md", check_no_phase10_shadow_gate),
-        ("No Round 9 data_source", check_no_round9_data_source),
+        ("Data source exists", check_data_source_exists),
+        ("Fixture adapter exists", check_fixture_adapter_exists),
+        ("Snapshot adapter exists", check_snapshot_adapter_exists),
+        ("Data source safety test", check_data_source_safety_test_exists),
         ("No websocket/account", check_no_websocket_or_account),
     ]
 
