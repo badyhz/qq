@@ -24,6 +24,7 @@ from core.paper_trading.shadow_web_console import (
     load_strategy_switchboard, load_strategy_config,
     validate_config_change_request, create_config_change_request,
     append_config_change_request, render_config_change_result,
+    normalize_lang,
 )
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -65,6 +66,8 @@ class ShadowConsoleHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
 
+        lang = normalize_lang(query.get("lang", ["zh"])[0])
+
         if path == "/":
             status = load_console_status(self.report_dir)
             positions = load_latest_positions(self.report_dir)
@@ -79,6 +82,7 @@ class ShadowConsoleHandler(BaseHTTPRequestHandler):
                 sample_gate=sample_gate,
                 recent_actions=recent_actions,
                 strategy_switchboard=switchboard,
+                lang=lang,
             )
             self._send_html(html)
         elif path == "/report":
@@ -173,6 +177,8 @@ def main():
     parser.add_argument("--report-dir", type=str, default=REPORT_DIR)
     parser.add_argument("--smoke-render", action="store_true",
                         help="Render dashboard HTML and exit without starting server")
+    parser.add_argument("--lang", type=str, default="zh",
+                        help="Language for smoke render (zh or en)")
     args = parser.parse_args()
 
     # Enforce local-only binding
@@ -184,6 +190,7 @@ def main():
     repo_root = os.path.abspath(REPO_ROOT)
 
     if args.smoke_render:
+        lang = normalize_lang(args.lang)
         status = load_console_status(report_dir)
         positions = load_latest_positions(report_dir)
         scorecard = load_latest_scorecard(report_dir)
@@ -198,19 +205,17 @@ def main():
             sample_gate=sample_gate,
             recent_actions=recent_actions,
             strategy_switchboard=switchboard,
+            lang=lang,
         )
         print(html[:500])
         print("...")
         print(f"HTML length: {len(html)} chars")
-        print("Contains 'Shadow Trading Console':", "Shadow Trading Console" in html)
+        print(f"Language: {lang}")
+        print("Contains title:", ("影子交易控制台" in html) if lang == "zh" else ("Shadow Trading Console" in html))
         print("Contains 'sample_status':", "sample_status" in html)
         print("Contains 'testnet_gate_status':", "testnet_gate_status" in html)
-        print("Contains buttons:", "扫描新机会" in html and "只更新已有持仓" in html)
-        print("Contains 'Paper Positions':", "Paper Positions" in html)
-        print("Contains 'Strategy Scorecard':", "Strategy Scorecard" in html)
-        print("Contains 'Sample Gate':", "Sample Gate" in html)
-        print("Contains 'Recent Actions':", "Recent Actions" in html)
-        print("Contains 'Strategy Switchboard':", "Strategy Switchboard" in html)
+        print("Contains buttons:", ("扫描新机会" in html) if lang == "zh" else ("Scan New" in html))
+        print("Contains lang switch:", "中文" in html and "English" in html)
         print("Contains 'read-only':", "read-only" in html.lower() or "Read-only" in html)
         return 0
 
