@@ -199,6 +199,34 @@ allowed actions (WATCHLIST / REJECTED / PAPER_APPROVED), safety declarations.
 One-command operator review: runs runtime → creates candidates → ranks → generates decision pack.
 Outputs: JSON + Markdown + HTML + queue JSONL.
 
+### Release Manifest (`core/paper_trading/release_manifest.py`)
+Generates RC checklist: modules, scripts, fixtures, reports, safety flags, known limits, blockers.
+`generate_manifest()` → dict. `manifest_ready()` → bool. `manifest_to_markdown()` → md.
+
+### Artifact Validator (`core/paper_trading/artifact_validator.py`)
+Validates local reports integrity: JSON parseable, JSONL line-by-line, Markdown non-empty,
+HTML no external links/script src. `validate_artifacts(dir)` → list of issues.
+
+### Release Candidate Runner (`scripts/run_paper_release_candidate.py`)
+One-click full RC validation: runs all runners, generates manifest, validates artifacts.
+Outputs: JSON + Markdown. Reports RC_READY status.
+
+### How to Run Full Release Candidate
+
+```bash
+# Full RC validation (runs everything)
+python3 scripts/run_paper_release_candidate.py
+
+# Or step by step:
+python3 scripts/run_paper_daily_ops.py
+python3 scripts/run_paper_operator_review.py
+python3 scripts/run_paper_trading_acceptance_suite.py
+
+# View results
+open reports/paper_trading_release_candidate.html
+open reports/paper_trading_index.html
+```
+
 ### Fixture Validation
 Empty and malformed fixtures are tested in `test_paper_fixture_validation.py`.
 Empty arrays produce zero-bar replays. Malformed data raises ValueError/TypeError.
@@ -293,9 +321,101 @@ Before considering testnet, ALL of these must be true:
 3. **Testnet gate** — When ready, gate transitions to testnet with explicit approval
 4. **Live gate** — Far future, requires human approval + safety review
 
+## Round 8 Status
+
+Round 8 is **Release Candidate 收口 only**. It includes:
+
+- `release_manifest.py` — RC checklist (modules, scripts, fixtures, safety flags, known limits)
+- `artifact_validator.py` — Validates local reports integrity
+- `run_paper_release_candidate.py` — One-click full RC validation
+- Extended acceptance suite with 48 checks
+
+**Round 8 has NOT started Round 9.**
+
+## Round 9: Readonly Data Source (NOT YET STARTED)
+
+Round 9 will add a **data_source abstraction layer** for readonly real market data.
+
+**Scope (when authorized):**
+- `data_source` interface
+- `fixture_adapter` (existing behavior)
+- `public_market_snapshot_adapter` (new, REST only)
+- Config switch: `data_source: fixture / live`
+- Safety check: no secret, no order, no testnet/live
+
+**Forbidden in Round 9:**
+- WebSocket
+- Account sync
+- API keys
+- .env
+- Orders
+- Testnet
+- Live
+- Complex scheduling
+
+**Round 9 requires separate human authorization.**
+
+## PHASE10_SHADOW_GATE.md (NOT YET CREATED)
+
+`PHASE10_SHADOW_GATE.md` must be created **after Round 9** readonly data source is complete.
+
+It will define:
+- Shadow metrics (hit rate, false positive rate)
+- Sample thresholds (>= 30 valid paper plans)
+- HIGH/MEDIUM/LOW distribution requirements
+- Expectancy/profit factor by priority level
+- No-distinguishability investigation flow
+- Pass/fail rules
+- Shadow extension conditions
+- Testnet/live prohibition gate
+
+**Do NOT create PHASE10_SHADOW_GATE.md until Round 9 is complete.**
+
+## How to Judge if System is RC-Ready
+
+Run the release candidate runner:
+
+```bash
+python3 scripts/run_paper_release_candidate.py
+```
+
+Check output for:
+- All runners PASS
+- Manifest RC Ready: YES
+- Artifact errors: 0
+- Safety flags complete
+- Known limits documented
+- Next phase blockers documented
+
+## Current Known Limits
+
+- **Fixture-only** — No live market data
+- **Single symbol** — Each replay runs one fixture at a time
+- **No persistence** — Ledger and account state are in-memory only
+- **No execution** — Plans never become real orders
+- **No network** — Zero HTTP calls, zero webhooks
+- **No testnet** — Testnet not implemented
+- **No live** — Live trading not implemented
+- **No data_source** — Round 9 not started
+- **No Shadow Gate** — PHASE10_SHADOW_GATE.md not created
+
+## Next Phase Blockers
+
+Before testnet, ALL of these must be completed:
+
+1. **Round 9** — Readonly data source (separate authorization required)
+2. **Shadow period** — 14 days real market data paper shadow
+3. **PHASE10_SHADOW_GATE.md** — Define shadow metrics and pass/fail criteria
+4. **Shadow validation** — 30+ valid plans, HIGH > MEDIUM > LOW expectancy
+5. **Testnet gate** — Separate authorization required
+6. **Testnet shadow** — 3-7 days testnet order lifecycle validation
+7. **Live gate** — Separate authorization required, 2-3 weeks minimum
+
 ## Safety
 
 - Testnet/live: **STILL PROHIBITED**
 - Real orders: **STILL PROHIBITED**
 - Secret reads: **STILL PROHIBITED**
 - Network calls: **STILL PROHIBITED**
+- Round 9 data_source: **NOT YET STARTED**
+- PHASE10_SHADOW_GATE.md: **NOT YET CREATED**
