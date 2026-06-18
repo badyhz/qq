@@ -94,6 +94,19 @@ class TestEmergencyWatchlistScript:
         assert "os.environ" not in content
         assert "os.getenv" not in content
 
+    def test_actionable_watch_output_paths(self):
+        with open(SCRIPT) as f:
+            content = f.read()
+        assert "_actionable_watch.json" in content
+        assert "_actionable_watch.md" in content
+        assert "_actionable_watch.csv" in content
+
+    def test_imports_watch_trigger_planner(self):
+        with open(SCRIPT) as f:
+            content = f.read()
+        assert "watch_trigger_planner" in content
+        assert "plan_trigger" in content
+
     def test_csv_has_watch_state_fields(self):
         with open(SCRIPT) as f:
             content = f.read()

@@ -18,6 +18,7 @@ from core.paper_trading.market_data_quality import validate_bars
 from core.paper_trading.readonly_signal_analyzer import analyze_bars, SignalResult
 from core.paper_trading.shadow_ledger import ShadowLedger, ShadowRecord
 from core.paper_trading.shadow_gate_evaluator import evaluate_shadow_gate
+from core.paper_trading.watch_trigger_planner import plan_trigger, WatchTriggerPlan
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "phase10c", "emergency")
@@ -130,6 +131,103 @@ def _to_shadow_record(sig: SignalResult, ts: float) -> ShadowRecord:
         outcome="OBSERVED", pnl=0.0, expectancy_input=0.0,
         data_quality_ok=True, safety_flags=SAFETY_FLAGS,
     )
+
+
+def _plan_to_dict(p: WatchTriggerPlan) -> dict:
+    return {
+        "symbol": p.symbol, "timeframe": p.timeframe, "watch_state": p.watch_state,
+        "setup_type": p.setup_type, "priority": p.priority, "last_close": p.last_close,
+        "trigger_type": p.trigger_type, "trigger_condition": p.trigger_condition,
+        "confirmation_condition": p.confirmation_condition,
+        "invalidation_condition": p.invalidation_condition,
+        "risk_note": p.risk_note, "wait_note": p.wait_note,
+        "action_label": p.action_label, "shadow_record_type": p.shadow_record_type,
+    }
+
+
+def _write_actionable_watch(date_str, plans: list[WatchTriggerPlan]):
+    """Write actionable watch JSON, MD, CSV."""
+    wait_confirm = [p for p in plans if p.action_label == "WAIT_CONFIRMATION"]
+    watch_now = [p for p in plans if p.action_label == "WATCH_NOW"]
+    short_obs = [p for p in plans if p.action_label == "SHORT_OBSERVE"]
+    avoid = [p for p in plans if p.action_label == "AVOID"]
+    data_skip = [p for p in plans if p.action_label == "DATA_SKIP"]
+
+    # JSON
+    json_data = {
+        "date": date_str,
+        "safety_flags": SAFETY_FLAGS,
+        "total_plans": len(plans),
+        "watch_now": [_plan_to_dict(p) for p in watch_now],
+        "wait_confirmation": [_plan_to_dict(p) for p in wait_confirm],
+        "short_observe": [_plan_to_dict(p) for p in short_obs],
+        "avoid_count": len(avoid),
+        "data_skip_count": len(data_skip),
+        "all_plans": [_plan_to_dict(p) for p in plans],
+    }
+    json_path = os.path.join(REPORT_DIR, f"{date_str}_actionable_watch.json")
+    with open(json_path, "w") as f:
+        json.dump(json_data, f, indent=2)
+    print(f"Actionable JSON: {json_path}")
+
+    # CSV
+    csv_path = os.path.join(REPORT_DIR, f"{date_str}_actionable_watch.csv")
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["symbol", "timeframe", "watch_state", "action_label",
+                         "trigger_type", "last_close", "turning_score", "weakness_score",
+                         "trigger_condition", "confirmation_condition",
+                         "invalidation_condition", "risk_note", "wait_note"])
+        for p in plans:
+            writer.writerow([p.symbol, p.timeframe, p.watch_state, p.action_label,
+                             p.trigger_type, p.last_close,
+                             "",  # turning_score from SignalResult not in plan
+                             "",
+                             p.trigger_condition, p.confirmation_condition,
+                             p.invalidation_condition, p.risk_note, p.wait_note])
+    print(f"Actionable CSV: {csv_path}")
+
+    # Markdown
+    md_path = os.path.join(REPORT_DIR, f"{date_str}_actionable_watch.md")
+    with open(md_path, "w") as f:
+        f.write(f"# Actionable Readonly Watch Plan — {date_str}\n\n")
+        f.write("**This is a readonly observation plan. NOT a trading recommendation.**\n\n")
+
+        # Priority 1: WATCH_NOW + WAIT_CONFIRMATION
+        f.write("## Priority 1 — WAIT_CONFIRMATION\n\n")
+        top_wait = sorted(wait_confirm, key=lambda p: p.last_close, reverse=True)[:10]
+        for p in top_wait + watch_now:
+            _write_plan_md(f, p)
+
+        # Priority 2: SHORT_OBSERVE
+        if short_obs:
+            f.write("\n## Priority 2 — SHORT_OBSERVE\n\n")
+            for p in short_obs[:10]:
+                _write_plan_md(f, p)
+
+        # Avoid summary
+        f.write("\n## AVOID\n\n")
+        f.write(f"- CHOPPY_AVOID / WEAK_AVOID: {len(avoid)} symbols — no clear setup\n")
+        f.write(f"- DATA_REJECT: {len(data_skip)} — data quality issues\n")
+
+        f.write("\n## Safety\n\n")
+        f.write("Readonly observation only.\n")
+        f.write("Not a trading recommendation.\n")
+        f.write("Not testnet/live.\n")
+        f.write("No orders placed. No accounts accessed.\n")
+    print(f"Actionable Markdown: {md_path}")
+
+
+def _write_plan_md(f, p: WatchTriggerPlan):
+    f.write(f"### {p.symbol} ({p.timeframe}) — {p.action_label}\n\n")
+    f.write(f"- **Watch State:** {p.watch_state}\n")
+    f.write(f"- **Last Close:** {p.last_close}\n")
+    f.write(f"- **Trigger:** {p.trigger_condition}\n")
+    if p.confirmation_condition:
+        f.write(f"- **Confirmation:** {p.confirmation_condition}\n")
+    f.write(f"- **Invalidation:** {p.invalidation_condition}\n")
+    f.write(f"- **Risk:** {p.risk_note}\n")
+    f.write(f"- **Note:** {p.wait_note}\n\n")
 
 
 def _sig_to_dict(r: SignalResult) -> dict:
@@ -245,6 +343,10 @@ def _write_reports(date_str, results, errors, mode):
         ledger.append(_to_shadow_record(sig, ts + i))
     gate_result = evaluate_shadow_gate(ledger)
     print(f"Shadow ledger: {ledger_path}")
+
+    # Actionable watch plans
+    plans = [plan_trigger(r) for r in results]
+    _write_actionable_watch(date_str, plans)
 
     # Markdown
     md_path = os.path.join(REPORT_DIR, f"{date_str}_signal_report.md")
