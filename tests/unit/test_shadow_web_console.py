@@ -15,6 +15,9 @@ from core.paper_trading.shadow_web_console import (
     render_sample_gate_card, render_recent_actions_table,
     load_strategy_config, load_strategy_switchboard,
     render_strategy_switchboard_table,
+    validate_config_change_request, create_config_change_request,
+    append_config_change_request, render_config_change_form,
+    render_config_change_result,
     ALLOWED_ACTIONS, SAFETY_FLAGS,
 )
 
@@ -540,9 +543,10 @@ class TestDashboardSwitchboard:
         html = render_dashboard_html({})
         assert "strategies.yaml" in html
 
-    def test_no_config_write_form(self):
+    def test_no_direct_config_write(self):
         html = render_dashboard_html({})
-        assert "POST" not in html or "enable" not in html.lower()
+        assert "config_written=true" not in html
+        assert "不会直接修改" in html
 
     def test_no_testnet_ready(self):
         html = render_dashboard_html({})
@@ -563,3 +567,149 @@ class TestDashboardSwitchboard:
         html = render_dashboard_html({}, strategy_switchboard=switchboard)
         assert "macd_rebound_watch" in html
         assert "OBSERVE_ONLY" in html
+
+
+class TestValidateConfigChangeRequest:
+    def test_valid_request(self):
+        switchboard = [{"strategy_id": "test_strat"}]
+        form = {
+            "strategy_id": "test_strat",
+            "requested_enabled": "true",
+            "requested_symbols": "BTCUSDT, ETHUSDT",
+            "requested_timeframes": "15m, 1h",
+            "reason": "Testing",
+        }
+        cleaned, errors = validate_config_change_request(form, switchboard)
+        assert errors == []
+        assert cleaned["strategy_id"] == "test_strat"
+        assert cleaned["requested_enabled"] == "true"
+        assert cleaned["requested_symbols"] == ["BTCUSDT", "ETHUSDT"]
+        assert cleaned["requested_timeframes"] == ["15m", "1h"]
+
+    def test_unknown_strategy_rejected(self):
+        switchboard = [{"strategy_id": "test_strat"}]
+        form = {"strategy_id": "unknown", "requested_enabled": "no_change",
+                "requested_symbols": "", "requested_timeframes": "", "reason": "test"}
+        _, errors = validate_config_change_request(form, switchboard)
+        assert any("Unknown strategy" in e for e in errors)
+
+    def test_invalid_enabled_rejected(self):
+        switchboard = [{"strategy_id": "test"}]
+        form = {"strategy_id": "test", "requested_enabled": "invalid",
+                "requested_symbols": "", "requested_timeframes": "", "reason": "test"}
+        _, errors = validate_config_change_request(form, switchboard)
+        assert any("requested_enabled" in e for e in errors)
+
+    def test_invalid_symbol_rejected(self):
+        switchboard = [{"strategy_id": "test"}]
+        form = {"strategy_id": "test", "requested_enabled": "no_change",
+                "requested_symbols": "<script>", "requested_timeframes": "", "reason": "test"}
+        _, errors = validate_config_change_request(form, switchboard)
+        assert any("Invalid symbol" in e for e in errors)
+
+    def test_too_many_symbols_rejected(self):
+        switchboard = [{"strategy_id": "test"}]
+        symbols = ",".join([f"S{i}" for i in range(101)])
+        form = {"strategy_id": "test", "requested_enabled": "no_change",
+                "requested_symbols": symbols, "requested_timeframes": "", "reason": "test"}
+        _, errors = validate_config_change_request(form, switchboard)
+        assert any("Too many symbols" in e for e in errors)
+
+    def test_invalid_timeframe_rejected(self):
+        switchboard = [{"strategy_id": "test"}]
+        form = {"strategy_id": "test", "requested_enabled": "no_change",
+                "requested_symbols": "", "requested_timeframes": "2d", "reason": "test"}
+        _, errors = validate_config_change_request(form, switchboard)
+        assert any("Invalid timeframe" in e for e in errors)
+
+    def test_missing_reason_rejected(self):
+        switchboard = [{"strategy_id": "test"}]
+        form = {"strategy_id": "test", "requested_enabled": "no_change",
+                "requested_symbols": "", "requested_timeframes": "", "reason": ""}
+        _, errors = validate_config_change_request(form, switchboard)
+        assert any("reason is required" in e for e in errors)
+
+
+class TestCreateConfigChangeRequest:
+    def test_creates_request(self):
+        form = {
+            "strategy_id": "test", "requested_enabled": "true",
+            "requested_symbols": ["BTCUSDT"], "requested_timeframes": ["15m"],
+            "reason": "test",
+        }
+        request = create_config_change_request(form, {"enabled": True})
+        assert request["status"] == "PENDING_HUMAN_REVIEW"
+        assert request["config_written"] is False
+        assert request["strategy_id"] == "test"
+        assert request["requested_enabled"] == "true"
+        assert request["request_id"].startswith("CR_")
+
+
+class TestAppendConfigChangeRequest:
+    def test_appends_jsonl_and_md(self):
+        with tempfile.TemporaryDirectory() as td:
+            request = {
+                "request_id": "CR_test", "created_at": "2026-01-01",
+                "strategy_id": "test", "current_config_snapshot": {"enabled": True},
+                "requested_enabled": "true", "requested_symbols": ["BTCUSDT"],
+                "requested_timeframes": ["15m"], "reason": "test",
+                "status": "PENDING_HUMAN_REVIEW", "config_written": False,
+                "safety_flags": [],
+            }
+            jsonl_path, md_path = append_config_change_request(request, td)
+            assert os.path.isfile(jsonl_path)
+            assert os.path.isfile(md_path)
+            import glob
+            jsonl_files = glob.glob(os.path.join(td, "*_strategy_config_change_requests.jsonl"))
+            assert len(jsonl_files) == 1
+            with open(md_path) as f:
+                content = f.read()
+            assert "PENDING_HUMAN_REVIEW" in content
+            assert "config_written: false" in content
+
+
+class TestRenderConfigChangeForm:
+    def test_contains_form(self):
+        switchboard = [{"strategy_id": "test"}]
+        html = render_config_change_form(switchboard)
+        assert "strategy_id" in html
+        assert "requested_enabled" in html
+        assert "reason" in html
+
+    def test_contains_read_only_notice(self):
+        html = render_config_change_form([])
+        assert "不会直接修改" in html
+
+    def test_contains_strategy_options(self):
+        switchboard = [{"strategy_id": "macd"}, {"strategy_id": "weak"}]
+        html = render_config_change_form(switchboard)
+        assert "macd" in html
+        assert "weak" in html
+
+
+class TestRenderConfigChangeResult:
+    def test_renders_result(self):
+        request = {
+            "request_id": "CR_test", "status": "PENDING_HUMAN_REVIEW",
+            "config_written": False, "strategy_id": "test",
+            "requested_enabled": "true",
+        }
+        html = render_config_change_result(request)
+        assert "CR_test" in html
+        assert "PENDING_HUMAN_REVIEW" in html
+        assert "config_written" in html
+
+
+class TestDashboardConfigChange:
+    def test_contains_config_change_request(self):
+        html = render_dashboard_html({})
+        assert "Strategy Config Change Request" in html
+
+    def test_contains_change_request_notice(self):
+        html = render_dashboard_html({})
+        assert "不会直接修改" in html or "change request" in html.lower()
+
+    def test_no_testnet_ready(self):
+        html = render_dashboard_html({})
+        assert "testnet_ready=true" not in html
+        assert "live_ready=true" not in html

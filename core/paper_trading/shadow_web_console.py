@@ -15,6 +15,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -563,6 +564,207 @@ def render_strategy_switchboard_table(switchboard: list[dict]) -> str:
 </tbody></table>"""
 
 
+ALLOWED_TIMEFRAMES = {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"}
+_MAX_SYMBOLS = 100
+_MAX_SYMBOL_LEN = 30
+_MAX_TIMEFRAMES = 20
+_MAX_REASON_LEN = 500
+
+
+def validate_config_change_request(
+    form: dict[str, str],
+    switchboard: list[dict],
+) -> tuple[dict, list[str]]:
+    """Validate config change request form. Returns (cleaned_form, errors)."""
+    errors: list[str] = []
+    known_ids = {s["strategy_id"] for s in switchboard}
+
+    strategy_id = form.get("strategy_id", "").strip()
+    if not strategy_id:
+        errors.append("strategy_id is required")
+    elif strategy_id not in known_ids:
+        errors.append(f"Unknown strategy: {strategy_id}")
+
+    requested_enabled = form.get("requested_enabled", "no_change").strip()
+    if requested_enabled not in ("no_change", "true", "false"):
+        errors.append(f"Invalid requested_enabled: {requested_enabled}")
+
+    # Symbols
+    symbols_raw = form.get("requested_symbols", "").strip()
+    requested_symbols: list[str] = []
+    if symbols_raw:
+        parts = [s.strip().upper() for s in symbols_raw.split(",") if s.strip()]
+        for p in parts:
+            if len(p) > _MAX_SYMBOL_LEN:
+                errors.append(f"Symbol too long: {p}")
+            if not re.match(r'^[A-Z0-9_\-/]+$', p):
+                errors.append(f"Invalid symbol: {p}")
+        if len(parts) > _MAX_SYMBOLS:
+            errors.append(f"Too many symbols: {len(parts)} (max {_MAX_SYMBOLS})")
+        requested_symbols = parts
+
+    # Timeframes
+    timeframes_raw = form.get("requested_timeframes", "").strip()
+    requested_timeframes: list[str] = []
+    if timeframes_raw:
+        parts = [t.strip() for t in timeframes_raw.split(",") if t.strip()]
+        for p in parts:
+            if p not in ALLOWED_TIMEFRAMES:
+                errors.append(f"Invalid timeframe: {p}")
+        if len(parts) > _MAX_TIMEFRAMES:
+            errors.append(f"Too many timeframes: {len(parts)} (max {_MAX_TIMEFRAMES})")
+        requested_timeframes = parts
+
+    reason = form.get("reason", "").strip()
+    if not reason:
+        errors.append("reason is required")
+    elif len(reason) > _MAX_REASON_LEN:
+        errors.append(f"reason too long: {len(reason)} (max {_MAX_REASON_LEN})")
+
+    cleaned = {
+        "strategy_id": strategy_id,
+        "requested_enabled": requested_enabled,
+        "requested_symbols": requested_symbols,
+        "requested_timeframes": requested_timeframes,
+        "reason": reason,
+    }
+    return cleaned, errors
+
+
+def create_config_change_request(
+    form: dict,
+    config_snapshot: dict,
+) -> dict:
+    """Create a config change request dict."""
+    import uuid
+    return {
+        "request_id": f"CR_{_today_str()}_{uuid.uuid4().hex[:8]}",
+        "created_at": _ts(),
+        "strategy_id": form["strategy_id"],
+        "current_config_snapshot": config_snapshot,
+        "requested_enabled": form["requested_enabled"],
+        "requested_symbols": form["requested_symbols"],
+        "requested_timeframes": form["requested_timeframes"],
+        "reason": form["reason"],
+        "status": "PENDING_HUMAN_REVIEW",
+        "config_written": False,
+        "safety_flags": list(SAFETY_FLAGS),
+    }
+
+
+def append_config_change_request(request: dict, report_dir: str) -> tuple[str, str]:
+    """Append request to JSONL and write latest markdown. Returns (jsonl_path, md_path)."""
+    os.makedirs(report_dir, exist_ok=True)
+    date_str = _today_str()
+
+    jsonl_path = os.path.join(report_dir, f"{date_str}_strategy_config_change_requests.jsonl")
+    with open(jsonl_path, "a") as f:
+        f.write(json.dumps(request, ensure_ascii=False) + "\n")
+
+    md_path = os.path.join(report_dir, f"{date_str}_strategy_config_change_request_latest.md")
+    md = _render_config_change_markdown(request)
+    with open(md_path, "w") as f:
+        f.write(md)
+
+    return jsonl_path, md_path
+
+
+def _render_config_change_markdown(request: dict) -> str:
+    """Render config change request as markdown."""
+    snap = request.get("current_config_snapshot", {})
+    symbols = request.get("requested_symbols", [])
+    timeframes = request.get("requested_timeframes", [])
+
+    lines = [
+        "# Strategy Config Change Request",
+        "",
+        f"**Request ID:** {request.get('request_id', '')}",
+        f"**Created:** {request.get('created_at', '')}",
+        f"**Status:** {request.get('status', '')}",
+        f"**config_written:** {request.get('config_written', False)}",
+        "",
+        "## Current Config",
+        "",
+        f"- enabled: {snap.get('enabled', 'N/A')}",
+        f"- strategy_type: {snap.get('strategy_type', 'N/A')}",
+        f"- mode: {snap.get('mode', 'N/A')}",
+        f"- symbols: {', '.join(snap.get('symbols', []))}",
+        f"- timeframes: {', '.join(snap.get('timeframes', []))}",
+        f"- auto_send: {snap.get('auto_send', 'N/A')}",
+        "",
+        "## Requested Change",
+        "",
+        f"- requested_enabled: {request.get('requested_enabled', 'no_change')}",
+        f"- requested_symbols: {', '.join(symbols) if symbols else 'no_change'}",
+        f"- requested_timeframes: {', '.join(timeframes) if timeframes else 'no_change'}",
+        f"- reason: {request.get('reason', '')}",
+        "",
+        "## Safety",
+        "",
+        "- config_written: false",
+        "- 本文件只是变更草案。",
+        "- 尚未修改 config/strategies.yaml。",
+        "- 需要人工审核后另行执行。",
+        "",
+        "## Manual Review Required",
+        "",
+        "请人工审核以上变更草案后，决定是否手动执行配置变更。",
+    ]
+    return "\n".join(lines)
+
+
+def render_config_change_form(switchboard: list[dict]) -> str:
+    """Render config change request form as HTML."""
+    strategy_options = "".join(
+        f'<option value="{_escape_html(s["strategy_id"])}">{_escape_html(s["strategy_id"])}</option>'
+        for s in switchboard
+    )
+
+    return f"""<div class="read-only-notice">
+  Change request 模式。不会直接修改 config/strategies.yaml。提交后只生成审核文件。
+</div>
+<form id="config-change-form" onsubmit="submitConfigChange(event)">
+  <div class="form-group">
+    <label for="strategy_id">Strategy</label>
+    <select id="strategy_id" name="strategy_id" required>
+      {strategy_options}
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="requested_enabled">Requested Enabled</label>
+    <select id="requested_enabled" name="requested_enabled">
+      <option value="no_change">no_change</option>
+      <option value="true">true (enable)</option>
+      <option value="false">false (disable)</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="requested_symbols">Requested Symbols (comma separated, empty=no_change)</label>
+    <input type="text" id="requested_symbols" name="requested_symbols" placeholder="BTCUSDT, ETHUSDT">
+  </div>
+  <div class="form-group">
+    <label for="requested_timeframes">Requested Timeframes (comma separated, empty=no_change)</label>
+    <input type="text" id="requested_timeframes" name="requested_timeframes" placeholder="15m, 1h">
+  </div>
+  <div class="form-group">
+    <label for="reason">Reason (required)</label>
+    <textarea id="reason" name="reason" rows="3" required maxlength="500"></textarea>
+  </div>
+  <button type="submit" class="btn">Submit Change Request</button>
+</form>
+<div id="config-change-result" class="result"></div>"""
+
+
+def render_config_change_result(request: dict) -> str:
+    """Render config change request result as HTML."""
+    return f"""<div class="result-header pass">Request created: {_escape_html(request.get('request_id', ''))}</div>
+<p>Status: {_escape_html(request.get('status', ''))}</p>
+<p>config_written: {request.get('config_written', False)}</p>
+<p>Strategy: {_escape_html(request.get('strategy_id', ''))}</p>
+<p>Requested enabled: {_escape_html(request.get('requested_enabled', ''))}</p>
+<p>本文件只是变更草案，尚未修改 config/strategies.yaml。</p>"""
+
+
 def render_dashboard_html(
     status: dict[str, Any],
     positions: Optional[list[dict]] = None,
@@ -570,6 +772,7 @@ def render_dashboard_html(
     sample_gate: Optional[dict] = None,
     recent_actions: Optional[list[dict]] = None,
     strategy_switchboard: Optional[list[dict]] = None,
+    config_change_result: Optional[str] = None,
 ) -> str:
     """Render dashboard HTML."""
     sample = status.get("sample_status", "UNKNOWN")
@@ -603,6 +806,8 @@ def render_dashboard_html(
     sample_gate_html = render_sample_gate_card(sample_gate or {})
     recent_actions_html = render_recent_actions_table(recent_actions or [])
     switchboard_html = render_strategy_switchboard_table(strategy_switchboard or [])
+    config_form_html = render_config_change_form(strategy_switchboard or [])
+    config_result_html = config_change_result or ""
 
     # Next action hint
     next_action = "继续 shadow collection。不要 testnet。不要 live。"
@@ -662,6 +867,17 @@ def render_dashboard_html(
   .table-wrap {{ max-height: 400px; overflow-y: auto; margin: 10px 0; }}
   .read-only-notice {{ background: #0f3460; border: 1px solid #00d4ff; border-radius: 6px;
                        padding: 8px 12px; margin: 10px 0; color: #00d4ff; font-size: 0.9em; }}
+  .form-group {{ margin: 10px 0; }}
+  .form-group label {{ display: block; color: #888; font-size: 0.85em; margin-bottom: 4px; }}
+  .form-group input, .form-group select, .form-group textarea {{
+    width: 100%; padding: 8px; background: #16213e; color: #e0e0e0;
+    border: 1px solid #0f3460; border-radius: 4px; font-size: 0.9em;
+    box-sizing: border-box;
+  }}
+  .form-group textarea {{ resize: vertical; }}
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus {{
+    border-color: #00d4ff; outline: none;
+  }}
 </style>
 </head>
 <body>
@@ -751,6 +967,10 @@ def render_dashboard_html(
 {switchboard_html}
 </div>
 
+<h2>Strategy Config Change Request</h2>
+{config_result_html}
+{config_form_html}
+
 <div class="safety">
   Paper-only | Shadow-only | Local-only | No order | No testnet | No live | No secret
 </div>
@@ -798,6 +1018,33 @@ function escapeHtml(s) {{
   var d = document.createElement('div');
   d.appendChild(document.createTextNode(s));
   return d.innerHTML;
+}}
+
+function submitConfigChange(e) {{
+  e.preventDefault();
+  var form = document.getElementById('config-change-form');
+  var data = new FormData(form);
+  var params = new URLSearchParams();
+  for (var pair of data) {{
+    params.append(pair[0], pair[1]);
+  }}
+
+  var el = document.getElementById('config-change-result');
+  el.className = 'result show';
+  el.innerHTML = '<div class="result-header">Submitting...</div>';
+
+  fetch('/action/request-config-change', {{
+    method: 'POST',
+    headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
+    body: params.toString()
+  }})
+    .then(function(r) {{ return r.text(); }})
+    .then(function(text) {{
+      el.innerHTML = text;
+    }})
+    .catch(function(err) {{
+      el.innerHTML = '<div class="result-header fail">Error: ' + err.message + '</div>';
+    }});
 }}
 </script>
 </body>
