@@ -17,8 +17,8 @@ from core.paper_trading.shadow_web_console import (
     render_strategy_switchboard_table,
     validate_config_change_request, create_config_change_request,
     append_config_change_request, render_config_change_form,
-    render_config_change_result,
-    ALLOWED_ACTIONS, SAFETY_FLAGS,
+    render_config_change_result, normalize_lang,
+    ALLOWED_ACTIONS, SAFETY_FLAGS, SUPPORTED_LANGS, UI_TEXT,
 )
 
 
@@ -74,6 +74,10 @@ class TestLoadConsoleStatus:
 class TestRenderDashboard:
     def test_contains_title(self):
         html = render_dashboard_html({})
+        assert "影子交易控制台" in html
+
+    def test_contains_title_en(self):
+        html = render_dashboard_html({}, lang="en")
         assert "Shadow Trading Console" in html
 
     def test_contains_sample_status(self):
@@ -86,15 +90,29 @@ class TestRenderDashboard:
         assert "testnet_gate_status" in html
         assert "BLOCKED_INSUFFICIENT_CLOSED_SAMPLE" in html
 
-    def test_contains_buttons(self):
-        html = render_dashboard_html({})
+    def test_contains_buttons_zh(self):
+        html = render_dashboard_html({}, lang="zh")
         assert "扫描新机会" in html
         assert "只更新已有持仓" in html
         assert "刷新样本门禁" in html
         assert "打印当前状态" in html
 
+    def test_contains_buttons_en(self):
+        html = render_dashboard_html({}, lang="en")
+        assert "Scan New" in html
+        assert "Update Existing" in html
+        assert "Refresh Sample" in html
+        assert "Print Current" in html
+
     def test_contains_safety_footer(self):
         html = render_dashboard_html({})
+        assert "仅纸面" in html
+        assert "无订单" in html
+        assert "无测试网" in html
+        assert "无实盘" in html
+
+    def test_contains_safety_footer_en(self):
+        html = render_dashboard_html({}, lang="en")
         assert "Paper-only" in html
         assert "No order" in html
         assert "No testnet" in html
@@ -231,6 +249,10 @@ class TestLoadRecentActions:
 class TestRenderPositionsTable:
     def test_empty_positions(self):
         html = render_positions_table([])
+        assert "暂无持仓数据" in html
+
+    def test_empty_positions_en(self):
+        html = render_positions_table([], lang="en")
         assert "No positions found" in html
 
     def test_renders_open_position(self):
@@ -286,6 +308,10 @@ class TestRenderPositionsTable:
 class TestRenderScorecardTable:
     def test_empty_scorecards(self):
         html = render_scorecard_table([])
+        assert "暂无策略评分数据" in html
+
+    def test_empty_scorecards_en(self):
+        html = render_scorecard_table([], lang="en")
         assert "No strategy scorecards" in html
 
     def test_renders_strategy(self):
@@ -318,6 +344,10 @@ class TestRenderScorecardTable:
 class TestRenderSampleGateCard:
     def test_empty_gate(self):
         html = render_sample_gate_card({})
+        assert "暂无样本门禁数据" in html
+
+    def test_empty_gate_en(self):
+        html = render_sample_gate_card({}, lang="en")
         assert "No sample gate data" in html
 
     def test_blocked_gate(self):
@@ -341,6 +371,10 @@ class TestRenderSampleGateCard:
 class TestRenderRecentActions:
     def test_empty_actions(self):
         html = render_recent_actions_table([])
+        assert "暂无控制台操作记录" in html
+
+    def test_empty_actions_en(self):
+        html = render_recent_actions_table([], lang="en")
         assert "No web console actions yet" in html
 
     def test_renders_action(self):
@@ -356,18 +390,25 @@ class TestRenderRecentActions:
 class TestDashboardSections:
     def test_contains_paper_positions(self):
         html = render_dashboard_html({})
-        assert "Paper Positions" in html
+        assert "纸面持仓" in html
 
     def test_contains_strategy_scorecard(self):
         html = render_dashboard_html({})
-        assert "Strategy Scorecard" in html
+        assert "策略评分" in html
 
     def test_contains_sample_gate(self):
         html = render_dashboard_html({})
-        assert "Sample Gate" in html
+        assert "样本门禁" in html
 
     def test_contains_recent_actions(self):
         html = render_dashboard_html({})
+        assert "最近操作" in html
+
+    def test_contains_en_sections(self):
+        html = render_dashboard_html({}, lang="en")
+        assert "Paper Positions" in html
+        assert "Strategy Scorecard" in html
+        assert "Sample Gate" in html
         assert "Recent Actions" in html
 
     def test_no_testnet_ready(self):
@@ -464,6 +505,10 @@ class TestLoadStrategySwitchboard:
 class TestRenderStrategySwitchboard:
     def test_empty_config(self):
         html = render_strategy_switchboard_table([])
+        assert "暂无策略配置" in html
+
+    def test_empty_config_en(self):
+        html = render_strategy_switchboard_table([], lang="en")
         assert "No strategy config found" in html
 
     def test_renders_enabled_strategy(self):
@@ -533,6 +578,10 @@ class TestRenderStrategySwitchboard:
 class TestDashboardSwitchboard:
     def test_contains_strategy_switchboard(self):
         html = render_dashboard_html({})
+        assert "策略开关" in html
+
+    def test_contains_strategy_switchboard_en(self):
+        html = render_dashboard_html({}, lang="en")
         assert "Strategy Switchboard" in html
 
     def test_contains_read_only_notice(self):
@@ -703,6 +752,10 @@ class TestRenderConfigChangeResult:
 class TestDashboardConfigChange:
     def test_contains_config_change_request(self):
         html = render_dashboard_html({})
+        assert "策略配置变更草案" in html
+
+    def test_contains_config_change_request_en(self):
+        html = render_dashboard_html({}, lang="en")
         assert "Strategy Config Change Request" in html
 
     def test_contains_change_request_notice(self):
@@ -713,3 +766,94 @@ class TestDashboardConfigChange:
         html = render_dashboard_html({})
         assert "testnet_ready=true" not in html
         assert "live_ready=true" not in html
+
+
+class TestNormalizeLang:
+    def test_zh(self):
+        assert normalize_lang("zh") == "zh"
+
+    def test_en(self):
+        assert normalize_lang("en") == "en"
+
+    def test_invalid_fallback_zh(self):
+        assert normalize_lang("fr") == "zh"
+        assert normalize_lang("de") == "zh"
+        assert normalize_lang("") == "zh"
+        assert normalize_lang("ZH") == "zh"
+        assert normalize_lang("EN") == "en"
+        assert normalize_lang(" en ") == "en"
+
+    def test_none_fallback_zh(self):
+        assert normalize_lang("") == "zh"
+
+
+class TestBilingualUI:
+    def test_lang_switch_contains_both(self):
+        html = render_dashboard_html({})
+        assert "中文" in html
+        assert "English" in html
+
+    def test_lang_switch_links(self):
+        html = render_dashboard_html({})
+        assert "?lang=zh" in html
+        assert "?lang=en" in html
+
+    def test_zh_heading_zh(self):
+        html = render_dashboard_html({}, lang="zh")
+        assert "影子交易控制台" in html
+
+    def test_en_heading_en(self):
+        html = render_dashboard_html({}, lang="en")
+        assert "Shadow Trading Console" in html
+
+    def test_sample_warning_zh(self):
+        sc = {"global_metrics": {"sample_status": "INSUFFICIENT_CLOSED_SAMPLE"}, "strategy_scorecards": [{
+            "strategy_id": "t", "strategy_type": "t", "position_count": 1,
+            "open_count": 1, "closed_count": 0, "tp_count": 0, "sl_count": 0,
+            "timeout_count": 0, "win_rate": 0, "profit_factor": 0, "expectancy_r": 0,
+            "sample_status": "INSUFFICIENT_CLOSED_SAMPLE", "strategy_status": "OBSERVE_ONLY",
+            "strategy_score": 0,
+        }]}
+        html = render_dashboard_html({}, scorecard=sc, lang="zh")
+        assert "样本不足" in html
+
+    def test_sample_warning_en(self):
+        sc = {"global_metrics": {"sample_status": "INSUFFICIENT_CLOSED_SAMPLE"}, "strategy_scorecards": [{
+            "strategy_id": "t", "strategy_type": "t", "position_count": 1,
+            "open_count": 1, "closed_count": 0, "tp_count": 0, "sl_count": 0,
+            "timeout_count": 0, "win_rate": 0, "profit_factor": 0, "expectancy_r": 0,
+            "sample_status": "INSUFFICIENT_CLOSED_SAMPLE", "strategy_status": "OBSERVE_ONLY",
+            "strategy_score": 0,
+        }]}
+        html = render_dashboard_html({}, scorecard=sc, lang="en")
+        assert "Insufficient sample" in html
+
+    def test_no_cookies(self):
+        html = render_dashboard_html({})
+        assert "document.cookie" not in html
+        assert "localStorage" not in html
+        assert "sessionStorage" not in html
+
+    def test_no_sessions(self):
+        html = render_dashboard_html({})
+        assert "session" not in html.lower() or "PENDING_HUMAN_REVIEW" in html
+
+    def test_html_lang_attribute_zh(self):
+        html = render_dashboard_html({}, lang="zh")
+        assert '<html lang="zh">' in html
+
+    def test_html_lang_attribute_en(self):
+        html = render_dashboard_html({}, lang="en")
+        assert '<html lang="en">' in html
+
+    def test_status_values_not_translated(self):
+        html = render_dashboard_html({}, lang="zh")
+        assert "sample_status" in html
+        assert "testnet_gate_status" in html
+
+
+class TestUILayout:
+    def test_all_ui_text_keys_present(self):
+        zh_keys = set(UI_TEXT["zh"].keys())
+        en_keys = set(UI_TEXT["en"].keys())
+        assert zh_keys == en_keys, f"Mismatch: zh has {zh_keys - en_keys}, en has {en_keys - zh_keys}"

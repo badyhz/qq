@@ -26,6 +26,93 @@ REPORT_DIR_NAME = "reports"
 STRATEGIES_DIR = "strategies"
 ALLOWED_EXTENSIONS = {".json", ".md", ".csv", ".jsonl", ".txt"}
 
+SUPPORTED_LANGS = {"zh", "en"}
+
+UI_TEXT: dict[str, dict[str, str]] = {
+    "zh": {
+        "title": "影子交易控制台",
+        "section_status": "状态",
+        "section_actions": "操作",
+        "section_reports": "报告",
+        "section_positions": "纸面持仓",
+        "section_scorecard": "策略评分",
+        "section_gate": "样本门禁",
+        "section_recent_actions": "最近操作",
+        "section_switchboard": "策略开关",
+        "section_config_change": "策略配置变更草案",
+        "btn_lifecycle": "扫描新机会 + 更新持仓",
+        "btn_update_only": "只更新已有持仓",
+        "btn_sample_gate": "刷新样本门禁",
+        "btn_print_status": "打印当前状态",
+        "report_lifecycle": "最新生命周期结果",
+        "report_update": "最新更新结果",
+        "report_gate": "最新样本门禁",
+        "report_scorecard": "最新评分卡",
+        "next_action": "继续 shadow 收集。不要 testnet。不要 live。",
+        "next_action_ready": "样本已达到人工审查门槛。请人工审查策略表现后决定下一步。",
+        "sample_warning": "样本不足",
+        "sample_warning_detail": "继续 shadow，不允许 testnet/live。",
+        "gate_reasons": "门禁原因：",
+        "switchboard_notice": "只读视图。来源：config/strategies.yaml。网页不会修改策略配置。",
+        "config_change_notice": "变更请求模式。不会直接修改 config/strategies.yaml。提交后只生成审核文件。",
+        "form_strategy": "策略",
+        "form_enabled": "启用状态",
+        "form_symbols": "交易对（逗号分隔，留空=不变更）",
+        "form_timeframes": "时间框架（逗号分隔，留空=不变更）",
+        "form_reason": "原因（必填）",
+        "form_submit": "提交变更请求",
+        "result_draft_notice": "本文件只是变更草案，尚未修改 config/strategies.yaml。",
+        "no_positions": "暂无持仓数据。",
+        "no_scorecards": "暂无策略评分数据。",
+        "no_gate": "暂无样本门禁数据。",
+        "no_actions": "暂无控制台操作记录。",
+        "no_switchboard": "暂无策略配置。",
+        "safety_footer": "仅纸面 | 仅影子 | 仅本地 | 无订单 | 无测试网 | 无实盘 | 无密钥",
+        "lang_label": "语言",
+    },
+    "en": {
+        "title": "Shadow Trading Console",
+        "section_status": "Status",
+        "section_actions": "Actions",
+        "section_reports": "Reports",
+        "section_positions": "Paper Positions",
+        "section_scorecard": "Strategy Scorecard",
+        "section_gate": "Sample Gate",
+        "section_recent_actions": "Recent Actions",
+        "section_switchboard": "Strategy Switchboard",
+        "section_config_change": "Strategy Config Change Request",
+        "btn_lifecycle": "Scan New Opportunities + Update Positions",
+        "btn_update_only": "Update Existing Positions Only",
+        "btn_sample_gate": "Refresh Sample Gate",
+        "btn_print_status": "Print Current Status",
+        "report_lifecycle": "Latest Lifecycle Result",
+        "report_update": "Latest Update-Only Result",
+        "report_gate": "Latest Sample Gate",
+        "report_scorecard": "Latest Scorecard",
+        "next_action": "Next action: continue shadow collection. Do not enter testnet. Do not enter live.",
+        "next_action_ready": "Sample reached human review threshold. Review strategy performance before proceeding.",
+        "sample_warning": "Insufficient sample",
+        "sample_warning_detail": "Continue shadow collection. Testnet/live are not allowed.",
+        "gate_reasons": "Gate reasons:",
+        "switchboard_notice": "Read-only view. Source: config/strategies.yaml. The page does not modify strategy config.",
+        "config_change_notice": "Change request mode. Does not directly modify config/strategies.yaml. Only generates review files after submission.",
+        "form_strategy": "Strategy",
+        "form_enabled": "Requested Enabled",
+        "form_symbols": "Requested Symbols (comma separated, empty=no_change)",
+        "form_timeframes": "Requested Timeframes (comma separated, empty=no_change)",
+        "form_reason": "Reason (required)",
+        "form_submit": "Submit Change Request",
+        "result_draft_notice": "This file is only a draft. config/strategies.yaml has not been modified.",
+        "no_positions": "No positions found.",
+        "no_scorecards": "No strategy scorecards found.",
+        "no_gate": "No sample gate data found.",
+        "no_actions": "No web console actions yet.",
+        "no_switchboard": "No strategy config found.",
+        "safety_footer": "Paper-only | Shadow-only | Local-only | No order | No testnet | No live | No secret",
+        "lang_label": "Language",
+    },
+}
+
 ALLOWED_ACTIONS = {
     "run-lifecycle": {
         "label": "扫描新机会 + 更新持仓",
@@ -236,6 +323,19 @@ def _escape_html(text: str) -> str:
     return html_mod.escape(str(text))
 
 
+def normalize_lang(lang: str) -> str:
+    """Normalize language code. Falls back to 'zh' for invalid values."""
+    if not lang:
+        return "zh"
+    lang = lang.strip().lower()
+    return lang if lang in SUPPORTED_LANGS else "zh"
+
+
+def t(lang: str, key: str) -> str:
+    """Get translated text for a key in the given language."""
+    return UI_TEXT.get(lang, UI_TEXT["zh"]).get(key, key)
+
+
 def load_latest_positions(report_dir: str) -> list[dict]:
     """Load positions from latest quarantine JSON."""
     path = _find_latest(report_dir, "_paper_positions_quarantine.json")
@@ -305,10 +405,10 @@ def _position_sort_key(p: dict) -> tuple:
     return (order, 1 if excluded else 0)
 
 
-def render_positions_table(positions: list[dict], limit: int = 50) -> str:
+def render_positions_table(positions: list[dict], limit: int = 50, lang: str = "zh") -> str:
     """Render positions as HTML table."""
     if not positions:
-        return "<p>No positions found.</p>"
+        return f"<p>{t(lang, 'no_positions')}</p>"
 
     sorted_pos = sorted(positions, key=_position_sort_key)[:limit]
 
@@ -365,10 +465,10 @@ def render_positions_table(positions: list[dict], limit: int = 50) -> str:
     return cards + table
 
 
-def render_scorecard_table(scorecards: list[dict], sample_status: str = "") -> str:
+def render_scorecard_table(scorecards: list[dict], sample_status: str = "", lang: str = "zh") -> str:
     """Render strategy scorecards as HTML table."""
     if not scorecards:
-        return "<p>No strategy scorecards found.</p>"
+        return f"<p>{t(lang, 'no_scorecards')}</p>"
 
     rows = []
     for sc in scorecards:
@@ -403,15 +503,16 @@ def render_scorecard_table(scorecards: list[dict], sample_status: str = "") -> s
 
     warning = ""
     if sample_status == "INSUFFICIENT_CLOSED_SAMPLE":
-        warning = '<div class="next-action"><strong>样本不足</strong>，继续 shadow，不允许 testnet/live。</div>'
+        sep = "，" if lang == "zh" else ": "
+        warning = f'<div class="next-action"><strong>{t(lang, "sample_warning")}</strong>{sep}{t(lang, "sample_warning_detail")}</div>'
 
     return warning + table
 
 
-def render_sample_gate_card(gate: dict) -> str:
+def render_sample_gate_card(gate: dict, lang: str = "zh") -> str:
     """Render sample gate status card."""
     if not gate:
-        return "<p>No sample gate data found.</p>"
+        return f"<p>{t(lang, 'no_gate')}</p>"
 
     sample = gate.get("sample_status", "UNKNOWN")
     testnet = gate.get("testnet_gate_status", "UNKNOWN")
@@ -442,10 +543,10 @@ def render_sample_gate_card(gate: dict) -> str:
 {reasons_html}"""
 
 
-def render_recent_actions_table(actions: list[dict]) -> str:
+def render_recent_actions_table(actions: list[dict], lang: str = "zh") -> str:
     """Render recent actions as HTML table."""
     if not actions:
-        return "<p>No web console actions yet.</p>"
+        return f"<p>{t(lang, 'no_actions')}</p>"
 
     rows = []
     for a in reversed(actions):
@@ -522,10 +623,10 @@ def load_strategy_switchboard(config_path: str, scorecard: Optional[dict] = None
     return rows
 
 
-def render_strategy_switchboard_table(switchboard: list[dict]) -> str:
+def render_strategy_switchboard_table(switchboard: list[dict], lang: str = "zh") -> str:
     """Render strategy switchboard as read-only HTML table."""
     if not switchboard:
-        return "<p>No strategy config found.</p>"
+        return f"<p>{t(lang, 'no_switchboard')}</p>"
 
     rows = []
     for s in switchboard:
@@ -713,56 +814,61 @@ def _render_config_change_markdown(request: dict) -> str:
     return "\n".join(lines)
 
 
-def render_config_change_form(switchboard: list[dict]) -> str:
+def render_config_change_form(switchboard: list[dict], lang: str = "zh") -> str:
     """Render config change request form as HTML."""
     strategy_options = "".join(
         f'<option value="{_escape_html(s["strategy_id"])}">{_escape_html(s["strategy_id"])}</option>'
         for s in switchboard
     )
 
+    enable_label = "启用" if lang == "zh" else "Enable"
+    disable_label = "禁用" if lang == "zh" else "Disable"
+    no_change_label = "不变更" if lang == "zh" else "no_change"
+
     return f"""<div class="read-only-notice">
-  Change request 模式。不会直接修改 config/strategies.yaml。提交后只生成审核文件。
+  {t(lang, 'config_change_notice')}
 </div>
 <form id="config-change-form" onsubmit="submitConfigChange(event)">
   <div class="form-group">
-    <label for="strategy_id">Strategy</label>
+    <label for="strategy_id">{t(lang, 'form_strategy')}</label>
     <select id="strategy_id" name="strategy_id" required>
       {strategy_options}
     </select>
   </div>
   <div class="form-group">
-    <label for="requested_enabled">Requested Enabled</label>
+    <label for="requested_enabled">{t(lang, 'form_enabled')}</label>
     <select id="requested_enabled" name="requested_enabled">
-      <option value="no_change">no_change</option>
-      <option value="true">true (enable)</option>
-      <option value="false">false (disable)</option>
+      <option value="no_change">{no_change_label}</option>
+      <option value="true">true ({enable_label})</option>
+      <option value="false">false ({disable_label})</option>
     </select>
   </div>
   <div class="form-group">
-    <label for="requested_symbols">Requested Symbols (comma separated, empty=no_change)</label>
+    <label for="requested_symbols">{t(lang, 'form_symbols')}</label>
     <input type="text" id="requested_symbols" name="requested_symbols" placeholder="BTCUSDT, ETHUSDT">
   </div>
   <div class="form-group">
-    <label for="requested_timeframes">Requested Timeframes (comma separated, empty=no_change)</label>
+    <label for="requested_timeframes">{t(lang, 'form_timeframes')}</label>
     <input type="text" id="requested_timeframes" name="requested_timeframes" placeholder="15m, 1h">
   </div>
   <div class="form-group">
-    <label for="reason">Reason (required)</label>
+    <label for="reason">{t(lang, 'form_reason')}</label>
     <textarea id="reason" name="reason" rows="3" required maxlength="500"></textarea>
   </div>
-  <button type="submit" class="btn">Submit Change Request</button>
+  <button type="submit" class="btn">{t(lang, 'form_submit')}</button>
 </form>
 <div id="config-change-result" class="result"></div>"""
 
 
-def render_config_change_result(request: dict) -> str:
+def render_config_change_result(request: dict, lang: str = "zh") -> str:
     """Render config change request result as HTML."""
-    return f"""<div class="result-header pass">Request created: {_escape_html(request.get('request_id', ''))}</div>
+    created_label = "请求已创建" if lang == "zh" else "Request created"
+    return f"""<div class="result-header pass">{created_label}: {_escape_html(request.get('request_id', ''))}</div>
 <p>Status: {_escape_html(request.get('status', ''))}</p>
 <p>config_written: {request.get('config_written', False)}</p>
 <p>Strategy: {_escape_html(request.get('strategy_id', ''))}</p>
 <p>Requested enabled: {_escape_html(request.get('requested_enabled', ''))}</p>
-<p>本文件只是变更草案，尚未修改 config/strategies.yaml。</p>"""
+<p>{t(lang, 'result_draft_notice')}</p>"""
 
 
 def render_dashboard_html(
@@ -773,8 +879,10 @@ def render_dashboard_html(
     recent_actions: Optional[list[dict]] = None,
     strategy_switchboard: Optional[list[dict]] = None,
     config_change_result: Optional[str] = None,
+    lang: str = "zh",
 ) -> str:
     """Render dashboard HTML."""
+    lang = normalize_lang(lang)
     sample = status.get("sample_status", "UNKNOWN")
     gate = status.get("testnet_gate_status", "UNKNOWN")
     clean = status.get("clean_positions", "N/A")
@@ -794,31 +902,35 @@ def render_dashboard_html(
     reasons = status.get("gate_reasons", [])
     if reasons:
         items = "".join(f"<li>{_escape_html(r)}</li>" for r in reasons)
-        reasons_html = f"<p>Gate reasons:</p><ul>{items}</ul>"
+        reasons_html = f"<p>{t(lang, 'gate_reasons')}</p><ul>{items}</ul>"
 
     # Data sections
-    positions_html = render_positions_table(positions or [])
+    positions_html = render_positions_table(positions or [], lang=lang)
     sc_data = scorecard or {}
     scorecard_html = render_scorecard_table(
         sc_data.get("strategy_scorecards", []),
         sample_status=sc_data.get("global_metrics", {}).get("sample_status", sample),
+        lang=lang,
     )
-    sample_gate_html = render_sample_gate_card(sample_gate or {})
-    recent_actions_html = render_recent_actions_table(recent_actions or [])
-    switchboard_html = render_strategy_switchboard_table(strategy_switchboard or [])
-    config_form_html = render_config_change_form(strategy_switchboard or [])
+    sample_gate_html = render_sample_gate_card(sample_gate or {}, lang=lang)
+    recent_actions_html = render_recent_actions_table(recent_actions or [], lang=lang)
+    switchboard_html = render_strategy_switchboard_table(strategy_switchboard or [], lang=lang)
+    config_form_html = render_config_change_form(strategy_switchboard or [], lang=lang)
     config_result_html = config_change_result or ""
 
     # Next action hint
-    next_action = "继续 shadow collection。不要 testnet。不要 live。"
+    next_action = t(lang, "next_action")
     if gate == "PAPER_SAMPLE_READY_FOR_HUMAN_REVIEW":
-        next_action = "样本已达到人工审查门槛。请人工审查策略表现后决定下一步。"
+        next_action = t(lang, "next_action_ready")
+
+    # Language switcher
+    lang_links = '<div class="lang-switch"><a href="?lang=zh"' + (' class="active"' if lang == "zh" else '') + '>中文</a> | <a href="?lang=en"' + (' class="active"' if lang == "en" else '') + '>English</a></div>'
 
     html = f"""<!DOCTYPE html>
-<html lang="zh">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
-<title>Shadow Trading Console</title>
+<title>{t(lang, 'title')}</title>
 <style>
   body {{ font-family: -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #1a1a2e; color: #e0e0e0; }}
   h1 {{ color: #00d4ff; }}
@@ -867,6 +979,10 @@ def render_dashboard_html(
   .table-wrap {{ max-height: 400px; overflow-y: auto; margin: 10px 0; }}
   .read-only-notice {{ background: #0f3460; border: 1px solid #00d4ff; border-radius: 6px;
                        padding: 8px 12px; margin: 10px 0; color: #00d4ff; font-size: 0.9em; }}
+  .lang-switch {{ position: fixed; top: 10px; right: 20px; font-size: 0.9em; z-index: 100; }}
+  .lang-switch a {{ color: #888; text-decoration: none; padding: 4px 8px; border-radius: 4px; }}
+  .lang-switch a:hover {{ color: #00d4ff; }}
+  .lang-switch a.active {{ color: #00d4ff; background: #0f3460; }}
   .form-group {{ margin: 10px 0; }}
   .form-group label {{ display: block; color: #888; font-size: 0.85em; margin-bottom: 4px; }}
   .form-group input, .form-group select, .form-group textarea {{
@@ -881,9 +997,10 @@ def render_dashboard_html(
 </style>
 </head>
 <body>
-<h1>Shadow Trading Console</h1>
+{lang_links}
+<h1>{t(lang, 'title')}</h1>
 
-<h2>Status</h2>
+<h2>{t(lang, 'section_status')}</h2>
 <div class="status-grid">
   <div class="status-item">
     <div class="status-label">sample_status</div>
@@ -925,54 +1042,54 @@ def render_dashboard_html(
   <strong>Next action:</strong> {next_action}
 </div>
 
-<h2>Actions</h2>
+<h2>{t(lang, 'section_actions')}</h2>
 <div class="btn-row">
-  <button class="btn" onclick="runAction('run-lifecycle')">扫描新机会 + 更新持仓</button>
-  <button class="btn" onclick="runAction('run-update-only')">只更新已有持仓</button>
-  <button class="btn" onclick="runAction('run-sample-gate')">刷新样本门禁</button>
-  <button class="btn" onclick="runAction('print-status')">打印当前状态</button>
+  <button class="btn" onclick="runAction('run-lifecycle')">{t(lang, 'btn_lifecycle')}</button>
+  <button class="btn" onclick="runAction('run-update-only')">{t(lang, 'btn_update_only')}</button>
+  <button class="btn" onclick="runAction('run-sample-gate')">{t(lang, 'btn_sample_gate')}</button>
+  <button class="btn" onclick="runAction('print-status')">{t(lang, 'btn_print_status')}</button>
 </div>
 <div id="action-result" class="result"></div>
 
-<h2>Reports</h2>
+<h2>{t(lang, 'section_reports')}</h2>
 <ul class="report-list">
-  <li><a href="#" onclick="loadReport('latest_lifecycle'); return false;">Latest Lifecycle Result</a></li>
-  <li><a href="#" onclick="loadReport('latest_update'); return false;">Latest Update-Only Result</a></li>
-  <li><a href="#" onclick="loadReport('latest_gate'); return false;">Latest Sample Gate</a></li>
-  <li><a href="#" onclick="loadReport('latest_scorecard'); return false;">Latest Scorecard</a></li>
+  <li><a href="#" onclick="loadReport('latest_lifecycle'); return false;">{t(lang, 'report_lifecycle')}</a></li>
+  <li><a href="#" onclick="loadReport('latest_update'); return false;">{t(lang, 'report_update')}</a></li>
+  <li><a href="#" onclick="loadReport('latest_gate'); return false;">{t(lang, 'report_gate')}</a></li>
+  <li><a href="#" onclick="loadReport('latest_scorecard'); return false;">{t(lang, 'report_scorecard')}</a></li>
 </ul>
 <div id="report-content" class="report-content"></div>
 
-<h2>Paper Positions</h2>
+<h2>{t(lang, 'section_positions')}</h2>
 <div class="table-wrap">
 {positions_html}
 </div>
 
-<h2>Strategy Scorecard</h2>
+<h2>{t(lang, 'section_scorecard')}</h2>
 <div class="table-wrap">
 {scorecard_html}
 </div>
 
-<h2>Sample Gate</h2>
+<h2>{t(lang, 'section_gate')}</h2>
 {sample_gate_html}
 
-<h2>Recent Actions</h2>
+<h2>{t(lang, 'section_recent_actions')}</h2>
 <div class="table-wrap">
 {recent_actions_html}
 </div>
 
-<h2>Strategy Switchboard</h2>
-<div class="read-only-notice">Read-only view. Source: config/strategies.yaml. 网页不会修改策略配置。</div>
+<h2>{t(lang, 'section_switchboard')}</h2>
+<div class="read-only-notice">{t(lang, 'switchboard_notice')}</div>
 <div class="table-wrap">
 {switchboard_html}
 </div>
 
-<h2>Strategy Config Change Request</h2>
+<h2>{t(lang, 'section_config_change')}</h2>
 {config_result_html}
 {config_form_html}
 
 <div class="safety">
-  Paper-only | Shadow-only | Local-only | No order | No testnet | No live | No secret
+  {t(lang, 'safety_footer')}
 </div>
 
 <script>
