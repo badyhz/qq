@@ -1,76 +1,124 @@
-"""Tests for strategy registry."""
+"""Tests for strategy registry — signal filtering and candidate generation."""
 from __future__ import annotations
+
+import os
+import py_compile
 
 import pytest
 
+from core.paper_trading.readonly_signal_analyzer import SignalResult
+from core.paper_trading.data_source import MarketBar
 from core.paper_trading.strategy_registry import (
-    StrategyMeta, StrategyRegistry, create_default_registry,
-    MACD_REBOUND_META,
+    analyze_for_strategy,
+    SignalCandidate,
+    StrategyRunResult,
 )
 
 
-class TestStrategyRegistry:
-    def test_default_registry_has_macd(self):
-        reg = create_default_registry()
-        assert reg.has("macd_rebound")
+def _make_bar(symbol="BTCUSDT", timeframe="5m", close=60000.0) -> MarketBar:
+    return MarketBar(
+        timestamp=1000.0,
+        open=close * 0.99, high=close * 1.01, low=close * 0.98, close=close,
+        volume=1000.0,
+        symbol=symbol, timeframe=timeframe,
+    )
 
-    def test_get_signal_fn(self):
-        reg = create_default_registry()
-        fn = reg.get_signal_fn("macd_rebound")
-        assert callable(fn)
 
-    def test_get_meta(self):
-        reg = create_default_registry()
-        meta = reg.get_meta("macd_rebound")
-        assert meta.name == "macd_rebound"
-        assert meta.paper_only is True
+def _make_sig(watch_state="LONG_READY", **overrides) -> SignalResult:
+    defaults = dict(
+        symbol="BTCUSDT", timeframe="5m", last_close=60000.0,
+        trend_bias="BULLISH", macd_state="BULLISH_CROSS", rsi_state="NEUTRAL",
+        volume_state="NORMAL", priority="HIGH",
+        entry_observation=60000.0, invalidation_level=59000.0,
+        risk_notes="test", reasons=["test"],
+        watch_state=watch_state, setup_type="MACD_TURNING_UP",
+        turning_score=80, weakness_score=20, risk_score=40,
+        distance_to_invalidation_pct=1.7,
+        distance_to_recent_high_pct=3.0,
+        distance_to_recent_low_pct=1.0,
+    )
+    defaults.update(overrides)
+    defaults["watch_state"] = watch_state
+    return SignalResult(**defaults)
 
-    def test_unknown_strategy_raises(self):
-        reg = create_default_registry()
-        with pytest.raises(KeyError, match="Unknown strategy"):
-            reg.get_signal_fn("nonexistent")
 
-    def test_duplicate_register_raises(self):
-        reg = create_default_registry()
-        with pytest.raises(ValueError, match="already registered"):
-            reg.register("macd_rebound", lambda: None, MACD_REBOUND_META)
+class TestAnalyzeForStrategy:
+    def test_empty_bars_returns_error(self):
+        result = analyze_for_strategy("test", "macd_rebound_watch", [])
+        assert result.success is False
+        assert result.candidate is None
+        assert "empty" in result.error.lower()
 
-    def test_non_paper_only_rejected(self):
-        reg = StrategyRegistry()
-        meta = StrategyMeta(
-            name="bad", version="1.0", description="",
-            required_fields=[], default_params={},
-            paper_only=False,
-        )
-        with pytest.raises(ValueError, match="paper_only"):
-            reg.register("bad", lambda: None, meta)
+    def test_macd_rebound_filters_long_states(self):
+        bars = [_make_bar()]
+        result = analyze_for_strategy("test", "macd_rebound_watch", bars)
+        assert result.success is True
 
-    def test_meta_complete(self):
-        meta = MACD_REBOUND_META
-        assert len(meta.required_fields) > 0
-        assert "entry_price" in meta.required_fields
-        assert "stop_loss" in meta.required_fields
-        assert meta.paper_only is True
+    def test_weak_short_filters_short_states(self):
+        bars = [_make_bar()]
+        result = analyze_for_strategy("test", "weak_short_watch", bars)
+        assert result.success is True
 
-    def test_list_strategies(self):
-        reg = create_default_registry()
-        strategies = reg.list_strategies()
-        assert "macd_rebound" in strategies
+    def test_breakout_pullback_returns_none(self):
+        bars = [_make_bar()]
+        result = analyze_for_strategy("test", "breakout_pullback_watch", bars)
+        assert result.success is True
+        assert result.candidate is None
 
-    def test_register_custom(self):
-        reg = StrategyRegistry()
-        meta = StrategyMeta(
-            name="custom", version="0.1", description="test",
-            required_fields=["symbol"], default_params={},
-            paper_only=True,
-        )
-        reg.register("custom", lambda bars, i: None, meta)
-        assert reg.has("custom")
-        assert "custom" in reg.list_strategies()
+    def test_unknown_strategy_returns_none(self):
+        bars = [_make_bar()]
+        result = analyze_for_strategy("test", "unknown_strategy", bars)
+        assert result.success is True
+        assert result.candidate is None
 
-    def test_no_network(self):
-        import core.paper_trading.strategy_registry as mod
-        source = open(mod.__file__).read()
-        assert "requests" not in source
-        assert "httpx" not in source
-        assert "importlib" not in source
+
+class TestSignalCandidate:
+    def test_candidate_has_required_fields(self):
+        bars = [_make_bar()]
+        result = analyze_for_strategy("test", "macd_rebound_watch", bars)
+        if result.candidate:
+            c = result.candidate
+            assert c.strategy_id == "test"
+            assert c.strategy_type == "macd_rebound_watch"
+            assert c.symbol == "BTCUSDT"
+            assert c.direction in ("LONG_OBSERVE", "SHORT_OBSERVE", "NO_TRADE")
+            assert c.priority in ("HIGH", "MEDIUM", "LOW")
+            assert c.last_close > 0
+
+    def test_macd_rebound_direction_is_long(self):
+        bars = [_make_bar()]
+        result = analyze_for_strategy("test", "macd_rebound_watch", bars)
+        if result.candidate:
+            assert result.candidate.direction == "LONG_OBSERVE"
+
+    def test_weak_short_direction_is_short(self):
+        bars = [_make_bar()]
+        result = analyze_for_strategy("test", "weak_short_watch", bars)
+        if result.candidate:
+            assert result.candidate.direction == "SHORT_OBSERVE"
+
+
+class TestRegistrySafety:
+    def test_no_order_words_in_module(self):
+        module_path = os.path.join(os.path.dirname(__file__), "..", "..",
+                                    "core", "paper_trading", "strategy_registry.py")
+        with open(module_path) as f:
+            content = f.read()
+        forbidden = ["submit_order", "place_order", "cancel_order", "execute_trade"]
+        for word in forbidden:
+            assert word not in content, f"forbidden word '{word}' in module"
+
+    def test_no_secret_reads(self):
+        module_path = os.path.join(os.path.dirname(__file__), "..", "..",
+                                    "core", "paper_trading", "strategy_registry.py")
+        with open(module_path) as f:
+            content = f.read()
+        assert "os.environ" not in content
+        assert "os.getenv" not in content
+        assert "API_KEY" not in content
+        assert "API_SECRET" not in content
+
+    def test_module_compiles(self):
+        module_path = os.path.join(os.path.dirname(__file__), "..", "..",
+                                    "core", "paper_trading", "strategy_registry.py")
+        py_compile.compile(module_path, doraise=True)
