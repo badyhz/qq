@@ -75,7 +75,8 @@ class TestPhase10C1Script:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         assert hasattr(mod, "SAFETY_FLAGS")
-        for flag in ["NO_SECRET", "NO_ORDER", "NO_TESTNET", "NO_LIVE", "NO_WEBSOCKET"]:
+        for flag in ["PAPER_ONLY", "NO_SECRET", "NO_ORDER", "NO_REAL_ORDER",
+                     "NO_TESTNET", "NO_LIVE", "NO_WEBSOCKET"]:
             assert flag in mod.SAFETY_FLAGS
 
     def test_has_main_function(self):
