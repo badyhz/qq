@@ -6,6 +6,7 @@ Two modes:
 
 Future-only lifecycle: only bars after opened_bar_time can trigger TP/SL.
 Same-intent dedup: no duplicate positions for the same intent_id.
+Open position overlap guard: no duplicate OPEN for same strategy+symbol+tf+side.
 Closed positions are never reopened.
 
 No orders, no accounts, no secrets, no testnet, no live.
@@ -69,11 +70,14 @@ def simulate_intent_only(
     """
     existing = existing_positions or []
     existing_intent_ids = {p.get("intent_id") for p in existing}
+    overlap_keys = _build_overlap_keys(existing)
 
     positions: list[dict[str, Any]] = []
     new_count = 0
     deduped = 0
     invalid_count = 0
+    skipped_overlap = 0
+    skipped_overlap_details: list[dict[str, Any]] = []
 
     for intent in intents:
         intent_id = intent.get("intent_id", "")
@@ -81,6 +85,20 @@ def simulate_intent_only(
         # Dedup: skip if already have a position for this intent
         if intent_id in existing_intent_ids:
             deduped += 1
+            continue
+
+        # Overlap guard: skip if same strategy+symbol+tf+side OPEN exists
+        okey = _intent_overlap_key(intent)
+        if okey in overlap_keys:
+            skipped_overlap += 1
+            skipped_overlap_details.append({
+                "intent_id": intent_id,
+                "strategy_id": intent.get("strategy_id", ""),
+                "symbol": intent.get("symbol", ""),
+                "timeframe": intent.get("timeframe", ""),
+                "side": intent.get("side", ""),
+                "reason": "existing_open_position_overlap",
+            })
             continue
 
         pos = open_position(intent, paper_equity)
@@ -113,6 +131,10 @@ def simulate_intent_only(
             "positions_updated_count": 0,
             "positions_skipped_no_future_bars": 0,
             "positions_skipped_newly_opened": 0,
+            "positions_skipped_overlap_open": skipped_overlap,
+            "skipped_overlap_intents": skipped_overlap_details,
+            "overlap_guard_enabled": True,
+            "overlap_keys_count": len(overlap_keys),
             "future_only": True,
             "allow_update_newly_opened": False,
         },
@@ -138,17 +160,34 @@ def simulate_with_klines(
     """
     existing = existing_positions or []
     existing_intent_ids = {p.get("intent_id") for p in existing}
+    overlap_keys = _build_overlap_keys(existing)
     newly_opened = newly_opened_ids or set()
 
     new_positions: list[dict[str, Any]] = []
     deduped = 0
     invalid_count = 0
+    skipped_overlap = 0
+    skipped_overlap_details: list[dict[str, Any]] = []
 
     # Open new positions from intents
     for intent in intents:
         intent_id = intent.get("intent_id", "")
         if intent_id in existing_intent_ids:
             deduped += 1
+            continue
+
+        # Overlap guard: skip if same strategy+symbol+tf+side OPEN exists
+        okey = _intent_overlap_key(intent)
+        if okey in overlap_keys:
+            skipped_overlap += 1
+            skipped_overlap_details.append({
+                "intent_id": intent_id,
+                "strategy_id": intent.get("strategy_id", ""),
+                "symbol": intent.get("symbol", ""),
+                "timeframe": intent.get("timeframe", ""),
+                "side": intent.get("side", ""),
+                "reason": "existing_open_position_overlap",
+            })
             continue
 
         pos = open_position(intent, paper_equity)
@@ -235,6 +274,10 @@ def simulate_with_klines(
             "positions_updated_count": updated_count,
             "positions_skipped_no_future_bars": skipped_no_future,
             "positions_skipped_newly_opened": skipped_newly,
+            "positions_skipped_overlap_open": skipped_overlap,
+            "skipped_overlap_intents": skipped_overlap_details,
+            "overlap_guard_enabled": True,
+            "overlap_keys_count": len(overlap_keys),
             "future_only": future_only,
             "allow_update_newly_opened": allow_update_newly_opened,
         },
@@ -402,3 +445,18 @@ POSITION_SAFETY_FLAGS = [
     "NO_ACCOUNT", "NO_SECRET", "NO_TESTNET", "NO_LIVE",
     "NO_WEBSOCKET", "NO_WEBHOOK_SEND", "POSITION_SIMULATION_ONLY",
 ]
+
+
+def _build_overlap_keys(positions: list[dict[str, Any]]) -> set[str]:
+    """Build set of overlap keys from OPEN positions."""
+    keys = set()
+    for p in positions:
+        if p.get("status", "OPEN") == "OPEN":
+            key = f"{p.get('strategy_id', '')}|{p.get('symbol', '')}|{p.get('timeframe', '')}|{p.get('side', '')}"
+            keys.add(key)
+    return keys
+
+
+def _intent_overlap_key(intent: dict[str, Any]) -> str:
+    """Build overlap key from an intent."""
+    return f"{intent.get('strategy_id', '')}|{intent.get('symbol', '')}|{intent.get('timeframe', '')}|{intent.get('side', '')}"

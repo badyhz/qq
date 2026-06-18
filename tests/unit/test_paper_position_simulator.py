@@ -293,6 +293,84 @@ class TestCalcPnl:
         assert _calc_pnl("SHORT", 100, 110, 1) == -10.0
 
 
+class TestOverlapGuard:
+    def test_same_key_blocks_new_position(self):
+        """Same strategy+symbol+tf+side OPEN blocks new position."""
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        assert r1.position_count == 1
+        # Second run with same intent (different intent_id) should be blocked
+        intent2 = _make_intent(intent_id="TI_overlap")
+        r2 = simulate_intent_only([intent2], "2026-06-18", existing_positions=r1.positions)
+        assert r2.position_count == 1  # no new position
+        assert r2.lifecycle_stats["positions_skipped_overlap_open"] == 1
+
+    def test_closed_position_does_not_block(self):
+        """Closed position does not block new position with same key."""
+        pos = open_position(_make_intent())
+        pos_dict = pos.to_dict()
+        pos_dict["status"] = "STOP_LOSS_HIT"
+        intent2 = _make_intent(intent_id="TI_new_after_close")
+        r = simulate_intent_only([intent2], "2026-06-18", existing_positions=[pos_dict])
+        assert r.position_count == 2  # existing closed + new
+        assert r.lifecycle_stats["positions_skipped_overlap_open"] == 0
+
+    def test_different_timeframe_allowed(self):
+        """Different timeframe does not block."""
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        intent2 = _make_intent(intent_id="TI_diff_tf", timeframe="1h")
+        r2 = simulate_intent_only([intent2], "2026-06-18", existing_positions=r1.positions)
+        assert r2.position_count == 2
+        assert r2.lifecycle_stats["positions_skipped_overlap_open"] == 0
+
+    def test_different_side_allowed(self):
+        """Different side does not block."""
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        intent2 = _make_long_intent(intent_id="TI_diff_side")
+        r2 = simulate_intent_only([intent2], "2026-06-18", existing_positions=r1.positions)
+        assert r2.position_count == 2
+        assert r2.lifecycle_stats["positions_skipped_overlap_open"] == 0
+
+    def test_different_strategy_allowed(self):
+        """Different strategy_id does not block."""
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        intent2 = _make_intent(intent_id="TI_diff_strat", strategy_id="other_strategy")
+        r2 = simulate_intent_only([intent2], "2026-06-18", existing_positions=r1.positions)
+        assert r2.position_count == 2
+        assert r2.lifecycle_stats["positions_skipped_overlap_open"] == 0
+
+    def test_overlap_with_klines(self):
+        """Overlap guard works in simulate_with_klines too."""
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        intent2 = _make_intent(intent_id="TI_overlap_kl")
+        bars_map = {"XRPUSDT_15m": [_make_bar("XRPUSDT", "15m", 1.15, 1.16, 1.13, 1.14, timestamp=9999)]}
+        r2 = simulate_with_klines(
+            [intent2], bars_map, "2026-06-18",
+            existing_positions=r1.positions,
+        )
+        assert r2.position_count == 1
+        assert r2.lifecycle_stats["positions_skipped_overlap_open"] == 1
+
+    def test_overlap_skip_details(self):
+        """Skipped overlap intents contain metadata."""
+        r1 = simulate_intent_only([_make_intent()], "2026-06-18")
+        intent2 = _make_intent(intent_id="TI_detail")
+        r2 = simulate_intent_only([intent2], "2026-06-18", existing_positions=r1.positions)
+        details = r2.lifecycle_stats["skipped_overlap_intents"]
+        assert len(details) == 1
+        assert details[0]["intent_id"] == "TI_detail"
+        assert details[0]["reason"] == "existing_open_position_overlap"
+
+    def test_overlap_guard_enabled_flag(self):
+        r = simulate_intent_only([], "2026-06-18")
+        assert r.lifecycle_stats["overlap_guard_enabled"] is True
+
+    def test_overlap_keys_count(self):
+        r1 = simulate_intent_only([_make_intent(), _make_long_intent()], "2026-06-18")
+        assert r1.lifecycle_stats["overlap_keys_count"] == 0  # no existing
+        r2 = simulate_intent_only([], "2026-06-18", existing_positions=r1.positions)
+        assert r2.lifecycle_stats["overlap_keys_count"] == 2
+
+
 class TestNoForbiddenPatterns:
     def test_no_order_words(self):
         with open(MODULE_PATH) as f:
