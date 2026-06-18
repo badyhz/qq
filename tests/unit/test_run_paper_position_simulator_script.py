@@ -111,3 +111,13 @@ class TestScriptStructure:
             content = f.read()
         assert "actually_executed" in content
         assert "dry_run_only" in content
+
+    def test_overlap_guard_in_markdown(self):
+        with open(SCRIPT) as f:
+            content = f.read()
+        assert "overlap" in content.lower()
+
+    def test_overlap_guard_in_console(self):
+        with open(SCRIPT) as f:
+            content = f.read()
+        assert "overlap" in content.lower()

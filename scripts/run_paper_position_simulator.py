@@ -98,10 +98,13 @@ def render_markdown(result: dict) -> str:
         f"- positions updated: {lc.get('positions_updated_count', 0)}",
         f"- skipped (no future bars): {lc.get('positions_skipped_no_future_bars', 0)}",
         f"- skipped (newly opened): {lc.get('positions_skipped_newly_opened', 0)}",
+        f"- skipped (overlap open): {lc.get('positions_skipped_overlap_open', 0)}",
+        f"- overlap guard: {lc.get('overlap_guard_enabled', False)}",
         "",
         "newly opened positions are not updated until next run",
         "duplicate intents are ignored",
         "closed positions are not reopened",
+        "existing OPEN position blocks same strategy/symbol/timeframe/side",
         "",
     ]
 
@@ -301,6 +304,8 @@ def main():
     print(f"Updated: {lc.get('positions_updated_count', 0)}")
     print(f"Skipped (no future bars): {lc.get('positions_skipped_no_future_bars', 0)}")
     print(f"Skipped (newly opened): {lc.get('positions_skipped_newly_opened', 0)}")
+    print(f"Skipped (overlap open): {lc.get('positions_skipped_overlap_open', 0)}")
+    print(f"Overlap guard: {lc.get('overlap_guard_enabled', False)}")
     return 0
 
 
