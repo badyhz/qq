@@ -145,14 +145,15 @@ def _filter_weak_short(strategy_id: str, strategy_type: str, sig: SignalResult) 
     if ws not in ("SHORT_WATCH", "WEAK_AVOID"):
         return None
 
-    # Calculate TP as 2x risk below entry
+    # SHORT: SL above entry, TP below entry
     entry = sig.entry_observation if sig.entry_observation > 0 else sig.last_close
-    invalidation = sig.invalidation_level if sig.invalidation_level > 0 else entry * 1.02
+    atr = sig.atr_value if sig.atr_value > 0 else entry * 0.03
+    invalidation = entry + atr * 1.5  # SL above entry for SHORT
     risk = abs(invalidation - entry)
-    tp = entry - risk * 2.0 if invalidation > entry else 0.0
-    rr = 2.0 if risk > 0 and tp > 0 else 0.0
+    tp = entry - risk * 2.0  # TP below entry for SHORT
+    rr = 2.0 if risk > 0 else 0.0
     risk_dist = risk / entry * 100 if entry > 0 else 0.0
-    reward_dist = abs(tp - entry) / entry * 100 if entry > 0 and tp > 0 else 0.0
+    reward_dist = abs(tp - entry) / entry * 100 if entry > 0 else 0.0
 
     priority = "HIGH" if ws == "SHORT_WATCH" and sig.weakness_score >= 60 else "MEDIUM"
 

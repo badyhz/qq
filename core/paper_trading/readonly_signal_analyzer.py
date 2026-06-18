@@ -30,6 +30,7 @@ class SignalResult:
     distance_to_invalidation_pct: float = 0.0
     distance_to_recent_high_pct: float = 0.0
     distance_to_recent_low_pct: float = 0.0
+    atr_value: float = 0.0
 
 
 def _ema(values: List[float], period: int) -> List[Optional[float]]:
@@ -276,6 +277,7 @@ def analyze_bars(bars: List[MarketBar]) -> Optional[SignalResult]:
         distance_to_invalidation_pct=round(dist_inv_pct, 2),
         distance_to_recent_high_pct=round(dist_high_pct, 2),
         distance_to_recent_low_pct=round(dist_low_pct, 2),
+        atr_value=round(atr_val, 8),
     )
 
 
