@@ -154,9 +154,10 @@ def evaluate_shadow_gate(ledger: ShadowLedger) -> ShadowGateResult:
 
     # No distinguishability => FAIL
     if high_count >= 5 and medium_count >= 5:
-        if abs(high_expectancy - medium_expectancy) < 0.01 * abs(medium_expectancy):
-            decision = "FAIL"
-            reasons.append("HIGH/MEDIUM no distinguishability")
+        if high_expectancy is not None and medium_expectancy is not None:
+            if abs(high_expectancy - medium_expectancy) < 0.01 * abs(medium_expectancy):
+                decision = "FAIL"
+                reasons.append("HIGH/MEDIUM no distinguishability")
 
     if not reasons:
         reasons.append("All criteria met")
