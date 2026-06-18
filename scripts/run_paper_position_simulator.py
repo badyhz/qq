@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.paper_trading.paper_position import dict_to_position, CLOSED_STATUSES
 from core.paper_trading.paper_position_simulator import (
     simulate_intent_only, simulate_with_klines,
+    simulate_existing_positions_update_only,
 )
 from core.paper_trading.data_source import DataSourceConfig
 from core.paper_trading.public_market_adapter import BinancePublicKlineAdapter
@@ -184,6 +185,7 @@ def main():
     parser.add_argument("--paper-equity-preview", type=float, default=10000.0)
     parser.add_argument("--future-only", action="store_true", default=True)
     parser.add_argument("--allow-update-newly-opened", action="store_true", default=False)
+    parser.add_argument("--update-existing-only", action="store_true", default=False)
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
@@ -208,16 +210,20 @@ def main():
     print(f"Existing positions: {len(existing)}")
 
     if args.allow_public_http and args.update_with_klines:
-        print("Mode: public_readonly_update (future_only)")
+        if args.update_existing_only:
+            print("Mode: update_existing_only (future_only)")
+        else:
+            print("Mode: public_readonly_update (future_only)")
         config = DataSourceConfig(mode="snapshot", network_enabled=True)
         adapter = BinancePublicKlineAdapter(config)
 
         # Collect unique symbol/timeframe from intents + existing positions
         unique_keys: set = set()
-        for intent in shadow_intents:
-            sym = intent.get("symbol", "")
-            tf = intent.get("timeframe", "")
-            unique_keys.add(f"{sym}_{tf}")
+        if not args.update_existing_only:
+            for intent in shadow_intents:
+                sym = intent.get("symbol", "")
+                tf = intent.get("timeframe", "")
+                unique_keys.add(f"{sym}_{tf}")
         for pos in existing:
             if pos.get("status") not in CLOSED_STATUSES:
                 sym = pos.get("symbol", "")
@@ -236,13 +242,27 @@ def main():
                 print(f"ERROR: {e}")
             time.sleep(0.3)
 
-        result = simulate_with_klines(
-            shadow_intents, bars_by_key, date_str,
-            existing_positions=existing,
-            paper_equity=args.paper_equity_preview,
+        if args.update_existing_only:
+            result = simulate_existing_positions_update_only(
+                existing, bars_by_key, date_str,
+                timeout_bars=args.timeout_bars,
+                future_only=args.future_only,
+            )
+        else:
+            result = simulate_with_klines(
+                shadow_intents, bars_by_key, date_str,
+                existing_positions=existing,
+                paper_equity=args.paper_equity_preview,
+                timeout_bars=args.timeout_bars,
+                future_only=args.future_only,
+                allow_update_newly_opened=args.allow_update_newly_opened,
+            )
+    elif args.update_existing_only:
+        print("Mode: update_existing_only (offline, no klines)")
+        result = simulate_existing_positions_update_only(
+            existing, {}, date_str,
             timeout_bars=args.timeout_bars,
             future_only=args.future_only,
-            allow_update_newly_opened=args.allow_update_newly_opened,
         )
     else:
         print("Mode: intent_only")

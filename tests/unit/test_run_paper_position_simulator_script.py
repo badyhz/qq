@@ -37,6 +37,11 @@ class TestScriptStructure:
             content = f.read()
         assert "--update-with-klines" in content
 
+    def test_has_update_existing_only(self):
+        with open(SCRIPT) as f:
+            content = f.read()
+        assert "--update-existing-only" in content
+
     def test_has_timeout_bars(self):
         with open(SCRIPT) as f:
             content = f.read()
