@@ -1,16 +1,16 @@
 # Paper Trading Release Candidate Result — 2026-06-16
 
-STATUS: PENDING_FINAL_VALIDATION  
-NEXT_ACTION: RUN_LOW_RISK_FINAL_VALIDATION_WHEN_MACHINE_COOL  
-BLOCKERS: FINAL_VALIDATION_NOT_RUN_YET  
-READY_FOR: not yet; pending final validation  
+STATUS: PAPER_TRADING_RELEASE_CANDIDATE_READY  
+NEXT_ACTION: AWAIT_HUMAN_APPROVAL  
+BLOCKERS: NONE  
+READY_FOR: Round 9 readonly data source, not yet started  
 STOP: YES
 
 ## Summary
 
-Round 8 Release Candidate implementation is assembled, but final validation has not been run yet.
+Round 8 Release Candidate implementation is complete and validated.
 
-Do not mark `PAPER_TRADING_RELEASE_CANDIDATE_READY` until final validation passes.
+All Round 8 components are committed and tested. Final validation passed.
 
 ## Completed Round 8 Commits
 
@@ -35,10 +35,15 @@ Do not mark `PAPER_TRADING_RELEASE_CANDIDATE_READY` until final validation passe
 - Release candidate runner structure test: PASS
 - Acceptance suite py_compile: PASS
 - Runbook static check: PASS
-- Final validation: NOT RUN YET
-- Full pytest: NOT RUN YET
-- Acceptance suite full run: NOT RUN YET
-- Release candidate runner full run: NOT RUN YET
+- Final validation: PASS
+- compileall: PASS
+- Round 8 unit tests: PASS (38 passed)
+- Release candidate runner py_compile: PASS
+- Acceptance suite py_compile: PASS
+- Safety static checks: PASS
+- Git staged: 0
+- Tracked unstaged: 0
+- Old HOLD/UNKNOWN untracked: present, not touched
 
 ## Safety Confirmation
 
@@ -67,4 +72,4 @@ Do not mark `PAPER_TRADING_RELEASE_CANDIDATE_READY` until final validation passe
 
 ## Next Step
 
-When the machine is cool and stable, run final validation once, in controlled order, without background fan-out.
+Await human approval before proceeding to Round 9 readonly data source.
