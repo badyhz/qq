@@ -468,12 +468,108 @@ def render_recent_actions_table(actions: list[dict]) -> str:
 </tbody></table>"""
 
 
+def load_strategy_config(config_path: str) -> Optional[dict]:
+    """Load strategy config from YAML file. Read-only."""
+    if not os.path.isfile(config_path):
+        return None
+    try:
+        import yaml
+        with open(config_path) as f:
+            return yaml.safe_load(f)
+    except Exception:
+        return None
+
+
+def load_strategy_switchboard(config_path: str, scorecard: Optional[dict] = None) -> list[dict]:
+    """Build switchboard data by merging config with scorecard."""
+    config = load_strategy_config(config_path)
+    if not config:
+        return []
+
+    strategies = config.get("strategies", {})
+    sc_map: dict[str, dict] = {}
+    if scorecard:
+        for sc in scorecard.get("strategy_scorecards", []):
+            sid = sc.get("strategy_id", "")
+            if sid:
+                sc_map[sid] = sc
+
+    rows = []
+    for strategy_id, cfg in strategies.items():
+        sc = sc_map.get(strategy_id, {})
+        symbols = cfg.get("symbols", [])
+        symbols_display = ", ".join(symbols[:20])
+        if len(symbols) > 20:
+            symbols_display += f" +{len(symbols) - 20} more"
+
+        rows.append({
+            "strategy_id": strategy_id,
+            "enabled": cfg.get("enabled", False),
+            "strategy_type": cfg.get("strategy_type", ""),
+            "mode": cfg.get("mode", ""),
+            "data_api": cfg.get("data_api", ""),
+            "symbols_count": len(symbols),
+            "symbols_display": symbols_display,
+            "timeframes": ", ".join(cfg.get("timeframes", [])),
+            "feishu_payload": cfg.get("alert", {}).get("feishu_payload", False),
+            "auto_send": cfg.get("alert", {}).get("auto_send", False),
+            "scorecard_sample_status": sc.get("sample_status", "N/A"),
+            "scorecard_strategy_status": sc.get("strategy_status", "N/A"),
+            "scorecard_strategy_score": sc.get("strategy_score", "N/A"),
+        })
+
+    return rows
+
+
+def render_strategy_switchboard_table(switchboard: list[dict]) -> str:
+    """Render strategy switchboard as read-only HTML table."""
+    if not switchboard:
+        return "<p>No strategy config found.</p>"
+
+    rows = []
+    for s in switchboard:
+        enabled = s.get("enabled", False)
+        enabled_html = '<span style="color:#44ff44">ON</span>' if enabled else '<span style="color:#666">OFF</span>'
+        auto_send = s.get("auto_send", False)
+        auto_send_html = '<span style="color:#ff4444">true</span>' if auto_send else "false"
+        score = s.get("scorecard_strategy_score", "N/A")
+        score_display = f"{score:.2f}" if isinstance(score, (int, float)) else str(score)
+
+        rows.append(
+            f"<tr>"
+            f"<td>{_escape_html(s.get('strategy_id', ''))}</td>"
+            f"<td>{enabled_html}</td>"
+            f"<td>{_escape_html(s.get('strategy_type', ''))}</td>"
+            f"<td>{_escape_html(s.get('mode', ''))}</td>"
+            f"<td>{_escape_html(s.get('data_api', ''))}</td>"
+            f"<td>{s.get('symbols_count', 0)}</td>"
+            f"<td>{_escape_html(s.get('symbols_display', ''))}</td>"
+            f"<td>{_escape_html(s.get('timeframes', ''))}</td>"
+            f"<td>{auto_send_html}</td>"
+            f"<td>{_escape_html(str(s.get('scorecard_sample_status', 'N/A')))}</td>"
+            f"<td>{_escape_html(str(s.get('scorecard_strategy_status', 'N/A')))}</td>"
+            f"<td>{score_display}</td>"
+            f"</tr>"
+        )
+
+    return f"""<table>
+<thead><tr>
+<th>Strategy</th><th>Enabled</th><th>Type</th><th>Mode</th><th>Data API</th>
+<th>Sym#</th><th>Symbols</th><th>Timeframes</th><th>Auto Send</th>
+<th>Sample</th><th>Status</th><th>Score</th>
+</tr></thead>
+<tbody>
+{''.join(rows)}
+</tbody></table>"""
+
+
 def render_dashboard_html(
     status: dict[str, Any],
     positions: Optional[list[dict]] = None,
     scorecard: Optional[dict] = None,
     sample_gate: Optional[dict] = None,
     recent_actions: Optional[list[dict]] = None,
+    strategy_switchboard: Optional[list[dict]] = None,
 ) -> str:
     """Render dashboard HTML."""
     sample = status.get("sample_status", "UNKNOWN")
@@ -506,6 +602,7 @@ def render_dashboard_html(
     )
     sample_gate_html = render_sample_gate_card(sample_gate or {})
     recent_actions_html = render_recent_actions_table(recent_actions or [])
+    switchboard_html = render_strategy_switchboard_table(strategy_switchboard or [])
 
     # Next action hint
     next_action = "继续 shadow collection。不要 testnet。不要 live。"
@@ -563,6 +660,8 @@ def render_dashboard_html(
   td.ok {{ color: #44ff44; }}
   td.blocked {{ color: #ff4444; }}
   .table-wrap {{ max-height: 400px; overflow-y: auto; margin: 10px 0; }}
+  .read-only-notice {{ background: #0f3460; border: 1px solid #00d4ff; border-radius: 6px;
+                       padding: 8px 12px; margin: 10px 0; color: #00d4ff; font-size: 0.9em; }}
 </style>
 </head>
 <body>
@@ -644,6 +743,12 @@ def render_dashboard_html(
 <h2>Recent Actions</h2>
 <div class="table-wrap">
 {recent_actions_html}
+</div>
+
+<h2>Strategy Switchboard</h2>
+<div class="read-only-notice">Read-only view. Source: config/strategies.yaml. 网页不会修改策略配置。</div>
+<div class="table-wrap">
+{switchboard_html}
 </div>
 
 <div class="safety">

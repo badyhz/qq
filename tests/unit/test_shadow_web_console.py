@@ -13,6 +13,8 @@ from core.paper_trading.shadow_web_console import (
     load_latest_positions, load_latest_scorecard, load_latest_sample_gate,
     load_recent_actions, render_positions_table, render_scorecard_table,
     render_sample_gate_card, render_recent_actions_table,
+    load_strategy_config, load_strategy_switchboard,
+    render_strategy_switchboard_table,
     ALLOWED_ACTIONS, SAFETY_FLAGS,
 )
 
@@ -390,4 +392,174 @@ class TestDashboardSections:
             "strategy_score": 0,
         }]}
         html = render_dashboard_html({}, scorecard=sc)
+        assert "OBSERVE_ONLY" in html
+
+
+class TestLoadStrategyConfig:
+    def test_missing_file_returns_none(self):
+        assert load_strategy_config("/nonexistent/config.yaml") is None
+
+    def test_reads_real_config(self):
+        config_path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "strategies.yaml")
+        if os.path.isfile(config_path):
+            config = load_strategy_config(config_path)
+            assert config is not None
+            assert "strategies" in config
+
+
+class TestLoadStrategySwitchboard:
+    def test_missing_config_returns_empty(self):
+        assert load_strategy_switchboard("/nonexistent/config.yaml") == []
+
+    def test_merges_scorecard(self):
+        import tempfile, yaml
+        config = {
+            "strategies": {
+                "test_strat": {
+                    "enabled": True, "strategy_type": "test", "mode": "paper",
+                    "data_api": "binance", "symbols": ["BTCUSDT"], "timeframes": ["15m"],
+                    "alert": {"feishu_payload": True, "auto_send": False},
+                }
+            }
+        }
+        scorecard = {"strategy_scorecards": [{
+            "strategy_id": "test_strat", "sample_status": "EVALUABLE",
+            "strategy_status": "CANDIDATE_KEEP", "strategy_score": 85.0,
+        }]}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config, f)
+            path = f.name
+        try:
+            rows = load_strategy_switchboard(path, scorecard)
+            assert len(rows) == 1
+            assert rows[0]["scorecard_sample_status"] == "EVALUABLE"
+            assert rows[0]["scorecard_strategy_status"] == "CANDIDATE_KEEP"
+        finally:
+            os.unlink(path)
+
+    def test_no_scorecard_shows_na(self):
+        import tempfile, yaml
+        config = {
+            "strategies": {
+                "test_strat": {
+                    "enabled": True, "strategy_type": "test", "mode": "paper",
+                    "data_api": "binance", "symbols": ["BTCUSDT"], "timeframes": ["15m"],
+                    "alert": {"feishu_payload": True, "auto_send": False},
+                }
+            }
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config, f)
+            path = f.name
+        try:
+            rows = load_strategy_switchboard(path, None)
+            assert rows[0]["scorecard_sample_status"] == "N/A"
+        finally:
+            os.unlink(path)
+
+
+class TestRenderStrategySwitchboard:
+    def test_empty_config(self):
+        html = render_strategy_switchboard_table([])
+        assert "No strategy config found" in html
+
+    def test_renders_enabled_strategy(self):
+        switchboard = [{
+            "strategy_id": "test", "enabled": True, "strategy_type": "test",
+            "mode": "paper", "data_api": "binance", "symbols_count": 2,
+            "symbols_display": "BTCUSDT, ETHUSDT", "timeframes": "15m, 1h",
+            "feishu_payload": True, "auto_send": False,
+            "scorecard_sample_status": "N/A", "scorecard_strategy_status": "N/A",
+            "scorecard_strategy_score": "N/A",
+        }]
+        html = render_strategy_switchboard_table(switchboard)
+        assert "test" in html
+        assert "ON" in html
+
+    def test_renders_disabled_strategy(self):
+        switchboard = [{
+            "strategy_id": "test", "enabled": False, "strategy_type": "test",
+            "mode": "paper", "data_api": "binance", "symbols_count": 1,
+            "symbols_display": "BTCUSDT", "timeframes": "15m",
+            "feishu_payload": True, "auto_send": False,
+            "scorecard_sample_status": "N/A", "scorecard_strategy_status": "N/A",
+            "scorecard_strategy_score": "N/A",
+        }]
+        html = render_strategy_switchboard_table(switchboard)
+        assert "OFF" in html
+
+    def test_escapes_html(self):
+        switchboard = [{
+            "strategy_id": "<script>alert(1)</script>", "enabled": True,
+            "strategy_type": "test", "mode": "paper", "data_api": "binance",
+            "symbols_count": 1, "symbols_display": "BTCUSDT", "timeframes": "15m",
+            "feishu_payload": True, "auto_send": False,
+            "scorecard_sample_status": "N/A", "scorecard_strategy_status": "N/A",
+            "scorecard_strategy_score": "N/A",
+        }]
+        html = render_strategy_switchboard_table(switchboard)
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+
+    def test_auto_send_warning(self):
+        switchboard = [{
+            "strategy_id": "test", "enabled": True, "strategy_type": "test",
+            "mode": "paper", "data_api": "binance", "symbols_count": 1,
+            "symbols_display": "BTCUSDT", "timeframes": "15m",
+            "feishu_payload": True, "auto_send": True,
+            "scorecard_sample_status": "N/A", "scorecard_strategy_status": "N/A",
+            "scorecard_strategy_score": "N/A",
+        }]
+        html = render_strategy_switchboard_table(switchboard)
+        assert "true" in html
+
+    def test_symbols_truncated(self):
+        symbols = [f"SYM{i}USDT" for i in range(25)]
+        switchboard = [{
+            "strategy_id": "test", "enabled": True, "strategy_type": "test",
+            "mode": "paper", "data_api": "binance", "symbols_count": 25,
+            "symbols_display": ", ".join(symbols[:20]) + " +5 more",
+            "timeframes": "15m", "feishu_payload": True, "auto_send": False,
+            "scorecard_sample_status": "N/A", "scorecard_strategy_status": "N/A",
+            "scorecard_strategy_score": "N/A",
+        }]
+        html = render_strategy_switchboard_table(switchboard)
+        assert "+5 more" in html
+
+
+class TestDashboardSwitchboard:
+    def test_contains_strategy_switchboard(self):
+        html = render_dashboard_html({})
+        assert "Strategy Switchboard" in html
+
+    def test_contains_read_only_notice(self):
+        html = render_dashboard_html({})
+        assert "read-only" in html.lower() or "Read-only" in html
+
+    def test_contains_config_source(self):
+        html = render_dashboard_html({})
+        assert "strategies.yaml" in html
+
+    def test_no_config_write_form(self):
+        html = render_dashboard_html({})
+        assert "POST" not in html or "enable" not in html.lower()
+
+    def test_no_testnet_ready(self):
+        html = render_dashboard_html({})
+        assert "testnet_ready=true" not in html
+        assert "live_ready=true" not in html
+
+    def test_with_switchboard_data(self):
+        switchboard = [{
+            "strategy_id": "macd_rebound_watch", "enabled": True,
+            "strategy_type": "macd_rebound_watch", "mode": "paper",
+            "data_api": "binance_usdm_klines", "symbols_count": 5,
+            "symbols_display": "BTCUSDT, ETHUSDT", "timeframes": "5m, 15m, 1h",
+            "feishu_payload": True, "auto_send": False,
+            "scorecard_sample_status": "INSUFFICIENT_CLOSED_SAMPLE",
+            "scorecard_strategy_status": "OBSERVE_ONLY",
+            "scorecard_strategy_score": 0.0,
+        }]
+        html = render_dashboard_html({}, strategy_switchboard=switchboard)
+        assert "macd_rebound_watch" in html
         assert "OBSERVE_ONLY" in html
