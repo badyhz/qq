@@ -21,6 +21,15 @@ class SignalResult:
     invalidation_level: float
     risk_notes: str
     reasons: List[str]
+    # Watch state fields
+    watch_state: str = "NEUTRAL"  # LONG_READY / LONG_WATCH / NEAR_TURN_UP / SHORT_WATCH / WEAK_AVOID / CHOPPY_AVOID / DATA_REJECT
+    setup_type: str = "NO_TRADE"  # LONG_BREAKOUT / LONG_PULLBACK / MACD_TURNING_UP / OVERSOLD_REBOUND / SHORT_CONTINUATION / WEAK_TREND / NO_TRADE
+    turning_score: int = 0        # 0-100
+    weakness_score: int = 0       # 0-100
+    risk_score: int = 0           # 0-100
+    distance_to_invalidation_pct: float = 0.0
+    distance_to_recent_high_pct: float = 0.0
+    distance_to_recent_low_pct: float = 0.0
 
 
 def _ema(values: List[float], period: int) -> List[Optional[float]]:
@@ -103,6 +112,7 @@ def analyze_bars(bars: List[MarketBar]) -> Optional[SignalResult]:
             entry_observation=0.0, invalidation_level=0.0,
             risk_notes="too few bars",
             reasons=["REJECT: insufficient data (< 30 bars)"],
+            watch_state="DATA_REJECT", setup_type="NO_TRADE",
         )
 
     closes = [b.close for b in bars]
@@ -143,6 +153,10 @@ def analyze_bars(bars: List[MarketBar]) -> Optional[SignalResult]:
             macd_state = "HIST_EXPANDING_GREEN"
         elif curr_hist < 0 and curr_hist < prev_hist:
             macd_state = "HIST_EXPANDING_RED"
+        elif curr_hist < 0 and curr_hist > prev_hist:
+            macd_state = "HIST_SHRINKING_RED"
+        elif curr_hist > 0 and curr_hist < prev_hist:
+            macd_state = "HIST_SHRINKING_GREEN"
 
     # RSI state
     rsi_val = rsi_values[-1] if rsi_values[-1] is not None else 50.0
@@ -174,6 +188,16 @@ def analyze_bars(bars: List[MarketBar]) -> Optional[SignalResult]:
     # Risk distance
     atr_val = atr_values[-1] if atr_values[-1] is not None else 0.0
     invalidation_level = last_close - atr_val * 1.5 if atr_val > 0 else last_close * 0.97
+
+    # Recent high/low (last 50 bars)
+    lookback = min(50, len(bars))
+    recent_high = max(b.high for b in bars[-lookback:])
+    recent_low = min(b.low for b in bars[-lookback:])
+
+    # Distance percentages
+    dist_inv_pct = ((last_close - invalidation_level) / last_close * 100) if last_close > 0 else 0.0
+    dist_high_pct = ((recent_high - last_close) / last_close * 100) if last_close > 0 else 0.0
+    dist_low_pct = ((last_close - recent_low) / last_close * 100) if last_close > 0 else 0.0
 
     # Priority
     reasons = []
@@ -214,6 +238,23 @@ def analyze_bars(bars: List[MarketBar]) -> Optional[SignalResult]:
 
     risk_notes = f"ATR={atr_val:.2f}" if atr_val > 0 else "ATR unavailable"
 
+    # --- Watch state determination ---
+    watch_state, setup_type, turning_score, weakness_score, risk_score = _determine_watch_state(
+        trend_bias=trend_bias,
+        macd_state=macd_state,
+        rsi_state=rsi_state,
+        rsi_val=rsi_val,
+        volume_state=volume_state,
+        bullish_signals=bullish_signals,
+        bearish_signals=bearish_signals,
+        ema12_last=ema12_last,
+        ema26_last=ema26_last,
+        last_close=last_close,
+        dist_low_pct=dist_low_pct,
+        dist_inv_pct=dist_inv_pct,
+        priority=priority,
+    )
+
     return SignalResult(
         symbol=last.symbol,
         timeframe=last.timeframe,
@@ -227,4 +268,118 @@ def analyze_bars(bars: List[MarketBar]) -> Optional[SignalResult]:
         invalidation_level=round(invalidation_level, 2),
         risk_notes=risk_notes,
         reasons=reasons,
+        watch_state=watch_state,
+        setup_type=setup_type,
+        turning_score=turning_score,
+        weakness_score=weakness_score,
+        risk_score=risk_score,
+        distance_to_invalidation_pct=round(dist_inv_pct, 2),
+        distance_to_recent_high_pct=round(dist_high_pct, 2),
+        distance_to_recent_low_pct=round(dist_low_pct, 2),
     )
+
+
+def _determine_watch_state(
+    trend_bias, macd_state, rsi_state, rsi_val, volume_state,
+    bullish_signals, bearish_signals,
+    ema12_last, ema26_last, last_close,
+    dist_low_pct, dist_inv_pct, priority,
+):
+    """Determine watch_state, setup_type, and scores."""
+    turning_score = 0
+    weakness_score = 0
+    risk_score = 0
+
+    # Turning score: how close to turning bullish
+    if macd_state == "HIST_SHRINKING_RED":
+        turning_score += 35
+    elif macd_state == "BULLISH_CROSS":
+        turning_score += 50
+    elif macd_state == "HIST_EXPANDING_GREEN":
+        turning_score += 40
+    if rsi_state == "OVERSOLD":
+        turning_score += 20
+    elif 30 < rsi_val < 45:
+        turning_score += 10
+    if trend_bias == "NEUTRAL":
+        turning_score += 10
+    elif trend_bias == "BULLISH":
+        turning_score += 20
+    if dist_low_pct < 2.0:
+        turning_score += 10  # Near recent low, potential bounce
+    turning_score = min(turning_score, 100)
+
+    # Weakness score: how weak/bearish
+    if macd_state in ("BEARISH_CROSS", "HIST_EXPANDING_RED"):
+        weakness_score += 30
+    if trend_bias == "BEARISH":
+        weakness_score += 25
+    if rsi_val < 40:
+        weakness_score += 15
+    elif rsi_val > 60:
+        weakness_score -= 10
+    if volume_state == "NORMAL" and trend_bias == "BEARISH":
+        weakness_score += 10
+    weakness_score = max(0, min(weakness_score, 100))
+
+    # Risk score: distance to invalidation (lower = riskier)
+    if dist_inv_pct > 5:
+        risk_score = 20
+    elif dist_inv_pct > 3:
+        risk_score = 40
+    elif dist_inv_pct > 1.5:
+        risk_score = 60
+    elif dist_inv_pct > 0.5:
+        risk_score = 80
+    else:
+        risk_score = 95
+
+    # Determine watch state
+    if priority == "REJECT":
+        return "DATA_REJECT", "NO_TRADE", turning_score, weakness_score, risk_score
+
+    # EMA tangled check (choppy)
+    ema_spread = abs(ema12_last - ema26_last) / ema26_last * 100 if ema26_last and ema26_last > 0 else 0
+    is_choppy = ema_spread < 0.3 and macd_state in ("NEUTRAL",) and volume_state == "NORMAL"
+
+    if is_choppy:
+        return "CHOPPY_AVOID", "NO_TRADE", turning_score, weakness_score, risk_score
+
+    # LONG_READY
+    if (trend_bias == "BULLISH" and
+        macd_state in ("BULLISH_CROSS", "HIST_EXPANDING_GREEN") and
+        rsi_state != "OVERBOUGHT" and
+        bearish_signals == 0):
+        setup = "LONG_BREAKOUT" if macd_state == "BULLISH_CROSS" else "LONG_PULLBACK"
+        return "LONG_READY", setup, turning_score, weakness_score, risk_score
+
+    # LONG_WATCH
+    if (trend_bias in ("BULLISH", "NEUTRAL") and
+        macd_state in ("HIST_EXPANDING_GREEN", "HIST_SHRINKING_RED") and
+        rsi_state != "OVERBOUGHT"):
+        return "LONG_WATCH", "LONG_PULLBACK", turning_score, weakness_score, risk_score
+
+    # NEAR_TURN_UP
+    if (trend_bias != "BEARISH" or macd_state in ("HIST_SHRINKING_RED",)) and \
+       macd_state in ("HIST_SHRINKING_RED", "BULLISH_CROSS") and \
+       rsi_state != "OVERBOUGHT" and dist_inv_pct > 1.0:
+        return "NEAR_TURN_UP", "MACD_TURNING_UP", turning_score, weakness_score, risk_score
+
+    if macd_state == "HIST_SHRINKING_RED" and rsi_val < 50 and dist_inv_pct > 1.5:
+        return "NEAR_TURN_UP", "MACD_TURNING_UP", turning_score, weakness_score, risk_score
+
+    # SHORT_WATCH
+    if (trend_bias == "BEARISH" and
+        macd_state in ("BEARISH_CROSS", "HIST_EXPANDING_RED") and
+        rsi_state != "OVERSOLD"):
+        return "SHORT_WATCH", "SHORT_CONTINUATION", turning_score, weakness_score, risk_score
+
+    # WEAK_AVOID
+    if weakness_score >= 40 and turning_score < 30:
+        return "WEAK_AVOID", "WEAK_TREND", turning_score, weakness_score, risk_score
+
+    # Default: LOW priority = WEAK_AVOID or SHORT_WATCH depending on weakness
+    if bearish_signals >= 2:
+        return "WEAK_AVOID", "WEAK_TREND", turning_score, weakness_score, risk_score
+
+    return "CHOPPY_AVOID", "NO_TRADE", turning_score, weakness_score, risk_score
