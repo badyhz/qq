@@ -234,7 +234,7 @@ def simulate_with_klines(
         # Filter to future-only bars
         opened_bar_time = pos_dict.get("opened_bar_time")
         if future_only and opened_bar_time is not None:
-            future_bars = [b for b in bars if b.timestamp > opened_bar_time]
+            future_bars = _future_bars_after_open(bars, opened_bar_time)
         elif future_only and opened_bar_time is None:
             # Missing opened_bar_time — skip update
             skipped_no_future += 1
@@ -326,7 +326,7 @@ def simulate_existing_positions_update_only(
         # Filter to future-only bars
         opened_bar_time = pos_dict.get("opened_bar_time")
         if future_only and opened_bar_time is not None:
-            future_bars = [b for b in bars if b.timestamp > opened_bar_time]
+            future_bars = _future_bars_after_open(bars, opened_bar_time)
         elif future_only and opened_bar_time is None:
             skipped_no_future += 1
             result_positions.append(pos_dict)
@@ -377,6 +377,33 @@ def simulate_existing_positions_update_only(
         },
         safety_flags=list(POSITION_SAFETY_FLAGS),
     )
+
+
+def _normalize_epoch_seconds(value: Any) -> Optional[float]:
+    """Normalize epoch seconds/milliseconds/microseconds to seconds."""
+    if value is None:
+        return None
+    try:
+        ts = float(value)
+    except (TypeError, ValueError):
+        return None
+    if ts > 1e15:
+        return ts / 1_000_000
+    if ts > 1e12:
+        return ts / 1_000
+    return ts
+
+
+def _future_bars_after_open(bars: list[MarketBar], opened_bar_time: Any) -> list[MarketBar]:
+    opened_ts = _normalize_epoch_seconds(opened_bar_time)
+    if opened_ts is None:
+        return []
+    future_bars: list[MarketBar] = []
+    for bar in bars:
+        bar_ts = _normalize_epoch_seconds(bar.timestamp)
+        if bar_ts is not None and bar_ts > opened_ts:
+            future_bars.append(bar)
+    return future_bars
 
 
 def _update_position(

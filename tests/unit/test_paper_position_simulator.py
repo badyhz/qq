@@ -407,6 +407,40 @@ class TestUpdateOnly:
         )
         assert r.positions[0]["status"] == "STOP_LOSS_HIT"
 
+    def test_update_only_ms_opened_time_with_seconds_bar_can_hit_long_tp(self):
+        """Persisted ms opened_bar_time works with adapter-style second bars."""
+        pos = open_position(_make_long_intent(
+            entry_price=100.0,
+            stop_loss=95.0,
+            take_profit=110.0,
+        ))
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 1700000000000
+        bars = [_make_bar("BTCUSDT", "15m", 100.0, 111.0, 99.0, 110.5, timestamp=1700000300)]
+        r = simulate_existing_positions_update_only(
+            [pos_dict], {"BTCUSDT_15m": bars}, "2026-06-18",
+        )
+        assert r.positions[0]["status"] == "TAKE_PROFIT_HIT"
+        assert r.lifecycle_stats["positions_updated_count"] == 1
+        assert r.lifecycle_stats["positions_skipped_no_future_bars"] == 0
+
+    def test_update_only_ms_opened_time_with_seconds_bar_can_hit_short_tp(self):
+        """Numeric-string ms opened_bar_time works with second bars for shorts."""
+        pos = open_position(_make_intent(
+            entry_price=100.0,
+            stop_loss=105.0,
+            take_profit=90.0,
+        ))
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = "1700000000000"
+        bars = [_make_bar("XRPUSDT", "15m", 100.0, 101.0, 89.0, 90.5, timestamp=1700000300)]
+        r = simulate_existing_positions_update_only(
+            [pos_dict], {"XRPUSDT_15m": bars}, "2026-06-18",
+        )
+        assert r.positions[0]["status"] == "TAKE_PROFIT_HIT"
+        assert r.lifecycle_stats["positions_updated_count"] == 1
+        assert r.lifecycle_stats["positions_skipped_no_future_bars"] == 0
+
     def test_keeps_open_if_no_future_bars(self):
         """Update-only keeps OPEN if no future bars available."""
         pos = open_position(_make_intent())
