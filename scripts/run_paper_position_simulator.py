@@ -7,6 +7,7 @@ No orders, no accounts, no secrets, no testnet, no live.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import sys
@@ -46,6 +47,10 @@ def _default_positions_path(date_str: str) -> str:
     return os.path.join(REPORT_DIR, f"{date_str}_paper_positions.json")
 
 
+def _positions_path(output_dir: str, date_str: str) -> str:
+    return os.path.join(output_dir, f"{date_str}_paper_positions.json")
+
+
 def _load_existing_positions(path: str) -> list[dict]:
     """Load existing positions from JSON file."""
     if not os.path.isfile(path):
@@ -56,6 +61,66 @@ def _load_existing_positions(path: str) -> list[dict]:
         return data.get("positions", [])
     except Exception:
         return []
+
+
+def _load_ledger_positions(path: str) -> list[dict]:
+    """Load position records from one JSONL ledger file."""
+    if not os.path.isfile(path):
+        return []
+    positions: list[dict] = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                if isinstance(record, dict):
+                    positions.append(record)
+    except Exception:
+        return positions
+    return positions
+
+
+def _position_dedupe_key(position: dict) -> str:
+    pid = str(position.get("position_id") or "").strip()
+    if pid:
+        return f"position_id:{pid}"
+    return "|".join([
+        str(position.get("strategy_id") or ""),
+        str(position.get("symbol") or ""),
+        str(position.get("timeframe") or ""),
+        str(position.get("side") or ""),
+        str(position.get("opened_bar_time") or ""),
+    ])
+
+
+def _load_update_existing_positions(output_dir: str, date_str: str) -> list[dict]:
+    """Load OPEN positions for update-only from cross-day ledgers.
+
+    The shadow registry is not a position source. Ledgers and the current-day
+    positions file are replayed oldest-to-newest so a later CLOSED record keeps
+    an older OPEN record from being revived.
+    """
+    latest_by_key: dict[str, dict] = {}
+
+    ledger_paths = sorted(glob.glob(os.path.join(output_dir, "*_paper_position_ledger.jsonl")))
+    for path in ledger_paths:
+        for position in _load_ledger_positions(path):
+            key = _position_dedupe_key(position)
+            if key:
+                latest_by_key[key] = position
+
+    current_positions_path = _positions_path(output_dir, date_str)
+    for position in _load_existing_positions(current_positions_path):
+        key = _position_dedupe_key(position)
+        if key:
+            latest_by_key[key] = position
+
+    return [
+        position for position in latest_by_key.values()
+        if position.get("status") == "OPEN"
+    ]
 
 
 def render_markdown(result: dict) -> str:
@@ -190,7 +255,7 @@ def main():
 
     date_str = args.date or _today_str()
     input_path = args.input_file or _default_input_path(date_str)
-    positions_path = _default_positions_path(date_str)
+    positions_path = _positions_path(args.output_dir, date_str)
 
     if not os.path.isfile(input_path):
         print(f"ERROR: input file not found: {input_path}")
@@ -204,8 +269,11 @@ def main():
     print(f"Total intents: {len(intents)}")
     print(f"SHADOW_READY: {len(shadow_intents)}")
 
-    # Load existing positions for dedup
-    existing = _load_existing_positions(positions_path)
+    # Load existing positions for dedup/update-only
+    if args.update_existing_only:
+        existing = _load_update_existing_positions(args.output_dir, date_str)
+    else:
+        existing = _load_existing_positions(positions_path)
     existing_intent_ids = {p.get("intent_id") for p in existing}
     print(f"Existing positions: {len(existing)}")
 
