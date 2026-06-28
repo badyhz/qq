@@ -104,6 +104,40 @@ class TestCleanPositions:
         result = quarantine_positions([pos], "2026-06-18")
         assert result.clean_count == 1
 
+    def test_cross_day_closed_with_millisecond_open_and_second_check_is_clean(self):
+        pos = _make_clean_position(
+            status="TIMEOUT_EXIT",
+            opened_bar_time=1782395228883,
+            last_checked_bar_time=1782482400,
+            exit_reason="timeout after 24 bars",
+            realized_pnl=40.42288557,
+            r_multiple=0.8085,
+        )
+        result = quarantine_positions([pos], "2026-06-26")
+        tagged = result.positions[0]
+
+        assert result.clean_count == 1
+        assert tagged["quarantine_status"] == "CLEAN"
+        assert tagged["excluded_from_performance_stats"] is False
+        assert "same_cycle_update" not in tagged["quarantine_reasons"]
+        assert result.clean_summary["clean_timeout_exit_count"] == 1
+
+    def test_cross_day_closed_with_millisecond_times_is_clean(self):
+        pos = _make_clean_position(
+            status="STOP_LOSS_HIT",
+            opened_bar_time=1782395228883,
+            last_checked_bar_time=1782482400000,
+            exit_reason="stop_loss triggered",
+            realized_pnl=-50.0,
+            r_multiple=-1.0,
+        )
+        result = quarantine_positions([pos], "2026-06-26")
+        tagged = result.positions[0]
+
+        assert result.clean_count == 1
+        assert tagged["excluded_from_performance_stats"] is False
+        assert "same_cycle_update" not in tagged["quarantine_reasons"]
+
 
 class TestLegacyDetection:
     def test_missing_lifecycle_mode(self):
@@ -134,6 +168,7 @@ class TestLegacyDetection:
         )
         result = quarantine_positions([pos], "2026-06-18")
         assert "same_cycle_update" in result.positions[0]["quarantine_reasons"]
+        assert result.positions[0]["excluded_from_performance_stats"] is True
 
     def test_legacy_exit_reason_old_backtest(self):
         pos = _make_legacy_position(exit_reason="old_backtest_sl")

@@ -98,6 +98,21 @@ def quarantine_positions(
     )
 
 
+def _normalize_epoch_seconds(value: Any) -> float | None:
+    """Normalize epoch seconds/milliseconds/microseconds to seconds."""
+    if value is None:
+        return None
+    try:
+        ts = float(value)
+    except (TypeError, ValueError):
+        return None
+    if ts > 1e15:
+        return ts / 1_000_000
+    if ts > 1e12:
+        return ts / 1_000
+    return ts
+
+
 def _check_legacy(pos: dict[str, Any]) -> list[str]:
     """Check if a position is legacy. Returns list of reasons (empty = clean)."""
     reasons = []
@@ -105,6 +120,8 @@ def _check_legacy(pos: dict[str, Any]) -> list[str]:
     lifecycle_mode = pos.get("lifecycle_mode")
     opened_bar_time = pos.get("opened_bar_time")
     last_checked_bar_time = pos.get("last_checked_bar_time")
+    opened_ts = _normalize_epoch_seconds(opened_bar_time)
+    last_checked_ts = _normalize_epoch_seconds(last_checked_bar_time)
     exit_reason = pos.get("exit_reason", "") or ""
 
     # Rule 1: closed status without future_only lifecycle
@@ -119,11 +136,10 @@ def _check_legacy(pos: dict[str, Any]) -> list[str]:
     if opened_bar_time is None or opened_bar_time == "MISSING":
         reasons.append("missing_opened_bar_time")
 
-    # Rule 4: closed but last_checked_bar_time <= opened_bar_time (same-cycle update)
+    # Rule 4: closed but normalized last check <= open time (same-cycle update)
     if (status in CLOSED_STATUSES
-            and last_checked_bar_time is not None and opened_bar_time is not None
-            and last_checked_bar_time != "MISSING" and opened_bar_time != "MISSING"
-            and last_checked_bar_time <= opened_bar_time):
+            and last_checked_ts is not None and opened_ts is not None
+            and last_checked_ts <= opened_ts):
         reasons.append("same_cycle_update")
 
     # Rule 5: exit_reason contains legacy markers
