@@ -10,12 +10,19 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from core.paper_trading.paper_position import (
+    load_canonical_positions, filter_canonical_closed_clean,
+    load_canonical_closed_clean_positions,
+)
+from core.paper_trading.paper_performance_metrics import _determine_sample_status
+
 
 REGISTRY_FILENAME = "shadow_run_registry.jsonl"
 
 GATE_BLOCKED_INSUFFICIENT = "BLOCKED_INSUFFICIENT_CLOSED_SAMPLE"
 GATE_BLOCKED_LOW = "BLOCKED_LOW_SAMPLE_SIZE"
 GATE_READY_FOR_REVIEW = "PAPER_SAMPLE_READY_FOR_HUMAN_REVIEW"
+GATE_BLOCKED_ACCOUNTING_ERROR = "BLOCKED_ACCOUNTING_ERROR"
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,10 @@ class ShadowRunRecord:
     clean_take_profit_hit: int
     clean_stop_loss_hit: int
     clean_timeout_exit: int
+
+    cumulative_closed_clean: int
+    accounting_status: str
+    accounting_error: str | None
 
     sample_status: str
     strategy_scorecard_rows: int
@@ -85,6 +96,9 @@ class ShadowRunRecord:
             "clean_take_profit_hit": self.clean_take_profit_hit,
             "clean_stop_loss_hit": self.clean_stop_loss_hit,
             "clean_timeout_exit": self.clean_timeout_exit,
+            "cumulative_closed_clean": self.cumulative_closed_clean,
+            "accounting_status": self.accounting_status,
+            "accounting_error": self.accounting_error,
             "sample_status": self.sample_status,
             "strategy_scorecard_rows": self.strategy_scorecard_rows,
             "testnet_gate_status": self.testnet_gate_status,
@@ -100,6 +114,7 @@ class ShadowSampleGateResult:
     total_runs: int
     latest_run_id: str
     closed_clean_positions: int
+    cumulative_closed_clean: int
     sample_status: str
     testnet_gate_status: str
     testnet_gate_reasons: list[str]
@@ -112,6 +127,7 @@ class ShadowSampleGateResult:
             "total_runs": self.total_runs,
             "latest_run_id": self.latest_run_id,
             "closed_clean_positions": self.closed_clean_positions,
+            "cumulative_closed_clean": self.cumulative_closed_clean,
             "sample_status": self.sample_status,
             "testnet_gate_status": self.testnet_gate_status,
             "testnet_gate_reasons": list(self.testnet_gate_reasons),
@@ -141,8 +157,13 @@ def generate_run_id() -> str:
 def build_run_record(
     pipeline_result: dict,
     run_id: str | None = None,
+    output_dir: str | None = None,
 ) -> ShadowRunRecord:
-    """Build a registry record from lifecycle pipeline result."""
+    """Build a registry record from lifecycle pipeline result.
+
+    If output_dir is provided, computes cumulative_closed_clean from
+    all ledger files using the unified entry point. Otherwise falls back to summary value.
+    """
     summary = pipeline_result.get("summary", {})
     steps = pipeline_result.get("steps", [])
     started = steps[0]["started_at"] if steps else pipeline_result.get("date", "")
@@ -152,8 +173,33 @@ def build_run_record(
     steps_failed = sum(1 for s in steps if s.get("status") == "FAIL")
 
     closed = summary.get("closed_clean_positions", 0)
-    sample_status = summary.get("sample_status", "UNKNOWN")
-    gate_status, gate_reasons = evaluate_gate(closed, sample_status)
+
+    # Compute cumulative closed clean from canonical ledger using unified entry point
+    cumulative_closed = closed  # fallback for when output_dir not provided
+    accounting_status = "OK"
+    accounting_error = None
+    fatal_errors = []
+    if output_dir:
+        try:
+            eligible_positions, all_positions, diag = load_canonical_closed_clean_positions(output_dir)
+            cumulative_closed = len(eligible_positions)
+            fatal_errors = diag.get("fatal_errors", [])
+            if fatal_errors:
+                accounting_status = "ERROR"
+                accounting_error = str(fatal_errors[:3])
+        except Exception as e:
+            accounting_status = "ERROR"
+            accounting_error = str(e)
+            fatal_errors = [str(e)]
+
+    # If accounting error, block the gate
+    if fatal_errors:
+        sample_status = "ACCOUNTING_ERROR"
+        gate_status = GATE_BLOCKED_ACCOUNTING_ERROR
+        gate_reasons = fatal_errors
+    else:
+        sample_status = _determine_sample_status(cumulative_closed)
+        gate_status, gate_reasons = evaluate_gate(cumulative_closed, sample_status)
 
     return ShadowRunRecord(
         run_id=run_id or generate_run_id(),
@@ -181,6 +227,9 @@ def build_run_record(
         clean_take_profit_hit=summary.get("tp_count", 0),
         clean_stop_loss_hit=summary.get("sl_count", 0),
         clean_timeout_exit=summary.get("timeout_count", 0),
+        cumulative_closed_clean=cumulative_closed,
+        accounting_status=accounting_status,
+        accounting_error=accounting_error,
         sample_status=sample_status,
         strategy_scorecard_rows=summary.get("strategy_scorecard_rows", 0),
         testnet_gate_status=gate_status,
@@ -239,16 +288,55 @@ def read_registry(registry_dir: str) -> list[dict[str, Any]]:
 
 
 def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
-    """Compute sample gate status from registry history."""
+    """Compute sample gate status from registry history and canonical ledger.
+
+    Uses unified entry point. Blocks on fatal errors only (not business exclusions).
+    """
     records = read_registry(registry_dir)
     today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    # Use unified entry point for consistent eligibility
+    try:
+        eligible_positions, all_positions, diag = load_canonical_closed_clean_positions(registry_dir)
+        cumulative_closed = len(eligible_positions)
+        fatal_errors = diag.get("fatal_errors", [])
+    except Exception as e:
+        # Canonical load failed — block the gate
+        return ShadowSampleGateResult(
+            date=today,
+            total_runs=len(records),
+            latest_run_id=records[-1].get("run_id", "") if records else "",
+            closed_clean_positions=0,
+            cumulative_closed_clean=0,
+            sample_status="ACCOUNTING_ERROR",
+            testnet_gate_status=GATE_BLOCKED_ACCOUNTING_ERROR,
+            testnet_gate_reasons=[f"canonical load failed: {e}"],
+            registry_path=os.path.join(registry_dir, REGISTRY_FILENAME),
+            safety_flags=list(GATE_SAFETY_FLAGS),
+        )
+
+    # Block on fatal errors only (technical issues, not business exclusions)
+    if fatal_errors:
+        return ShadowSampleGateResult(
+            date=today,
+            total_runs=len(records),
+            latest_run_id=records[-1].get("run_id", "") if records else "",
+            closed_clean_positions=0,
+            cumulative_closed_clean=0,
+            sample_status="ACCOUNTING_ERROR",
+            testnet_gate_status=GATE_BLOCKED_ACCOUNTING_ERROR,
+            testnet_gate_reasons=fatal_errors,
+            registry_path=os.path.join(registry_dir, REGISTRY_FILENAME),
+            safety_flags=list(GATE_SAFETY_FLAGS),
+        )
 
     if not records:
         return ShadowSampleGateResult(
             date=today,
             total_runs=0,
             latest_run_id="",
-            closed_clean_positions=0,
+            closed_clean_positions=cumulative_closed,
+            cumulative_closed_clean=cumulative_closed,
             sample_status="UNKNOWN",
             testnet_gate_status=GATE_BLOCKED_INSUFFICIENT,
             testnet_gate_reasons=["no registry records"],
@@ -257,8 +345,9 @@ def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
         )
 
     latest = records[-1]
-    closed = latest.get("closed_clean_positions", 0)
-    sample_status = latest.get("sample_status", "UNKNOWN")
+    # Use cumulative count instead of last record's single-run count
+    closed = cumulative_closed
+    sample_status = _determine_sample_status(closed)
     gate_status, gate_reasons = evaluate_gate(closed, sample_status)
 
     return ShadowSampleGateResult(
@@ -266,6 +355,7 @@ def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
         total_runs=len(records),
         latest_run_id=latest.get("run_id", ""),
         closed_clean_positions=closed,
+        cumulative_closed_clean=cumulative_closed,
         sample_status=sample_status,
         testnet_gate_status=gate_status,
         testnet_gate_reasons=gate_reasons,

@@ -98,6 +98,19 @@ def quarantine_positions(
     )
 
 
+def evaluate_position_quarantine(pos: dict[str, Any]) -> tuple[str, list[str]]:
+    """Evaluate quarantine status for a single position.
+
+    Shared function used by quarantine runner and canonical recomputation.
+    Returns: (quarantine_status, reasons)
+    quarantine_status is "CLEAN" or "EXCLUDED".
+    """
+    reasons = _check_legacy(pos)
+    if reasons:
+        return "EXCLUDED", reasons
+    return "CLEAN", []
+
+
 def _normalize_epoch_seconds(value: Any) -> float | None:
     """Normalize epoch seconds/milliseconds/microseconds to seconds."""
     if value is None:
@@ -128,8 +141,8 @@ def _check_legacy(pos: dict[str, Any]) -> list[str]:
     if status in CLOSED_STATUSES and lifecycle_mode != "future_only":
         reasons.append("closed_without_future_only_lifecycle")
 
-    # Rule 2: missing lifecycle_mode
-    if lifecycle_mode is None or lifecycle_mode == "MISSING":
+    # Rule 2: missing or unknown lifecycle_mode
+    if lifecycle_mode is None or lifecycle_mode == "MISSING" or lifecycle_mode == "unknown":
         reasons.append("missing_lifecycle_mode")
 
     # Rule 3: missing opened_bar_time

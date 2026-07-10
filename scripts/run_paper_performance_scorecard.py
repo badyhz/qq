@@ -17,6 +17,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.paper_trading.paper_performance_metrics import (
     compute_performance, PerformanceScorecard,
 )
+from core.paper_trading.paper_position import (
+    load_canonical_positions, filter_canonical_closed_clean,
+    classify_quarantine_status, classify_source_eligibility,
+    load_canonical_closed_clean_positions, evaluate_canonical_eligibility,
+)
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "strategies")
@@ -193,24 +198,50 @@ def main():
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
-    input_path = args.input_file or _default_quarantine_path(date_str)
 
-    if not os.path.isfile(input_path):
-        print(f"ERROR: input file not found: {input_path}")
+    # Use unified entry point for consistent eligibility
+    eligible_positions, all_positions, diag = load_canonical_closed_clean_positions(args.output_dir)
+    if not all_positions:
+        print(f"No positions found in ledger files at {args.output_dir}")
         return 1
 
-    with open(input_path) as f:
-        data = json.load(f)
+    # Check for fatal errors - fail closed
+    if diag.get("fatal_errors"):
+        print(f"FATAL: Accounting errors detected, cannot generate scorecard:")
+        for err in diag["fatal_errors"]:
+            print(f"  - {err}")
+        return 1
 
-    positions = data.get("positions", [])
-    print(f"Loaded {len(positions)} positions from {input_path}")
+    # Use eligible_positions directly - no re-evaluation
+    # Tag all positions for display purposes only
+    eligible_set = {id(p) for p in eligible_positions}
+    for p in all_positions:
+        p["excluded_from_performance_stats"] = id(p) not in eligible_set
 
-    clean_count = sum(1 for p in positions if not p.get("excluded_from_performance_stats", False))
-    excluded_count = sum(1 for p in positions if p.get("excluded_from_performance_stats", False))
-    print(f"Clean: {clean_count}, Excluded: {excluded_count}")
+    positions = all_positions
+    print(f"Loaded {len(positions)} canonical positions from ledger files")
+    print(f"  raw records: {diag.get('raw_records', '?')}")
+    print(f"  eligible_closed_clean: {diag.get('eligible_closed_clean', '?')}")
+    print(f"  explicit_clean: {diag.get('explicit_clean', '?')}")
+    print(f"  derived_clean: {diag.get('derived_clean', '?')}")
+    print(f"  exclusions: {diag.get('exclusions', '?')}")
 
-    scorecard = compute_performance(positions, date_str)
+    clean_count = len(eligible_positions)
+    excluded_count = diag.get("exclusions", {}).get("total", 0)
+    print(f"Eligible: {clean_count}, Excluded: {excluded_count}")
+
+    # Compute performance on eligible positions only
+    # Mark eligible positions as clean for compute_performance
+    for p in eligible_positions:
+        p["excluded_from_performance_stats"] = False
+
+    scorecard = compute_performance(eligible_positions, date_str)
     scorecard_dict = scorecard.to_dict()
+
+    # Use the same eligible count as the gate
+    cumulative_closed = len(eligible_positions)
+    scorecard_dict["cumulative_closed_clean"] = cumulative_closed
+    scorecard_dict["diagnostics"] = diag
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -244,6 +275,7 @@ def main():
     print(f"Excluded positions: {gm.excluded_positions}")
     print(f"Open: {gm.open_positions}")
     print(f"Closed: {gm.closed_positions}")
+    print(f"Cumulative closed clean: {cumulative_closed}")
     print(f"TP: {gm.take_profit_hit}, SL: {gm.stop_loss_hit}, Timeout: {gm.timeout_exit}")
     print(f"Realized PnL: {round(gm.realized_pnl, 8)}")
     print(f"Avg R: {round(gm.avg_r_multiple, 4)}")

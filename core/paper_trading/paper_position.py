@@ -4,6 +4,8 @@ No orders, no accounts, no secrets, no testnet, no live.
 """
 from __future__ import annotations
 
+import json
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -202,3 +204,541 @@ def dict_to_position(d: dict[str, Any]) -> PaperPosition:
         safety_flags=d.get("safety_flags", list(POSITION_SAFETY_FLAGS)),
         created_at=d.get("created_at", ""),
     )
+
+
+TERMINAL_STATUSES = {"TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT", "INVALID"}
+
+# Source whitelist — only these are eligible for canonical counting
+ELIGIBLE_SOURCES = frozenset({
+    "real_public_readonly",
+    "real_public_http",
+    "public_readonly_update",
+    "trade_intent",  # production paper position source
+    "",  # legacy records without source treated as eligible only if other proof exists
+})
+
+INELIGIBLE_SOURCES = frozenset({
+    "offline_sample",
+    "offline",
+    "replay",
+    "test_fixture",
+    "test",
+    "mock",
+})
+
+
+def _position_dedupe_key(rec: dict[str, Any]) -> str | None:
+    """Build a stable deduplication key for a position record.
+
+    Returns None if position_id is missing — such records are excluded from canonical.
+    """
+    pid = str(rec.get("position_id") or "").strip()
+    if pid:
+        return f"pid:{pid}"
+    return None  # missing position_id → excluded
+
+
+def _normalize_timestamp_to_seconds(val: Any) -> float:
+    """Normalize a timestamp value to seconds.
+
+    Handles:
+    - ISO 8601 strings
+    - 10-digit (seconds)
+    - 13-digit (milliseconds)
+    - 16-digit (microseconds)
+    - 19-digit (nanoseconds)
+    Returns 0.0 if unparseable.
+    """
+    if val is None:
+        return 0.0
+    if isinstance(val, str) and "T" in val:
+        try:
+            from datetime import datetime as _dt
+            return _dt.fromisoformat(val.replace("Z", "+00:00")).timestamp()
+        except (ValueError, TypeError, OSError):
+            return 0.0
+    try:
+        fval = float(val)
+    except (ValueError, TypeError):
+        return 0.0
+    if fval <= 0:
+        return 0.0
+    # Auto-detect unit by digit count
+    if fval > 1e18:      # nanoseconds
+        return fval / 1e9
+    if fval > 1e15:      # microseconds
+        return fval / 1e6
+    if fval > 1e12:      # milliseconds
+        return fval / 1e3
+    return fval           # seconds
+
+
+def _position_sort_ts(rec: dict[str, Any]) -> float:
+    """Extract a sortable timestamp from a position record.
+
+    Priority: recorded_at > closed_at > last_checked_at > opened_at > created_at.
+    All values normalized to seconds.
+    Returns 0 if none available.
+    """
+    for field in ("recorded_at", "closed_at", "last_checked_at", "opened_at", "created_at"):
+        val = rec.get(field)
+        ts = _normalize_timestamp_to_seconds(val)
+        if ts > 0:
+            return ts
+    return 0.0
+
+
+def _is_terminal_status(status: str | None) -> bool:
+    """Check if a status is terminal (closed)."""
+    return status in TERMINAL_STATUSES
+
+
+def _should_replace(old: dict[str, Any], new: dict[str, Any]) -> bool:
+    """Decide whether new record should replace old for the same dedup key.
+
+    Rules:
+    1. Higher timestamp wins.
+    2. If timestamps equal: terminal status beats non-terminal.
+    3. If both terminal or both non-terminal: keep existing (first seen wins).
+    """
+    old_ts = _position_sort_ts(old)
+    new_ts = _position_sort_ts(new)
+    if new_ts > old_ts:
+        return True
+    if new_ts < old_ts:
+        return False
+    # Equal timestamp: terminal beats non-terminal
+    old_terminal = _is_terminal_status(old.get("status"))
+    new_terminal = _is_terminal_status(new.get("status"))
+    if new_terminal and not old_terminal:
+        return True
+    return False  # keep existing
+
+
+def position_state_fingerprint(rec: dict[str, Any]) -> str:
+    """Compute a stable fingerprint of a position's meaningful state.
+
+    Used for idempotent ledger writes — if the fingerprint hasn't changed,
+    don't append a new line.
+    """
+    import hashlib
+    parts = [
+        str(rec.get("position_id", "")),
+        str(rec.get("status", "")),
+        str(rec.get("exit_price", "")),
+        str(rec.get("exit_reason", "")),
+        str(rec.get("r_multiple", "")),
+        str(rec.get("closed_at", "")),
+        str(rec.get("last_checked_at", "")),
+        str(rec.get("quarantine_status", "")),
+    ]
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def load_canonical_positions(
+    report_dir: str,
+    date_glob: str = "*",
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Load all positions from all daily ledger files, deduped by position_id.
+
+    Returns the latest state for each unique position, sorted by position_id,
+    plus diagnostic metadata.
+
+    Args:
+        report_dir: Directory containing {date}_paper_position_ledger.jsonl files.
+        date_glob: Glob pattern for date prefix (default "*" = all dates).
+
+    Returns:
+        Tuple of (positions list, diagnostics dict).
+        positions: latest state per unique position_id (sorted).
+        diagnostics: raw_count, excluded_no_position_id, error, etc.
+    """
+    import glob as _glob
+
+    latest_by_key: dict[str, dict[str, Any]] = {}
+    diagnostics: dict[str, Any] = {
+        "raw_count": 0,
+        "excluded_no_position_id": 0,
+        "files_read": 0,
+        "files_error": 0,
+        "load_error": None,
+        "corrupted_lines": 0,
+    }
+
+    pattern = os.path.join(report_dir, f"{date_glob}_paper_position_ledger.jsonl")
+    for path in sorted(_glob.glob(pattern)):
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    diagnostics["raw_count"] += 1
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        diagnostics["corrupted_lines"] += 1
+                        continue
+                    key = _position_dedupe_key(rec)
+                    if key is None:
+                        diagnostics["excluded_no_position_id"] += 1
+                        continue
+                    if _should_replace(latest_by_key.get(key, {}), rec):
+                        latest_by_key[key] = rec
+            diagnostics["files_read"] += 1
+        except OSError as e:
+            diagnostics["files_error"] += 1
+            diagnostics["load_error"] = str(e)
+            continue
+
+    positions = sorted(latest_by_key.values(), key=lambda r: str(r.get("position_id", "")))
+    return positions, diagnostics
+
+
+def load_canonical_closed_clean_positions(
+    report_dir: str,
+    strict: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    """Unified canonical entry point for Scorecard, Gate, Registry, and audit.
+
+    Returns:
+        Tuple of (eligible_positions, all_canonical_positions, diagnostics).
+        eligible_positions: CLOSED positions passing all eligibility checks.
+        all_canonical_positions: all canonical positions (deduped).
+        diagnostics: comprehensive diagnostic metadata.
+
+    diagnostics includes:
+        raw_records, unique_positions, closed_positions, eligible_closed_clean,
+        explicit_clean, derived_clean, exclusions (business), fatal_errors (technical),
+        missing_position_id, files_read, files_error, accounting_status
+    """
+    # Load all canonical positions
+    all_positions, load_diag = load_canonical_positions(report_dir)
+
+    # Load lifecycle metadata for source verification
+    lifecycle_metadata = _load_lifecycle_metadata(report_dir)
+
+    # Evaluate eligibility for each position
+    eligible_positions = []
+    closed_positions = []
+    explicit_clean = 0
+    derived_clean = 0
+    exclusions = {
+        "total": 0,
+        "quarantine_excluded": 0,
+        "quarantine_unverifiable": 0,
+        "source_ineligible": 0,
+        "source_unknown": 0,
+        "open": 0,
+        "invalid": 0,
+    }
+    fatal_errors = []
+
+    for p in all_positions:
+        # Check if CLOSED
+        status = p.get("status")
+        is_closed = status in ("TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT")
+        if is_closed:
+            closed_positions.append(p)
+        else:
+            # OPEN positions are business exclusions
+            exclusions["open"] += 1
+            exclusions["total"] += 1
+            continue
+
+        # Evaluate eligibility
+        eligibility = evaluate_canonical_eligibility(p, lifecycle_metadata)
+
+        # Track quarantine stats
+        if eligibility.quarantine_source == "explicit":
+            if eligibility.quarantine_status == "CLEAN":
+                explicit_clean += 1
+        elif eligibility.quarantine_source == "recomputed_legacy":
+            if eligibility.quarantine_status == "CLEAN":
+                derived_clean += 1
+
+        # Track business exclusions (not fatal errors)
+        if not eligibility.eligible:
+            exclusions["total"] += 1
+            reason = eligibility.exclusion_reason or ""
+            if "quarantine_excluded" in reason:
+                exclusions["quarantine_excluded"] += 1
+            elif "quarantine_unverifiable" in reason:
+                exclusions["quarantine_unverifiable"] += 1
+            elif "source_ineligible" in reason:
+                exclusions["source_ineligible"] += 1
+            elif "source_unknown" in reason:
+                exclusions["source_unknown"] += 1
+            continue
+
+        # Additional CLOSED-specific validation
+        if (p.get("lifecycle_mode") == "future_only" and
+            p.get("entry_price") and p.get("exit_price") is not None and
+            p.get("r_multiple") is not None and p.get("closed_at")):
+            eligible_positions.append(p)
+
+    # Determine fatal errors (technical issues that block Gate/Scorecard)
+    if load_diag.get("load_error"):
+        fatal_errors.append(f"Load error: {load_diag['load_error']}")
+    if load_diag.get("files_error", 0) > 0:
+        fatal_errors.append(f"File errors: {load_diag['files_error']} files failed")
+    if load_diag.get("corrupted_lines", 0) > 0:
+        fatal_errors.append(f"Corrupted lines: {load_diag['corrupted_lines']}")
+
+    accounting_status = "ERROR" if fatal_errors else "OK"
+
+    # Build comprehensive diagnostics
+    diagnostics = {
+        "raw_records": load_diag.get("raw_count", 0),
+        "unique_positions": len(all_positions),
+        "closed_positions": len(closed_positions),
+        "eligible_closed_clean": len(eligible_positions),
+        "explicit_clean": explicit_clean,
+        "derived_clean": derived_clean,
+        "exclusions": exclusions,
+        "fatal_errors": fatal_errors,
+        "missing_position_id": load_diag.get("excluded_no_position_id", 0),
+        "files_read": load_diag.get("files_read", 0),
+        "files_error": load_diag.get("files_error", 0),
+        "corrupted_lines": load_diag.get("corrupted_lines", 0),
+        "accounting_status": accounting_status,
+    }
+
+    return eligible_positions, all_positions, diagnostics
+
+
+def _load_lifecycle_metadata(report_dir: str) -> dict[str, Any]:
+    """Load lifecycle metadata for source verification.
+
+    Looks for {date}_shadow_lifecycle_result.json files.
+    Returns dict mapping date to lifecycle metadata.
+    """
+    import glob as _glob
+
+    metadata = {}
+    pattern = os.path.join(report_dir, "*_shadow_lifecycle_result.json")
+    for path in sorted(_glob.glob(pattern)):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            date = data.get("date")
+            if date:
+                metadata[date] = {
+                    "mode": data.get("mode"),
+                    "safety_flags": data.get("safety_flags", []),
+                    "allow_public_http": data.get("allow_public_http", False),
+                }
+        except (OSError, json.JSONDecodeError):
+            continue
+
+    return metadata
+
+
+def classify_quarantine_status(p: dict[str, Any]) -> str:
+    """Classify a position's quarantine status.
+
+    Returns: "CLEAN", "EXCLUDED", or "UNKNOWN".
+    Missing quarantine_status is "UNKNOWN", not "CLEAN".
+    """
+    qs = p.get("quarantine_status")
+    if qs == "CLEAN":
+        return "CLEAN"
+    if qs == "EXCLUDED":
+        return "EXCLUDED"
+    return "UNKNOWN"
+
+
+def _recompute_legacy_quarantine(p: dict[str, Any]) -> tuple[str, str]:
+    """Recompute quarantine status for legacy data missing the field.
+
+    Uses shared rules from paper_position_quarantine.py.
+    Returns: (quarantine_status, quarantine_source).
+    quarantine_source is "explicit", "recomputed_legacy", or "unverifiable".
+    """
+    qs = p.get("quarantine_status")
+    if qs == "CLEAN":
+        return "CLEAN", "explicit"
+    if qs == "EXCLUDED":
+        return "EXCLUDED", "explicit"
+
+    # UNKNOWN/None: use shared quarantine rules
+    from core.paper_trading.paper_position_quarantine import evaluate_position_quarantine
+    status, reasons = evaluate_position_quarantine(p)
+    if status == "CLEAN":
+        return "CLEAN", "recomputed_legacy"
+    elif status == "EXCLUDED":
+        return "EXCLUDED", "recomputed_legacy"
+
+    # Cannot verify → UNKNOWN
+    return "UNKNOWN", "unverifiable"
+
+
+def classify_source_eligibility(
+    p: dict[str, Any],
+    lifecycle_metadata: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Classify a position's source eligibility.
+
+    Returns: (eligible: str, reason: str).
+    eligible is "ELIGIBLE", "INELIGIBLE", or "UNKNOWN".
+
+    For trade_intent source, requires lifecycle metadata proof:
+    - mode is real_public_readonly/real_public_http/public_readonly_update
+    - safety_flags contains PAPER_ONLY and SHADOW_ONLY
+    - not offline_sample/replay/test
+    """
+    source = str(p.get("source_mode") or p.get("source") or "").strip()
+
+    # Direct ineligible sources
+    if source in INELIGIBLE_SOURCES:
+        return "INELIGIBLE", f"source={source}"
+
+    # Direct eligible sources (real production sources)
+    DIRECT_ELIGIBLE = {"real_public_readonly", "real_public_http", "public_readonly_update"}
+    if source in DIRECT_ELIGIBLE:
+        return "ELIGIBLE", f"source={source}"
+
+    # trade_intent requires metadata proof
+    if source == "trade_intent":
+        if lifecycle_metadata is None:
+            return "UNKNOWN", "source=trade_intent, no_metadata"
+        return _verify_trade_intent_source(lifecycle_metadata)
+
+    # Empty/missing source requires metadata proof
+    if not source:
+        if lifecycle_metadata is None:
+            return "UNKNOWN", "source=missing, no_metadata"
+        return _verify_trade_intent_source(lifecycle_metadata)
+
+    # Unknown source
+    return "UNKNOWN", f"source={source}"
+
+
+def _verify_trade_intent_source(metadata: dict[str, Any]) -> tuple[str, str]:
+    """Verify trade_intent source using lifecycle metadata.
+
+    Returns: (eligible: str, reason: str).
+    """
+    mode = str(metadata.get("mode") or "").strip()
+    safety_flags = metadata.get("safety_flags", [])
+
+    # Check mode is real production mode
+    SAFE_MODES = {"real_public_readonly", "real_public_http", "public_readonly_update"}
+    if mode not in SAFE_MODES:
+        return "INELIGIBLE", f"mode={mode}"
+
+    # Check safety flags
+    required_flags = {"PAPER_ONLY", "SHADOW_ONLY"}
+    if not required_flags.issubset(set(safety_flags)):
+        return "INELIGIBLE", "missing_safety_flags"
+
+    # Check not offline/replay/test
+    if mode in {"offline_sample", "offline", "replay", "test"}:
+        return "INELIGIBLE", f"mode={mode}"
+
+    return "ELIGIBLE", f"verified_via_lifecycle, mode={mode}"
+
+
+@dataclass(frozen=True)
+class PositionEligibility:
+    """Result of position eligibility evaluation."""
+    position_id: str
+    eligible: bool
+    quarantine_status: str
+    quarantine_source: str
+    source_status: str
+    exclusion_reason: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "position_id": self.position_id,
+            "eligible": self.eligible,
+            "quarantine_status": self.quarantine_status,
+            "quarantine_source": self.quarantine_source,
+            "source_status": self.source_status,
+            "exclusion_reason": self.exclusion_reason,
+        }
+
+
+def evaluate_canonical_eligibility(
+    position: dict[str, Any],
+    lifecycle_metadata: dict[str, Any] | None = None,
+) -> PositionEligibility:
+    """Evaluate a position's eligibility for canonical counting.
+
+    This is the SINGLE shared function used by Scorecard, Gate, Registry, and audit.
+    Returns PositionEligibility with all classification details.
+
+    lifecycle_metadata is a dict mapping date to metadata (from _load_lifecycle_metadata).
+    """
+    pid = str(position.get("position_id") or "unknown")
+
+    # Check quarantine
+    qs, qs_source = _recompute_legacy_quarantine(position)
+
+    # Get metadata for this position's date
+    position_date = position.get("date")
+    date_metadata = None
+    if lifecycle_metadata and position_date:
+        date_metadata = lifecycle_metadata.get(position_date)
+
+    # Check source
+    source_status, source_reason = classify_source_eligibility(position, date_metadata)
+
+    # Determine eligibility
+    eligible = True
+    exclusion_reason = None
+
+    # Quarantine check
+    if qs == "EXCLUDED":
+        eligible = False
+        exclusion_reason = "quarantine_excluded"
+    elif qs == "UNKNOWN":
+        eligible = False
+        exclusion_reason = "quarantine_unverifiable"
+
+    # Source check (only if not already excluded)
+    if eligible and source_status != "ELIGIBLE":
+        eligible = False
+        exclusion_reason = f"source_{source_status.lower()}: {source_reason}"
+
+    return PositionEligibility(
+        position_id=pid,
+        eligible=eligible,
+        quarantine_status=qs,
+        quarantine_source=qs_source,
+        source_status=source_status,
+        exclusion_reason=exclusion_reason,
+    )
+
+
+def filter_canonical_closed_clean(
+    positions: list[dict[str, Any]],
+    lifecycle_metadata: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Filter canonical positions to CLOSED + CLEAN + eligible only.
+
+    Uses evaluate_canonical_eligibility for consistent filtering.
+    """
+    result = []
+    for p in positions:
+        # Basic CLOSED validation
+        status = p.get("status")
+        if status not in ("TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT"):
+            continue
+        if p.get("lifecycle_mode") != "future_only":
+            continue
+        if not p.get("entry_price"):
+            continue
+        if not p.get("exit_price"):
+            continue
+        if p.get("r_multiple") is None:
+            continue
+        if not p.get("closed_at"):
+            continue
+
+        # Use shared eligibility function
+        eligibility = evaluate_canonical_eligibility(p, lifecycle_metadata)
+        if eligibility.eligible:
+            result.append(p)
+    return result

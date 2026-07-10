@@ -1,14 +1,18 @@
 """Tests for paper position model — open_position, validation, lifecycle."""
 from __future__ import annotations
 
+import json
 import os
 import py_compile
+import tempfile
+import datetime as _dt
 
 import pytest
 
 from core.paper_trading.paper_position import (
     open_position, dict_to_position, PaperPosition,
     POSITION_SAFETY_FLAGS, CLOSED_STATUSES,
+    load_canonical_positions, filter_canonical_closed_clean,
 )
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), "..", "..",
@@ -160,3 +164,213 @@ class TestNoForbiddenPatterns:
             content = f.read()
         assert "os.environ" not in content
         assert "os.getenv" not in content
+
+
+# --- Cumulative accounting tests ---
+
+def _write_ledger_records(path: str, records: list[dict]):
+    """Append records to a JSONL ledger file."""
+    with open(path, "a") as f:
+        for rec in records:
+            f.write(json.dumps(rec) + "\n")
+
+
+def _make_closed(position_id: str, status: str = "TAKE_PROFIT_HIT", **overrides) -> dict:
+    now_iso = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+    rec = {
+        "position_id": position_id,
+        "strategy_id": "test_strat",
+        "symbol": "BTCUSDT",
+        "timeframe": "1h",
+        "side": "LONG",
+        "status": status,
+        "entry_price": 100.0,
+        "exit_price": 110.0,
+        "stop_loss": 95.0,
+        "take_profit": 110.0,
+        "r_multiple": 2.0,
+        "realized_pnl": 10.0,
+        "lifecycle_mode": "future_only",
+        "opened_bar_time": 1000,
+        "closed_at": now_iso,
+        "quarantine_status": "CLEAN",
+        "source_mode": "real_public_readonly",
+        "recorded_at": now_iso,
+    }
+    rec.update(overrides)
+    return rec
+
+
+def _make_open(position_id: str, **overrides) -> dict:
+    now_iso = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+    rec = {
+        "position_id": position_id,
+        "strategy_id": "test_strat",
+        "symbol": "ETHUSDT",
+        "timeframe": "1h",
+        "side": "LONG",
+        "status": "OPEN",
+        "entry_price": 100.0,
+        "stop_loss": 95.0,
+        "take_profit": 110.0,
+        "r_multiple": 0.0,
+        "realized_pnl": 0.0,
+        "lifecycle_mode": "future_only",
+        "opened_bar_time": 2000,
+        "quarantine_status": "CLEAN",
+        "source_mode": "real_public_readonly",
+        "recorded_at": now_iso,
+    }
+    rec.update(overrides)
+    return rec
+
+
+class TestCanonicalLoader:
+    """Tests for load_canonical_positions and filter_canonical_closed_clean."""
+
+    def test_empty_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result, diag = load_canonical_positions(tmpdir)
+            assert result == []
+            assert diag["raw_count"] == 0
+
+    def test_append_only_no_loss(self):
+        """Append-only ledger: same-day multi-round does not lose CLOSED positions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            # Round 1: open 2 positions
+            _write_ledger_records(ledger, [
+                _make_open("PP_001"),
+                _make_open("PP_002"),
+            ])
+            # Round 2: PP_001 hits TP, PP_002 still open, new PP_003
+            _write_ledger_records(ledger, [
+                _make_closed("PP_001", "TAKE_PROFIT_HIT"),
+                _make_open("PP_003"),
+            ])
+            # Round 3: PP_002 hits SL, PP_003 still open
+            _write_ledger_records(ledger, [
+                _make_closed("PP_002", "STOP_LOSS_HIT"),
+            ])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            assert len(positions) == 3
+            closed = filter_canonical_closed_clean(positions)
+            assert len(closed) == 2
+            closed_ids = {p["position_id"] for p in closed}
+            assert closed_ids == {"PP_001", "PP_002"}
+
+    def test_cross_day_dedup(self):
+        """Same position_id appearing on two days is deduped to latest state."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger1 = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            ledger2 = os.path.join(tmpdir, "2026-07-02_paper_position_ledger.jsonl")
+            # Day 1: PP_001 is OPEN
+            _write_ledger_records(ledger1, [_make_open("PP_001")])
+            # Day 2: PP_001 is CLOSED
+            _write_ledger_records(ledger2, [_make_closed("PP_001", "STOP_LOSS_HIT")])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            assert len(positions) == 1
+            assert positions[0]["status"] == "STOP_LOSS_HIT"
+
+    def test_duplicate_run_stable_count(self):
+        """Running the same data twice does not increase canonical count."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            records = [
+                _make_closed("PP_001", "TAKE_PROFIT_HIT"),
+                _make_closed("PP_002", "STOP_LOSS_HIT"),
+            ]
+            # Write twice (simulating two runs)
+            _write_ledger_records(ledger, records)
+            _write_ledger_records(ledger, records)
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            assert len(positions) == 2
+            closed = filter_canonical_closed_clean(positions)
+            assert len(closed) == 2
+
+    def test_open_not_in_closed_clean(self):
+        """OPEN positions are excluded from closed_clean."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            _write_ledger_records(ledger, [
+                _make_closed("PP_closed", "TAKE_PROFIT_HIT"),
+                _make_open("PP_open"),
+            ])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            closed = filter_canonical_closed_clean(positions)
+            assert len(closed) == 1
+            assert closed[0]["position_id"] == "PP_closed"
+
+    def test_excluded_not_in_closed_clean(self):
+        """EXCLUDED positions are excluded from closed_clean."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            _write_ledger_records(ledger, [
+                _make_closed("PP_clean", "TAKE_PROFIT_HIT"),
+                _make_closed("PP_excluded", "STOP_LOSS_HIT", quarantine_status="EXCLUDED"),
+            ])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            closed = filter_canonical_closed_clean(positions)
+            assert len(closed) == 1
+            assert closed[0]["position_id"] == "PP_clean"
+
+    def test_invalid_status_not_in_closed_clean(self):
+        """INVALID status is not included in closed_clean."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            _write_ledger_records(ledger, [
+                _make_closed("PP_invalid", "INVALID"),
+                _make_closed("PP_valid", "TIMEOUT_EXIT"),
+            ])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            closed = filter_canonical_closed_clean(positions)
+            assert len(closed) == 1
+            assert closed[0]["position_id"] == "PP_valid"
+
+    def test_missing_exit_price_excluded(self):
+        """Positions with missing exit_price are excluded from closed_clean."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            _write_ledger_records(ledger, [
+                _make_closed("PP_no_exit", "TAKE_PROFIT_HIT", exit_price=None),
+                _make_closed("PP_ok", "TAKE_PROFIT_HIT"),
+            ])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            closed = filter_canonical_closed_clean(positions)
+            assert len(closed) == 1
+            assert closed[0]["position_id"] == "PP_ok"
+
+    def test_non_future_only_excluded(self):
+        """Positions without lifecycle_mode=future_only are excluded."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            _write_ledger_records(ledger, [
+                _make_closed("PP_legacy", "TAKE_PROFIT_HIT", lifecycle_mode="unknown"),
+                _make_closed("PP_ok", "TAKE_PROFIT_HIT"),
+            ])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            closed = filter_canonical_closed_clean(positions)
+            assert len(closed) == 1
+            assert closed[0]["position_id"] == "PP_ok"
+
+    def test_sorted_by_position_id(self):
+        """Canonical positions are sorted by position_id."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-01_paper_position_ledger.jsonl")
+            _write_ledger_records(ledger, [
+                _make_closed("PP_C"),
+                _make_closed("PP_A"),
+                _make_closed("PP_B"),
+            ])
+
+            positions, _diag = load_canonical_positions(tmpdir)
+            ids = [p["position_id"] for p in positions]
+            assert ids == ["PP_A", "PP_B", "PP_C"]

@@ -12,11 +12,11 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core.paper_trading.paper_position import dict_to_position, CLOSED_STATUSES
+from core.paper_trading.paper_position import dict_to_position, CLOSED_STATUSES, position_state_fingerprint
 from core.paper_trading.paper_position_simulator import (
     simulate_intent_only, simulate_with_klines,
     simulate_existing_positions_update_only,
@@ -355,12 +355,41 @@ def main():
         f.write(render_markdown(result_dict))
     print(f"Markdown: {md_path}")
 
-    # Ledger JSONL
+    # Ledger JSONL (fingerprint-idempotent append)
     ledger_path = os.path.join(args.output_dir, f"{date_str}_paper_position_ledger.jsonl")
-    with open(ledger_path, "w") as f:
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    # Load existing fingerprints from this ledger file
+    existing_fingerprints: set[str] = set()
+    if os.path.isfile(ledger_path):
+        try:
+            with open(ledger_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    rec = json.loads(line)
+                    fp = rec.get("_fp")
+                    if fp:
+                        existing_fingerprints.add(fp)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    appended = 0
+    skipped = 0
+    with open(ledger_path, "a") as f:
         for pos in result_dict.get("positions", []):
-            f.write(json.dumps(pos) + "\n")
-    print(f"Ledger: {ledger_path}")
+            record = dict(pos)
+            record["recorded_at"] = now_iso
+            fp = position_state_fingerprint(record)
+            if fp in existing_fingerprints:
+                skipped += 1
+                continue
+            record["_fp"] = fp
+            f.write(json.dumps(record) + "\n")
+            existing_fingerprints.add(fp)
+            appended += 1
+    print(f"Ledger: {ledger_path} (appended={appended}, skipped={skipped})")
 
     # Summary
     lc = result_dict.get("lifecycle_stats", {})

@@ -59,6 +59,63 @@ def _make_quarantine_data(clean_count=1, excluded_count=0):
     return {"positions": positions, "date": "2026-06-18"}
 
 
+def _write_ledger(tmpdir: str, date_str: str, clean_count=1, excluded_count=0):
+    """Write a ledger JSONL file with clean and excluded positions."""
+    import datetime as _dt
+    ledger_path = os.path.join(tmpdir, f"{date_str}_paper_position_ledger.jsonl")
+    now_iso = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+    with open(ledger_path, "w") as f:
+        for i in range(clean_count):
+            rec = {
+                "position_id": f"PP_clean_{i}",
+                "intent_id": f"TI_clean_{i}",
+                "strategy_id": "weak_short_watch",
+                "strategy_type": "weak_short_watch",
+                "symbol": "XRPUSDT",
+                "timeframe": "1h",
+                "side": "SHORT",
+                "status": "TAKE_PROFIT_HIT",
+                "entry_price": 1.15,
+                "exit_price": 1.09,
+                "stop_loss": 1.18,
+                "take_profit": 1.09,
+                "realized_pnl": 50.0,
+                "unrealized_pnl": 0.0,
+                "r_multiple": 2.0,
+                "lifecycle_mode": "future_only",
+                "opened_bar_time": 5000,
+                "closed_at": now_iso,
+                "quarantine_status": "CLEAN",
+                "source_mode": "real_public_readonly",
+                "recorded_at": now_iso,
+            }
+            f.write(json.dumps(rec) + "\n")
+        for i in range(excluded_count):
+            rec = {
+                "position_id": f"PP_legacy_{i}",
+                "strategy_id": "weak_short_watch",
+                "strategy_type": "weak_short_watch",
+                "symbol": "XRPUSDT",
+                "timeframe": "1h",
+                "side": "SHORT",
+                "status": "STOP_LOSS_HIT",
+                "entry_price": 1.0,
+                "exit_price": 0.9,
+                "stop_loss": 1.05,
+                "take_profit": 0.85,
+                "realized_pnl": -50.0,
+                "r_multiple": -1.0,
+                "lifecycle_mode": "future_only",
+                "opened_bar_time": 4000,
+                "closed_at": now_iso,
+                "quarantine_status": "EXCLUDED",
+                "source_mode": "real_public_readonly",
+                "recorded_at": now_iso,
+            }
+            f.write(json.dumps(rec) + "\n")
+    return ledger_path
+
+
 class TestScriptCompiles:
     def test_compiles(self):
         import py_compile
@@ -66,25 +123,19 @@ class TestScriptCompiles:
 
 
 class TestMissingInput:
-    def test_missing_file_exits_1(self):
-        r = _run(["--input-file", "/tmp/nonexistent_scorecard_12345.json"])
-        assert r.returncode == 1
-        assert "ERROR" in r.stdout
+    def test_no_ledger_files_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            r = _run(["--output-dir", tmpdir, "--date", "2026-06-18"])
+            assert r.returncode == 1
+            assert "No positions found" in r.stdout
 
 
-class TestWithInput:
+class TestWithLedger:
     def test_scorecard_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            input_path = os.path.join(tmpdir, "quarantine.json")
-            data = _make_quarantine_data(clean_count=5, excluded_count=2)
-            with open(input_path, "w") as f:
-                json.dump(data, f)
+            _write_ledger(tmpdir, "2026-06-18", clean_count=5, excluded_count=2)
 
-            r = _run([
-                "--input-file", input_path,
-                "--output-dir", tmpdir,
-                "--date", "2026-06-18",
-            ])
+            r = _run(["--output-dir", tmpdir, "--date", "2026-06-18"])
             assert r.returncode == 0
 
             # Check scorecard JSON
@@ -92,28 +143,29 @@ class TestWithInput:
             assert os.path.isfile(sc_path)
             with open(sc_path) as f:
                 sc_data = json.load(f)
-            assert sc_data["global_metrics"]["clean_positions"] == 5
-            assert sc_data["global_metrics"]["excluded_positions"] == 2
+            assert sc_data["global_metrics"]["closed_positions"] == 5
+            assert sc_data["global_metrics"]["excluded_positions"] == 0  # Scorecard only gets eligible
+            assert sc_data["cumulative_closed_clean"] == 5
 
             # Check markdown
             md_path = os.path.join(tmpdir, "2026-06-18_paper_performance_scorecard.md")
             assert os.path.isfile(md_path)
             with open(md_path) as f:
                 content = f.read()
-            assert "INSUFFICIENT_CLOSED_SAMPLE" in content
+            assert "LOW_SAMPLE_SIZE" in content
 
             # Check CSV
             csv_path = os.path.join(tmpdir, "2026-06-18_strategy_scorecard.csv")
             assert os.path.isfile(csv_path)
 
-    def test_empty_input(self):
+    def test_empty_ledger(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            input_path = os.path.join(tmpdir, "quarantine.json")
-            with open(input_path, "w") as f:
-                json.dump({"positions": [], "date": "2026-06-18"}, f)
+            ledger_path = os.path.join(tmpdir, "2026-06-18_paper_position_ledger.jsonl")
+            with open(ledger_path, "w") as f:
+                pass  # empty file
 
-            r = _run(["--input-file", input_path, "--output-dir", tmpdir, "--date", "2026-06-18"])
-            assert r.returncode == 0
+            r = _run(["--output-dir", tmpdir, "--date", "2026-06-18"])
+            assert r.returncode == 1
 
     def test_no_webhook_url_flag(self):
         """Script must not accept --webhook-url."""
@@ -127,11 +179,9 @@ class TestWithInput:
 
     def test_safety_flags_in_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            input_path = os.path.join(tmpdir, "quarantine.json")
-            with open(input_path, "w") as f:
-                json.dump(_make_quarantine_data(), f)
+            _write_ledger(tmpdir, "2026-06-18", clean_count=3, excluded_count=1)
 
-            r = _run(["--input-file", input_path, "--output-dir", tmpdir, "--date", "2026-06-18"])
+            r = _run(["--output-dir", tmpdir, "--date", "2026-06-18"])
             assert r.returncode == 0
 
             sc_path = os.path.join(tmpdir, "2026-06-18_paper_performance_scorecard.json")

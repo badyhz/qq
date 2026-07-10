@@ -23,6 +23,9 @@ from core.paper_trading.shadow_run_registry import (
     build_run_record, append_registry_record, generate_run_id,
     evaluate_gate,
 )
+from core.paper_trading.paper_position import (
+    load_canonical_positions, filter_canonical_closed_clean,
+)
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -113,6 +116,7 @@ def _extract_summary(date_str: str, output_dir: str) -> tuple[dict, list[str]]:
             sc_data = json.load(f)
         gm = sc_data.get("global_metrics", {})
         summary["closed_clean_positions"] = gm.get("closed_positions", 0)
+        summary["cumulative_closed_clean"] = sc_data.get("cumulative_closed_clean", gm.get("closed_positions", 0))
         summary["sample_status"] = gm.get("sample_status", "UNKNOWN")
         summary["strategy_scorecard_rows"] = len(sc_data.get("strategy_scorecards", []))
     else:
@@ -334,7 +338,7 @@ def main():
     # Registry (best-effort)
     registry_written = False
     try:
-        record = build_run_record(pipeline_result, run_id=run_id)
+        record = build_run_record(pipeline_result, run_id=run_id, output_dir=output_dir)
         append_registry_record(record, output_dir)
         registry_written = True
     except Exception as e:

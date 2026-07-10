@@ -19,6 +19,56 @@ MODULE_PATH = os.path.join(os.path.dirname(__file__), "..", "..",
                            "core", "paper_trading", "shadow_run_registry.py")
 
 
+def _write_test_ledger(tmpdir: str, closed_clean_count: int = 0, open_count: int = 0):
+    """Write a ledger JSONL file with closed-clean and open positions."""
+    import datetime as _dt
+    now_iso = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+    path = os.path.join(tmpdir, "2026-06-18_paper_position_ledger.jsonl")
+    with open(path, "w") as f:
+        for i in range(closed_clean_count):
+            rec = {
+                "position_id": f"PP_closed_{i}",
+                "strategy_id": "test_strat",
+                "symbol": "BTCUSDT",
+                "timeframe": "1h",
+                "side": "LONG",
+                "status": "TAKE_PROFIT_HIT",
+                "entry_price": 100.0,
+                "exit_price": 110.0,
+                "stop_loss": 95.0,
+                "take_profit": 110.0,
+                "r_multiple": 2.0,
+                "realized_pnl": 10.0,
+                "lifecycle_mode": "future_only",
+                "opened_bar_time": 1000 + i,
+                "closed_at": now_iso,
+                "quarantine_status": "CLEAN",
+                "source_mode": "real_public_readonly",
+                "recorded_at": now_iso,
+            }
+            f.write(json.dumps(rec) + "\n")
+        for i in range(open_count):
+            rec = {
+                "position_id": f"PP_open_{i}",
+                "strategy_id": "test_strat",
+                "symbol": "ETHUSDT",
+                "timeframe": "1h",
+                "side": "LONG",
+                "status": "OPEN",
+                "entry_price": 100.0,
+                "stop_loss": 95.0,
+                "take_profit": 110.0,
+                "r_multiple": 0.0,
+                "realized_pnl": 0.0,
+                "lifecycle_mode": "future_only",
+                "opened_bar_time": 2000 + i,
+                "quarantine_status": "CLEAN",
+                "source_mode": "real_public_readonly",
+                "recorded_at": now_iso,
+            }
+            f.write(json.dumps(rec) + "\n")
+
+
 def _make_pipeline_result(**overrides):
     result = {
         "date": "2026-06-18",
@@ -164,12 +214,14 @@ class TestComputeSampleGate:
 
     def test_with_records(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            rec = build_run_record(_make_pipeline_result(), run_id="gate_test")
+            _write_test_ledger(tmpdir, closed_clean_count=3, open_count=2)
+            rec = build_run_record(_make_pipeline_result(), run_id="gate_test", output_dir=tmpdir)
             append_registry_record(rec, tmpdir)
             gate = compute_sample_gate(tmpdir)
             assert gate.total_runs == 1
             assert gate.latest_run_id == "gate_test"
             assert gate.closed_clean_positions == 3
+            assert gate.cumulative_closed_clean == 3
             assert gate.testnet_gate_status == GATE_BLOCKED_INSUFFICIENT
 
     def test_gate_result_to_dict(self):

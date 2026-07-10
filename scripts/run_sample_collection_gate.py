@@ -37,6 +37,7 @@ def render_markdown(gate: ShadowSampleGateResult, registry: list[dict]) -> str:
         "## Gate Status",
         "",
         f"- closed_clean_positions: {gate.closed_clean_positions}",
+        f"- cumulative_closed_clean: {gate.cumulative_closed_clean}",
         f"- sample_status: {gate.sample_status}",
         f"- testnet_gate_status: {gate.testnet_gate_status}",
         "",
