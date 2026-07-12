@@ -208,6 +208,64 @@ def dict_to_position(d: dict[str, Any]) -> PaperPosition:
 
 TERMINAL_STATUSES = {"TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT", "INVALID"}
 
+
+@dataclass(frozen=True)
+class PositionSelection:
+    """Result of canonical state selection between two records for the same position."""
+    selected: dict
+    decision: str  # "keep_old", "use_new", "conflict_terminal"
+    conflict: bool
+    conflict_reason: str | None
+
+
+def select_canonical_position_state(
+    old: dict[str, Any],
+    new: dict[str, Any],
+) -> PositionSelection:
+    """Select canonical state between two records for the same position_id.
+
+    Rules:
+    - OPEN → OPEN: newer timestamp wins
+    - OPEN → CLOSED: select CLOSED
+    - CLOSED → OPEN: keep CLOSED (terminal irreversible)
+    - CLOSED → same CLOSED: keep old if only observation fields differ
+    - CLOSED → different CLOSED: conflict (terminal state changed)
+    """
+    old_status = old.get("status")
+    new_status = new.get("status")
+    old_terminal = _is_terminal_status(old_status)
+    new_terminal = _is_terminal_status(new_status)
+
+    # Both non-terminal: newer timestamp wins
+    if not old_terminal and not new_terminal:
+        old_ts = _position_sort_ts(old)
+        new_ts = _position_sort_ts(new)
+        if new_ts > old_ts:
+            return PositionSelection(new, "use_new", False, None)
+        return PositionSelection(old, "keep_old", False, None)
+
+    # OPEN → CLOSED: select CLOSED
+    if not old_terminal and new_terminal:
+        return PositionSelection(new, "use_new", False, None)
+
+    # CLOSED → OPEN: keep CLOSED, terminal is irreversible
+    if old_terminal and not new_terminal:
+        return PositionSelection(old, "keep_old", True, "terminal_irreversible")
+
+    # Both terminal
+    if old_status == new_status:
+        # Same terminal status: check if only observation fields changed
+        if position_state_fingerprint(old) == position_state_fingerprint(new):
+            return PositionSelection(old, "keep_old", False, None)
+        # Meaningful change within same status: keep first (trustworthy)
+        return PositionSelection(old, "keep_old", True, "terminal_field_change")
+
+    # Different terminal statuses: CONFLICT
+    return PositionSelection(
+        old, "conflict_terminal", True,
+        f"terminal_conflict: {old_status} vs {new_status}",
+    )
+
 # Source whitelist — only these are eligible for canonical counting
 ELIGIBLE_SOURCES = frozenset({
     "real_public_readonly",
@@ -321,25 +379,53 @@ def _should_replace(old: dict[str, Any], new: dict[str, Any]) -> bool:
     return False  # keep existing
 
 
+def _normalize_fingerprint_value(value: Any) -> str:
+    """Normalize a value for stable fingerprinting.
+
+    Numeric values: 100, 100.0, 100.00, Decimal("100.000") all produce "100".
+    Other values: str() as-is.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        # Normalize to integer if no fractional part
+        fval = float(value)
+        if fval == int(fval):
+            return str(int(fval))
+        return str(fval)
+    try:
+        from decimal import Decimal
+        d = Decimal(str(value))
+        # Strip trailing zeros: Decimal("100.000") → "100"
+        normalized = d.normalize()
+        # If no fractional part, format as int
+        if normalized == int(normalized):
+            return str(int(normalized))
+        return str(normalized)
+    except (ValueError, TypeError, ArithmeticError):
+        return str(value)
+
+
 def position_state_fingerprint(rec: dict[str, Any]) -> str:
     """Compute a stable fingerprint of a position's meaningful state.
 
     Used for idempotent ledger writes — if the fingerprint hasn't changed,
     don't append a new line.
 
-    Excludes observation-only fields (last_checked_at, recorded_at) to avoid
-    duplicate appends when only check time changes.
+    Excludes observation-only fields (last_checked_at, recorded_at, generated_at,
+    updated_at) to avoid duplicate appends when only check time changes.
+    Numeric fields are normalized so 100 == 100.0 == 100.00.
     """
     import hashlib
     parts = [
         str(rec.get("position_id", "")),
         str(rec.get("status", "")),
-        str(rec.get("entry_price", "")),
-        str(rec.get("exit_price", "")),
+        _normalize_fingerprint_value(rec.get("entry_price")),
+        _normalize_fingerprint_value(rec.get("exit_price")),
         str(rec.get("exit_reason", "")),
-        str(rec.get("stop_loss", "")),
-        str(rec.get("take_profit", "")),
-        str(rec.get("r_multiple", "")),
+        _normalize_fingerprint_value(rec.get("stop_loss")),
+        _normalize_fingerprint_value(rec.get("take_profit")),
+        _normalize_fingerprint_value(rec.get("r_multiple")),
         str(rec.get("closed_at", "")),
         str(rec.get("quarantine_status", "")),
     ]
@@ -374,6 +460,8 @@ def load_canonical_positions(
         "files_error": 0,
         "load_error": None,
         "corrupted_lines": 0,
+        "terminal_conflicts": [],
+        "terminal_conflict_count": 0,
     }
 
     pattern = os.path.join(report_dir, f"{date_glob}_paper_position_ledger.jsonl")
@@ -394,8 +482,22 @@ def load_canonical_positions(
                     if key is None:
                         diagnostics["excluded_no_position_id"] += 1
                         continue
-                    if _should_replace(latest_by_key.get(key, {}), rec):
+                    old = latest_by_key.get(key, {})
+                    if not old:
                         latest_by_key[key] = rec
+                    else:
+                        sel = select_canonical_position_state(old, rec)
+                        latest_by_key[key] = sel.selected
+                        if sel.conflict and sel.decision == "conflict_terminal":
+                            diagnostics["terminal_conflicts"].append({
+                                "position_id": rec.get("position_id"),
+                                "old_status": old.get("status"),
+                                "new_status": rec.get("status"),
+                                "old_ts": old.get("recorded_at") or old.get("closed_at", ""),
+                                "new_ts": rec.get("recorded_at") or rec.get("closed_at", ""),
+                                "reason": sel.conflict_reason,
+                            })
+                            diagnostics["terminal_conflict_count"] += 1
             diagnostics["files_read"] += 1
         except OSError as e:
             diagnostics["files_error"] += 1
@@ -488,6 +590,15 @@ def load_canonical_closed_clean_positions(
             p.get("r_multiple") is not None and p.get("closed_at")):
             eligible_positions.append(p)
 
+    # Terminal conflicts are fatal: different CLOSED statuses = data corruption
+    terminal_conflicts = load_diag.get("terminal_conflicts", [])
+    if terminal_conflicts:
+        for tc in terminal_conflicts:
+            fatal_errors.append(
+                f"Terminal conflict: {tc['position_id']} "
+                f"{tc['old_status']} vs {tc['new_status']}"
+            )
+
     # Determine fatal errors (technical issues that block Gate/Scorecard)
     if load_diag.get("load_error"):
         fatal_errors.append(f"Load error: {load_diag['load_error']}")
@@ -508,6 +619,8 @@ def load_canonical_closed_clean_positions(
         "derived_clean": derived_clean,
         "exclusions": exclusions,
         "fatal_errors": fatal_errors,
+        "terminal_conflicts": terminal_conflicts,
+        "terminal_conflict_count": load_diag.get("terminal_conflict_count", 0),
         "missing_position_id": load_diag.get("excluded_no_position_id", 0),
         "files_read": load_diag.get("files_read", 0),
         "files_error": load_diag.get("files_error", 0),

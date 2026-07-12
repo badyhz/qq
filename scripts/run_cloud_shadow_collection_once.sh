@@ -9,6 +9,16 @@ LOG_FILE="$LOG_DIR/shadow_collection_${RUN_TS}.log"
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_DIR"
 
+run_step() {
+    local name="$1"
+    shift
+    echo "=== ${name} ==="
+    if ! "$@"; then
+        echo "${name} FAILED (exit=$?)"
+        return 1
+    fi
+}
+
 {
   echo "=== Cloud Shadow Collection Start ==="
   date
@@ -24,47 +34,25 @@ cd "$PROJECT_DIR"
   python3 scripts/print_shadow_operator_status.py
 
   echo
-  echo "=== Lifecycle ==="
-  python3 scripts/run_shadow_trading_lifecycle.py --allow-public-http
-  LIFECYCLE_EXIT=$?
-  if [ $LIFECYCLE_EXIT -ne 0 ]; then
-    echo "LIFECYCLE FAILED (exit=$LIFECYCLE_EXIT), aborting pipeline"
-    exit 1
-  fi
+  run_step "Lifecycle" python3 scripts/run_shadow_trading_lifecycle.py --allow-public-http
 
   echo
-  echo "=== Update Only ==="
-  python3 scripts/run_shadow_position_update_only.py --allow-public-http
-  UPDATE_EXIT=$?
-  if [ $UPDATE_EXIT -ne 0 ]; then
-    echo "UPDATE-ONLY FAILED (exit=$UPDATE_EXIT), aborting pipeline"
-    exit 1
-  fi
+  run_step "Update-Only" python3 scripts/run_shadow_position_update_only.py --allow-public-http
 
   echo
-  echo "=== Performance Scorecard ==="
-  python3 scripts/run_paper_performance_scorecard.py
-  SCORECARD_EXIT=$?
-  if [ $SCORECARD_EXIT -ne 0 ]; then
-    echo "SCORECARD FAILED (exit=$SCORECARD_EXIT), aborting pipeline"
-    exit 1
-  fi
+  run_step "Scorecard" python3 scripts/run_paper_performance_scorecard.py
 
   echo
-  echo "=== Sample Gate ==="
-  python3 scripts/run_sample_collection_gate.py
-  GATE_EXIT=$?
-  if [ $GATE_EXIT -ne 0 ]; then
-    echo "GATE FAILED (exit=$GATE_EXIT), aborting pipeline"
-    exit 1
-  fi
+  run_step "Gate" python3 scripts/run_sample_collection_gate.py
 
   echo
   echo "=== Static Console ==="
-  python3 scripts/generate_static_console.py
-  CONSOLE_EXIT=$?
-  if [ $CONSOLE_EXIT -ne 0 ]; then
-    echo "CONSOLE FAILED (exit=$CONSOLE_EXIT), preserving last-good console"
+  SERVER_COMMIT="$(git rev-parse HEAD)"
+  if ! python3 scripts/generate_static_console.py --server-commit "$SERVER_COMMIT"; then
+    echo "CONSOLE FAILED, LAST-GOOD PRESERVED"
+    CONSOLE_FAILED=1
+  else
+    CONSOLE_FAILED=0
   fi
 
   echo
@@ -74,4 +62,9 @@ cd "$PROJECT_DIR"
   echo
   echo "=== Cloud Shadow Collection End ==="
   date
+
+  if [ "$CONSOLE_FAILED" -ne 0 ]; then
+    echo "Pipeline completed with console failure"
+    exit 1
+  fi
 } 2>&1 | tee "$LOG_FILE"

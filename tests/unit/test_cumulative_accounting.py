@@ -917,95 +917,73 @@ class TestFingerprintStability:
 # --- 21. Static console generator ---
 
 class TestStaticConsoleGenerator:
+    DATE_PREFIX = "2026-07-10"
+
     @staticmethod
-    def _write_report_files(report_dir: str, pos: dict):
-        """Create all report files required by the generator."""
-        date_prefix = "2026-07-10"
-        # Quarantine (positions)
-        qpath = os.path.join(report_dir, f"{date_prefix}_paper_positions_quarantine.json")
-        with open(qpath, "w") as f:
-            json.dump({
-                "date": date_prefix,
-                "source_file": "test",
-                "position_count": 1,
-                "quarantined_count": 0,
-                "clean_count": 1,
-                "excluded_from_stats_count": 0,
-                "reason_counts": {},
-                "positions": [pos],
-                "clean_summary": {},
-                "safety_flags": [],
-            }, f)
+    def _write_full_report(report_dir: str, pos: dict, date_prefix: str = "2026-07-10",
+                           strategy_id: str = "test_strat"):
+        """Create all report files including ledger for the generator."""
+        # Ledger (canonical source)
+        ledger = os.path.join(report_dir, f"{date_prefix}_paper_position_ledger.jsonl")
+        _write(ledger, [pos])
+
         # Scorecard
-        scpath = os.path.join(report_dir, f"{date_prefix}_paper_performance_scorecard.json")
-        with open(scpath, "w") as f:
+        with open(os.path.join(report_dir, f"{date_prefix}_paper_performance_scorecard.json"), "w") as f:
             json.dump({
                 "date": date_prefix,
                 "global_metrics": {
-                    "clean_position_count": 1,
-                    "closed_position_count": 1,
-                    "excluded_position_count": 0,
-                    "open_position_count": 0,
-                    "win_rate": 1.0,
-                    "profit_factor": 2.0,
-                    "take_profit_hit": 1,
-                    "stop_loss_hit": 0,
-                    "timeout_exit": 0,
+                    "clean_position_count": 1, "closed_position_count": 1,
+                    "excluded_position_count": 0, "open_position_count": 0,
+                    "win_rate": 1.0, "profit_factor": 2.0,
+                    "take_profit_hit": 1, "stop_loss_hit": 0, "timeout_exit": 0,
                 },
                 "strategy_scorecards": [{
-                    "strategy_id": "test_strat",
-                    "closed_count": 1,
-                    "win_rate": 1.0,
-                    "profit_factor": 2.0,
-                    "expectancy_r": 1.0,
-                    "avg_r_multiple": 1.0,
-                    "max_drawdown_r": 0.0,
-                    "max_losing_streak": 0,
+                    "strategy_id": strategy_id, "closed_count": 1,
+                    "win_rate": 1.0, "profit_factor": 2.0, "expectancy_r": 1.0,
+                    "avg_r_multiple": 1.0, "max_drawdown_r": 0.0, "max_losing_streak": 0,
                 }],
-                "clean_position_count": 1,
-                "excluded_position_count": 0,
-                "safety_flags": [],
+                "clean_position_count": 1, "excluded_position_count": 0, "safety_flags": [],
             }, f)
         # Sample gate
-        gpath = os.path.join(report_dir, f"{date_prefix}_shadow_sample_gate.json")
-        with open(gpath, "w") as f:
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_sample_gate.json"), "w") as f:
+            json.dump({
+                "date": date_prefix, "total_runs": 1, "latest_run_id": "test_run",
+                "closed_clean_positions": 1, "sample_status": "PASS",
+                "testnet_gate_status": "BLOCKED", "testnet_gate_reasons": ["shadow_only"],
+                "registry_path": "test", "safety_flags": [],
+            }, f)
+        # Lifecycle
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_lifecycle_result.json"), "w") as f:
             json.dump({
                 "date": date_prefix,
-                "total_runs": 1,
-                "latest_run_id": "test_run",
-                "closed_clean_positions": 1,
-                "sample_status": "PASS",
-                "testnet_gate_status": "BLOCKED",
-                "testnet_gate_reasons": ["shadow_only"],
-                "registry_path": "test",
-                "safety_flags": [],
+                "pipeline_status": "OK",
+                "mode": "real_public_http",
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+                "allow_public_http": True,
             }, f)
-        # Lifecycle result
-        lcpath = os.path.join(report_dir, f"{date_prefix}_shadow_lifecycle_result.json")
-        with open(lcpath, "w") as f:
-            json.dump({"date": date_prefix, "pipeline_status": "OK"}, f)
         # Update result
-        upath = os.path.join(report_dir, f"{date_prefix}_shadow_position_update_result.json")
-        with open(upath, "w") as f:
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_position_update_result.json"), "w") as f:
             json.dump({"date": date_prefix, "pipeline_status": "OK"}, f)
 
     def test_generator_creates_files(self):
-        """Generator creates index.html, index_en.html, console_data.json."""
+        """Generator creates versioned release with HTML, EN HTML, JSON."""
         from scripts.generate_static_console import generate_console
         with tempfile.TemporaryDirectory() as report_dir:
             with tempfile.TemporaryDirectory() as output_dir:
                 pos = _pos("PP_001", "TAKE_PROFIT_HIT")
-                self._write_report_files(report_dir, pos)
+                self._write_full_report(report_dir, pos)
 
                 result = generate_console(report_dir, output_dir)
                 assert result["success"] is True
-                assert "index.html" in result["files_written"]
-                assert "index_en.html" in result["files_written"]
-                assert "console_data.json" in result["files_written"]
+                assert result["version_id"] is not None
+                assert result["release_dir"] is not None
+                assert result["current_target"] is not None
 
-                assert os.path.isfile(os.path.join(output_dir, "index.html"))
-                assert os.path.isfile(os.path.join(output_dir, "index_en.html"))
-                assert os.path.isfile(os.path.join(output_dir, "console_data.json"))
+                # Verify files exist via symlink
+                current = os.path.join(output_dir, "current")
+                assert os.path.islink(current)
+                for fname in ["index.html", "index_en.html", "console_data.json"]:
+                    assert os.path.isfile(os.path.join(current, fname))
 
     def test_generator_json_valid(self):
         """Generator produces valid JSON."""
@@ -1013,15 +991,17 @@ class TestStaticConsoleGenerator:
         with tempfile.TemporaryDirectory() as report_dir:
             with tempfile.TemporaryDirectory() as output_dir:
                 pos = _pos("PP_001", "TAKE_PROFIT_HIT")
-                self._write_report_files(report_dir, pos)
+                self._write_full_report(report_dir, pos)
 
                 result = generate_console(report_dir, output_dir)
                 assert result["success"] is True
 
-                with open(os.path.join(output_dir, "console_data.json")) as f:
+                json_path = os.path.join(output_dir, "current", "console_data.json")
+                with open(json_path) as f:
                     data = json.load(f)
                 assert "generated_at" in data
                 assert "strategies" in data
+                assert "server_commit" in data
 
     def test_generator_no_sensitive_leaks(self):
         """Generator does not expose sensitive paths."""
@@ -1029,45 +1009,63 @@ class TestStaticConsoleGenerator:
         with tempfile.TemporaryDirectory() as report_dir:
             with tempfile.TemporaryDirectory() as output_dir:
                 pos = _pos("PP_001", "TAKE_PROFIT_HIT")
-                self._write_report_files(report_dir, pos)
+                self._write_full_report(report_dir, pos)
 
                 result = generate_console(report_dir, output_dir)
                 assert result["success"] is True
 
                 for fname in ["index.html", "index_en.html"]:
-                    with open(os.path.join(output_dir, fname)) as f:
+                    with open(os.path.join(output_dir, "current", fname)) as f:
                         content = f.read()
                     assert "/opt/quant-shadow" not in content
                     assert "10.66.66" not in content
 
-    def test_generator_preserves_last_good_on_error(self):
-        """Generator preserves existing files when generation fails (sensitive leak)."""
+    def test_generator_no_control_code(self):
+        """Generator HTML contains no control code."""
         from scripts.generate_static_console import generate_console
         with tempfile.TemporaryDirectory() as report_dir:
             with tempfile.TemporaryDirectory() as output_dir:
-                # Create existing good files
-                for fname in ["index.html", "index_en.html", "console_data.json"]:
-                    with open(os.path.join(output_dir, fname), "w") as f:
-                        f.write("existing-good-data")
-
-                # Create report with sensitive data in strategy_id (rendered in HTML)
                 pos = _pos("PP_001", "TAKE_PROFIT_HIT")
-                self._write_report_files(report_dir, pos)
-                # Overwrite scorecard with sensitive strategy_id
-                date_prefix = "2026-07-10"
-                scpath = os.path.join(report_dir, f"{date_prefix}_paper_performance_scorecard.json")
-                with open(scpath, "w") as f:
-                    json.dump({
-                        "date": date_prefix,
-                        "global_metrics": {"clean_position_count": 1, "closed_position_count": 1, "excluded_position_count": 0, "open_position_count": 0, "win_rate": 1.0, "profit_factor": 2.0, "take_profit_hit": 1, "stop_loss_hit": 0, "timeout_exit": 0},
-                        "strategy_scorecards": [{"strategy_id": "/opt/quant-shadow/bad", "closed_count": 1, "win_rate": 1.0, "profit_factor": 2.0, "expectancy_r": 1.0, "avg_r_multiple": 1.0, "max_drawdown_r": 0.0, "max_losing_streak": 0}],
-                        "clean_position_count": 1, "excluded_position_count": 0, "safety_flags": [],
-                    }, f)
+                self._write_full_report(report_dir, pos)
 
                 result = generate_console(report_dir, output_dir)
-                assert result["success"] is False
+                assert result["success"] is True
 
-                # Existing files should be preserved
-                for fname in ["index.html", "index_en.html", "console_data.json"]:
-                    with open(os.path.join(output_dir, fname)) as f:
-                        assert f.read() == "existing-good-data"
+                for fname in ["index.html", "index_en.html"]:
+                    with open(os.path.join(output_dir, "current", fname)) as f:
+                        content = f.read()
+                    assert "<button" not in content
+                    assert "<form" not in content
+                    assert "onclick" not in content
+                    assert "runAction" not in content
+                    assert "fetch(" not in content
+
+    def test_generator_preserves_last_good_on_error(self):
+        """Generator preserves existing files when generation fails."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                # Create a valid first release
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_full_report(report_dir, pos)
+                result1 = generate_console(report_dir, output_dir)
+                assert result1["success"] is True
+
+                # Verify first release exists
+                current = os.path.join(output_dir, "current")
+                first_version = os.readlink(current)
+
+                # Corrupt the scorecard with sensitive data
+                scpath = os.path.join(report_dir, f"{self.DATE_PREFIX}_paper_performance_scorecard.json")
+                with open(scpath, "w") as f:
+                    json.dump({
+                        "date": self.DATE_PREFIX,
+                        "global_metrics": {"closed_position_count": 1},
+                        "strategy_scorecards": [{"strategy_id": "/opt/quant-shadow/bad", "closed_count": 1}],
+                    }, f)
+
+                result2 = generate_console(report_dir, output_dir)
+                assert result2["success"] is False
+
+                # Current symlink should still point to first version
+                assert os.readlink(current) == first_version

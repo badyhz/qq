@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core.paper_trading.paper_position import dict_to_position, CLOSED_STATUSES, position_state_fingerprint
+from core.paper_trading.paper_position import dict_to_position, CLOSED_STATUSES, position_state_fingerprint, select_canonical_position_state
 from core.paper_trading.paper_position_simulator import (
     simulate_intent_only, simulate_with_klines,
     simulate_existing_positions_update_only,
@@ -98,24 +98,56 @@ def _position_dedupe_key(position: dict) -> str:
 def _load_update_existing_positions(output_dir: str, date_str: str) -> list[dict]:
     """Load OPEN positions for update-only from cross-day ledgers.
 
-    The shadow registry is not a position source. Ledgers and the current-day
-    positions file are replayed oldest-to-newest so a later CLOSED record keeps
-    an older OPEN record from being revived.
+    Uses select_canonical_position_state() to ensure:
+    - CLOSED positions from ledger are never reopened by positions.json
+    - Terminal state conflicts are detected and reported
+    - Same shared rules as canonical load
+
+    Raises RuntimeError on terminal state conflicts (caller must abort).
     """
     latest_by_key: dict[str, dict] = {}
+    conflicts: list[str] = []
 
     ledger_paths = sorted(glob.glob(os.path.join(output_dir, "*_paper_position_ledger.jsonl")))
     for path in ledger_paths:
         for position in _load_ledger_positions(path):
             key = _position_dedupe_key(position)
-            if key:
+            if not key:
+                continue
+            old = latest_by_key.get(key)
+            if old is None:
                 latest_by_key[key] = position
+            else:
+                sel = select_canonical_position_state(old, position)
+                latest_by_key[key] = sel.selected
+                if sel.conflict and sel.decision == "conflict_terminal":
+                    conflicts.append(
+                        f"{position.get('position_id')}: "
+                        f"{old.get('status')} vs {position.get('status')}"
+                    )
 
     current_positions_path = _positions_path(output_dir, date_str)
     for position in _load_existing_positions(current_positions_path):
         key = _position_dedupe_key(position)
-        if key:
+        if not key:
+            continue
+        old = latest_by_key.get(key)
+        if old is None:
             latest_by_key[key] = position
+        else:
+            sel = select_canonical_position_state(old, position)
+            latest_by_key[key] = sel.selected
+            if sel.conflict and sel.decision == "conflict_terminal":
+                conflicts.append(
+                    f"{position.get('position_id')}: "
+                    f"{old.get('status')} vs {position.get('status')}"
+                )
+
+    if conflicts:
+        raise RuntimeError(
+            f"Terminal state conflicts detected in update-only load: "
+            f"{'; '.join(conflicts)}"
+        )
 
     return [
         position for position in latest_by_key.values()
@@ -271,7 +303,11 @@ def main():
 
     # Load existing positions for dedup/update-only
     if args.update_existing_only:
-        existing = _load_update_existing_positions(args.output_dir, date_str)
+        try:
+            existing = _load_update_existing_positions(args.output_dir, date_str)
+        except RuntimeError as e:
+            print(f"ERROR: {e}")
+            return 1
     else:
         existing = _load_existing_positions(positions_path)
     existing_intent_ids = {p.get("intent_id") for p in existing}
