@@ -26,14 +26,46 @@ cd "$PROJECT_DIR"
   echo
   echo "=== Lifecycle ==="
   python3 scripts/run_shadow_trading_lifecycle.py --allow-public-http
+  LIFECYCLE_EXIT=$?
+  if [ $LIFECYCLE_EXIT -ne 0 ]; then
+    echo "LIFECYCLE FAILED (exit=$LIFECYCLE_EXIT), aborting pipeline"
+    exit 1
+  fi
 
   echo
   echo "=== Update Only ==="
   python3 scripts/run_shadow_position_update_only.py --allow-public-http
+  UPDATE_EXIT=$?
+  if [ $UPDATE_EXIT -ne 0 ]; then
+    echo "UPDATE-ONLY FAILED (exit=$UPDATE_EXIT), aborting pipeline"
+    exit 1
+  fi
+
+  echo
+  echo "=== Performance Scorecard ==="
+  python3 scripts/run_paper_performance_scorecard.py
+  SCORECARD_EXIT=$?
+  if [ $SCORECARD_EXIT -ne 0 ]; then
+    echo "SCORECARD FAILED (exit=$SCORECARD_EXIT), aborting pipeline"
+    exit 1
+  fi
 
   echo
   echo "=== Sample Gate ==="
   python3 scripts/run_sample_collection_gate.py
+  GATE_EXIT=$?
+  if [ $GATE_EXIT -ne 0 ]; then
+    echo "GATE FAILED (exit=$GATE_EXIT), aborting pipeline"
+    exit 1
+  fi
+
+  echo
+  echo "=== Static Console ==="
+  python3 scripts/generate_static_console.py
+  CONSOLE_EXIT=$?
+  if [ $CONSOLE_EXIT -ne 0 ]; then
+    echo "CONSOLE FAILED (exit=$CONSOLE_EXIT), preserving last-good console"
+  fi
 
   echo
   echo "=== Post Status ==="

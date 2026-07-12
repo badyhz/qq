@@ -217,10 +217,10 @@ class TestTerminalStatePrecedence:
         assert not _should_replace(closed_rec, open_rec)
 
     def test_higher_ts_wins_regardless(self):
-        """Higher timestamp always wins."""
-        old_closed = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-01-01T00:00:00Z")
-        new_open = _pos("PP_001", "OPEN", recorded_at="2026-07-01T00:00:00Z")
-        assert _should_replace(old_closed, new_open)
+        """Higher timestamp wins — but terminal state is irreversible."""
+        old_open = _pos("PP_001", "OPEN", recorded_at="2026-01-01T00:00:00Z")
+        new_closed = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-01T00:00:00Z")
+        assert _should_replace(old_open, new_closed)
 
     def test_mixed_units(self):
         """Seconds vs milliseconds comparison works."""
@@ -850,3 +850,224 @@ class TestScorecardInput:
             assert "PP_001" in eligible_ids
             assert "PP_002" in eligible_ids
             assert "PP_003" not in eligible_ids
+
+
+# --- 19. Terminal state irreversibility ---
+
+class TestTerminalStateIrreversibility:
+    def test_closed_not_overwritten_by_newer_open(self):
+        """CLOSED state must not be replaced by a newer OPEN record."""
+        old = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T10:00:00Z")
+        new = _pos("PP_001", "OPEN", recorded_at="2026-07-10T12:00:00Z")
+        assert _should_replace(old, new) is False
+
+    def test_closed_beats_older_open(self):
+        """CLOSED record should replace older OPEN."""
+        old = _pos("PP_001", "OPEN", recorded_at="2026-07-10T10:00:00Z")
+        new = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T12:00:00Z")
+        assert _should_replace(old, new) is True
+
+    def test_newer_closed_replaces_older_closed(self):
+        """Newer CLOSED can replace older CLOSED."""
+        old = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T10:00:00Z")
+        new = _pos("PP_001", "STOP_LOSS_HIT", recorded_at="2026-07-10T12:00:00Z")
+        assert _should_replace(old, new) is True
+
+    def test_canonical_load_preserves_closed(self):
+        """Canonical load must preserve CLOSED when newer OPEN exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-10_paper_position_ledger.jsonl")
+            _write(ledger, [
+                _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T10:00:00Z"),
+                _pos("PP_001", "OPEN", recorded_at="2026-07-10T12:00:00Z"),
+            ])
+            positions, _ = load_canonical_positions(tmpdir)
+            assert len(positions) == 1
+            assert positions[0]["status"] == "TAKE_PROFIT_HIT"
+
+
+# --- 20. Fingerprint excludes observation-only fields ---
+
+class TestFingerprintStability:
+    def test_last_checked_at_change_no_duplicate(self):
+        """Changing last_checked_at alone should not change fingerprint."""
+        p1 = _pos("PP_001", "OPEN", last_checked_at="2026-07-10T10:00:00Z")
+        p2 = _pos("PP_001", "OPEN", last_checked_at="2026-07-10T12:00:00Z")
+        assert position_state_fingerprint(p1) == position_state_fingerprint(p2)
+
+    def test_recorded_at_change_no_duplicate(self):
+        """Changing recorded_at alone should not change fingerprint."""
+        p1 = _pos("PP_001", "OPEN", recorded_at="2026-07-10T10:00:00Z")
+        p2 = _pos("PP_001", "OPEN", recorded_at="2026-07-10T12:00:00Z")
+        assert position_state_fingerprint(p1) == position_state_fingerprint(p2)
+
+    def test_status_change_changes_fingerprint(self):
+        """Status change must change fingerprint."""
+        p1 = _pos("PP_001", "OPEN")
+        p2 = _pos("PP_001", "TAKE_PROFIT_HIT")
+        assert position_state_fingerprint(p1) != position_state_fingerprint(p2)
+
+    def test_exit_price_change_changes_fingerprint(self):
+        """Exit price change must change fingerprint."""
+        p1 = _pos("PP_001", "TAKE_PROFIT_HIT", exit_price=110.0)
+        p2 = _pos("PP_001", "TAKE_PROFIT_HIT", exit_price=115.0)
+        assert position_state_fingerprint(p1) != position_state_fingerprint(p2)
+
+
+# --- 21. Static console generator ---
+
+class TestStaticConsoleGenerator:
+    @staticmethod
+    def _write_report_files(report_dir: str, pos: dict):
+        """Create all report files required by the generator."""
+        date_prefix = "2026-07-10"
+        # Quarantine (positions)
+        qpath = os.path.join(report_dir, f"{date_prefix}_paper_positions_quarantine.json")
+        with open(qpath, "w") as f:
+            json.dump({
+                "date": date_prefix,
+                "source_file": "test",
+                "position_count": 1,
+                "quarantined_count": 0,
+                "clean_count": 1,
+                "excluded_from_stats_count": 0,
+                "reason_counts": {},
+                "positions": [pos],
+                "clean_summary": {},
+                "safety_flags": [],
+            }, f)
+        # Scorecard
+        scpath = os.path.join(report_dir, f"{date_prefix}_paper_performance_scorecard.json")
+        with open(scpath, "w") as f:
+            json.dump({
+                "date": date_prefix,
+                "global_metrics": {
+                    "clean_position_count": 1,
+                    "closed_position_count": 1,
+                    "excluded_position_count": 0,
+                    "open_position_count": 0,
+                    "win_rate": 1.0,
+                    "profit_factor": 2.0,
+                    "take_profit_hit": 1,
+                    "stop_loss_hit": 0,
+                    "timeout_exit": 0,
+                },
+                "strategy_scorecards": [{
+                    "strategy_id": "test_strat",
+                    "closed_count": 1,
+                    "win_rate": 1.0,
+                    "profit_factor": 2.0,
+                    "expectancy_r": 1.0,
+                    "avg_r_multiple": 1.0,
+                    "max_drawdown_r": 0.0,
+                    "max_losing_streak": 0,
+                }],
+                "clean_position_count": 1,
+                "excluded_position_count": 0,
+                "safety_flags": [],
+            }, f)
+        # Sample gate
+        gpath = os.path.join(report_dir, f"{date_prefix}_shadow_sample_gate.json")
+        with open(gpath, "w") as f:
+            json.dump({
+                "date": date_prefix,
+                "total_runs": 1,
+                "latest_run_id": "test_run",
+                "closed_clean_positions": 1,
+                "sample_status": "PASS",
+                "testnet_gate_status": "BLOCKED",
+                "testnet_gate_reasons": ["shadow_only"],
+                "registry_path": "test",
+                "safety_flags": [],
+            }, f)
+        # Lifecycle result
+        lcpath = os.path.join(report_dir, f"{date_prefix}_shadow_lifecycle_result.json")
+        with open(lcpath, "w") as f:
+            json.dump({"date": date_prefix, "pipeline_status": "OK"}, f)
+        # Update result
+        upath = os.path.join(report_dir, f"{date_prefix}_shadow_position_update_result.json")
+        with open(upath, "w") as f:
+            json.dump({"date": date_prefix, "pipeline_status": "OK"}, f)
+
+    def test_generator_creates_files(self):
+        """Generator creates index.html, index_en.html, console_data.json."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_report_files(report_dir, pos)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is True
+                assert "index.html" in result["files_written"]
+                assert "index_en.html" in result["files_written"]
+                assert "console_data.json" in result["files_written"]
+
+                assert os.path.isfile(os.path.join(output_dir, "index.html"))
+                assert os.path.isfile(os.path.join(output_dir, "index_en.html"))
+                assert os.path.isfile(os.path.join(output_dir, "console_data.json"))
+
+    def test_generator_json_valid(self):
+        """Generator produces valid JSON."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_report_files(report_dir, pos)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is True
+
+                with open(os.path.join(output_dir, "console_data.json")) as f:
+                    data = json.load(f)
+                assert "generated_at" in data
+                assert "strategies" in data
+
+    def test_generator_no_sensitive_leaks(self):
+        """Generator does not expose sensitive paths."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_report_files(report_dir, pos)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is True
+
+                for fname in ["index.html", "index_en.html"]:
+                    with open(os.path.join(output_dir, fname)) as f:
+                        content = f.read()
+                    assert "/opt/quant-shadow" not in content
+                    assert "10.66.66" not in content
+
+    def test_generator_preserves_last_good_on_error(self):
+        """Generator preserves existing files when generation fails (sensitive leak)."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                # Create existing good files
+                for fname in ["index.html", "index_en.html", "console_data.json"]:
+                    with open(os.path.join(output_dir, fname), "w") as f:
+                        f.write("existing-good-data")
+
+                # Create report with sensitive data in strategy_id (rendered in HTML)
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_report_files(report_dir, pos)
+                # Overwrite scorecard with sensitive strategy_id
+                date_prefix = "2026-07-10"
+                scpath = os.path.join(report_dir, f"{date_prefix}_paper_performance_scorecard.json")
+                with open(scpath, "w") as f:
+                    json.dump({
+                        "date": date_prefix,
+                        "global_metrics": {"clean_position_count": 1, "closed_position_count": 1, "excluded_position_count": 0, "open_position_count": 0, "win_rate": 1.0, "profit_factor": 2.0, "take_profit_hit": 1, "stop_loss_hit": 0, "timeout_exit": 0},
+                        "strategy_scorecards": [{"strategy_id": "/opt/quant-shadow/bad", "closed_count": 1, "win_rate": 1.0, "profit_factor": 2.0, "expectancy_r": 1.0, "avg_r_multiple": 1.0, "max_drawdown_r": 0.0, "max_losing_streak": 0}],
+                        "clean_position_count": 1, "excluded_position_count": 0, "safety_flags": [],
+                    }, f)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is False
+
+                # Existing files should be preserved
+                for fname in ["index.html", "index_en.html", "console_data.json"]:
+                    with open(os.path.join(output_dir, fname)) as f:
+                        assert f.read() == "existing-good-data"

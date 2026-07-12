@@ -296,11 +296,19 @@ def _is_terminal_status(status: str | None) -> bool:
 def _should_replace(old: dict[str, Any], new: dict[str, Any]) -> bool:
     """Decide whether new record should replace old for the same dedup key.
 
-    Rules:
-    1. Higher timestamp wins.
-    2. If timestamps equal: terminal status beats non-terminal.
-    3. If both terminal or both non-terminal: keep existing (first seen wins).
+    Rules (terminal state is irreversible):
+    1. If old is terminal and new is non-terminal: NEVER replace.
+    2. Higher timestamp wins.
+    3. If timestamps equal: terminal status beats non-terminal.
+    4. If both terminal or both non-terminal: keep existing (first seen wins).
     """
+    old_terminal = _is_terminal_status(old.get("status"))
+    new_terminal = _is_terminal_status(new.get("status"))
+
+    # Terminal state is irreversible: CLOSED cannot be overwritten by OPEN
+    if old_terminal and not new_terminal:
+        return False
+
     old_ts = _position_sort_ts(old)
     new_ts = _position_sort_ts(new)
     if new_ts > old_ts:
@@ -308,8 +316,6 @@ def _should_replace(old: dict[str, Any], new: dict[str, Any]) -> bool:
     if new_ts < old_ts:
         return False
     # Equal timestamp: terminal beats non-terminal
-    old_terminal = _is_terminal_status(old.get("status"))
-    new_terminal = _is_terminal_status(new.get("status"))
     if new_terminal and not old_terminal:
         return True
     return False  # keep existing
@@ -320,16 +326,21 @@ def position_state_fingerprint(rec: dict[str, Any]) -> str:
 
     Used for idempotent ledger writes — if the fingerprint hasn't changed,
     don't append a new line.
+
+    Excludes observation-only fields (last_checked_at, recorded_at) to avoid
+    duplicate appends when only check time changes.
     """
     import hashlib
     parts = [
         str(rec.get("position_id", "")),
         str(rec.get("status", "")),
+        str(rec.get("entry_price", "")),
         str(rec.get("exit_price", "")),
         str(rec.get("exit_reason", "")),
+        str(rec.get("stop_loss", "")),
+        str(rec.get("take_profit", "")),
         str(rec.get("r_multiple", "")),
         str(rec.get("closed_at", "")),
-        str(rec.get("last_checked_at", "")),
         str(rec.get("quarantine_status", "")),
     ]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
