@@ -4,6 +4,7 @@ Reads reports/strategies, generates HTML + JSON for Nginx.
 No orders, no accounts, no secrets, no external network, no control buttons.
 
 Uses versioned release directory with atomic symlink switch.
+Public files only accessible via <output-dir>/current/.
 """
 from __future__ import annotations
 
@@ -11,12 +12,14 @@ import argparse
 import glob
 import hashlib
 import json
+import math
 import os
 import re
 import sys
 import tempfile
 import uuid
 from datetime import datetime, timezone
+from html import escape as _html_escape
 from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -26,6 +29,18 @@ from core.paper_trading.paper_position import load_canonical_closed_clean_positi
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "strategies")
 DEFAULT_OUTPUT_DIR = "/www/wwwroot/quant-shadow-console"
+
+# Maximum release versions to keep (including current)
+MAX_RELEASES = 5
+
+
+# ---------------------------------------------------------------------------
+# HTML escaping helper
+# ---------------------------------------------------------------------------
+
+def _html(value: object) -> str:
+    """Escape any value for safe HTML embedding."""
+    return _html_escape(str(value if value is not None else ""), quote=True)
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +60,32 @@ def _load_json(path: str) -> dict | None:
         with open(path) as f:
             return json.load(f)
     except Exception:
+        return None
+
+
+def _extract_completion_time(data: dict) -> str | None:
+    """Extract a real ISO completion time from pipeline result.
+
+    Looks at the last step's finished_at field.
+    Returns None if no valid time found.
+    """
+    steps = data.get("steps", [])
+    if steps and isinstance(steps[-1], dict):
+        finished = steps[-1].get("finished_at", "")
+        if finished and "T" in str(finished):
+            return str(finished)
+    # Fallback: top-level finished_at (registry records have this)
+    finished = data.get("finished_at", "")
+    if finished and "T" in str(finished):
+        return str(finished)
+    return None
+
+
+def _parse_iso_time(time_str: str) -> datetime | None:
+    """Parse ISO time string, return None if invalid."""
+    try:
+        return datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
         return None
 
 
@@ -68,13 +109,21 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         errors.append("Corrupt lifecycle result JSON")
         return bundle, errors
 
+    # Validate lifecycle pipeline_status
+    lc_status = lc_data.get("pipeline_status", "")
+    if lc_status != "PASS":
+        errors.append(f"Lifecycle status is '{lc_status}', not PASS")
+        return bundle, errors
+
     run_date = lc_data.get("date", "")
+    run_id = lc_data.get("run_id", "")
     if not run_date:
         errors.append("Lifecycle result missing date")
         return bundle, errors
 
     bundle["lifecycle"] = lc_data
     bundle["run_date"] = run_date
+    bundle["run_id"] = run_id
 
     # 2. Find update result for same date
     update_path = _find_latest(report_dir, "_shadow_position_update_result.json")
@@ -85,6 +134,12 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     update_data = _load_json(update_path)
     if not update_data:
         errors.append("Corrupt update result JSON")
+        return bundle, errors
+
+    # Validate update pipeline_status
+    update_status = update_data.get("pipeline_status", "")
+    if update_status != "PASS":
+        errors.append(f"Update status is '{update_status}', not PASS")
         return bundle, errors
 
     if update_data.get("date") != run_date:
@@ -133,7 +188,67 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
 
     bundle["gate"] = gate_data
 
-    # 5. Load canonical positions and check accounting status
+    # 5. Find registry and match by run_id
+    reg_path = _find_latest(report_dir, "_shadow_run_registry.jsonl")
+    if not reg_path:
+        errors.append("Missing registry file")
+        return bundle, errors
+
+    matching_reg = None
+    try:
+        with open(reg_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rec = json.loads(line)
+                if rec.get("run_id") == run_id:
+                    matching_reg = rec
+                    break
+    except (OSError, json.JSONDecodeError) as e:
+        errors.append(f"Registry read error: {e}")
+        return bundle, errors
+
+    if not matching_reg:
+        errors.append(f"Registry missing matching run_id={run_id}")
+        return bundle, errors
+
+    if matching_reg.get("accounting_status") != "OK":
+        errors.append(
+            f"Registry accounting_status={matching_reg.get('accounting_status')}"
+        )
+        return bundle, errors
+
+    bundle["registry"] = matching_reg
+
+    # 6. Extract real completion time
+    lc_finished = _extract_completion_time(lc_data)
+    reg_finished = matching_reg.get("finished_at", "")
+
+    # Prefer registry finished_at (it's the authoritative record)
+    completion_time = reg_finished if reg_finished and "T" in str(reg_finished) else lc_finished
+
+    if not completion_time or "T" not in str(completion_time):
+        errors.append("No valid completion time found (need ISO datetime, not date-only)")
+        return bundle, errors
+
+    ct_parsed = _parse_iso_time(str(completion_time))
+    if not ct_parsed:
+        errors.append(f"Cannot parse completion time: {completion_time}")
+        return bundle, errors
+
+    # Reject future time (more than 5 minutes ahead)
+    now = datetime.now(timezone.utc)
+    ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
+    if ct_utc > now:
+        age_min = (ct_utc - now).total_seconds() / 60
+        if age_min > 5:
+            errors.append(f"Completion time is {age_min:.1f} minutes in the future")
+            return bundle, errors
+
+    bundle["completion_time"] = str(completion_time)
+
+    # 7. Load canonical positions and check accounting status
     eligible, all_canonical, diag = load_canonical_closed_clean_positions(report_dir)
 
     if diag.get("accounting_status") != "OK":
@@ -146,23 +261,38 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     bundle["all_canonical"] = all_canonical
     bundle["diag"] = diag
 
-    # 6. Count equality check
+    # 8. Six-way count verification
+    # 1. Canonical eligible count
     canonical_count = len(eligible)
-    sc_global = sc_data.get("global_metrics", {}).get("closed_position_count", -1)
-    sc_strat_total = sum(
+
+    # 2. Scorecard global_metrics.closed_positions
+    sc_global_closed = sc_data.get("global_metrics", {}).get("closed_positions", -1)
+
+    # 3. Scorecard strategy sum
+    sc_strat_sum = sum(
         s.get("closed_count", 0) for s in sc_data.get("strategy_scorecards", [])
     )
-    gate_cumulative = gate_data.get("closed_clean_positions", -1)
+
+    # 4. Scorecard top-level cumulative_closed_clean
+    sc_cumulative = sc_data.get("cumulative_closed_clean", -1)
+
+    # 5. Gate cumulative_closed_clean
+    gate_cumulative = gate_data.get("cumulative_closed_clean", -1)
+
+    # 6. Registry matching record cumulative_closed_clean
+    reg_cumulative = matching_reg.get("cumulative_closed_clean", -1)
 
     counts = {
         "canonical": canonical_count,
-        "scorecard_global": sc_global,
-        "scorecard_strategy_sum": sc_strat_total,
+        "scorecard_global": sc_global_closed,
+        "scorecard_strategy_sum": sc_strat_sum,
+        "scorecard_cumulative": sc_cumulative,
         "gate_cumulative": gate_cumulative,
+        "registry_cumulative": reg_cumulative,
     }
 
     # All non-negative counts must agree
-    non_neg = {k: v for k, v in counts.items() if v >= 0}
+    non_neg = {k: v for k, v in counts.items() if v is not None and v >= 0}
     if non_neg:
         values = set(non_neg.values())
         if len(values) > 1:
@@ -258,43 +388,43 @@ def render_readonly_html(
     lang: str = "zh",
     server_commit: str = "",
 ) -> str:
-    """Render read-only HTML directly from data — no control code."""
+    """Render read-only HTML directly from data — no control code.
+
+    All dynamic values are HTML-escaped via _html().
+    """
     sc = bundle["scorecard"]
     gate = bundle["gate"]
-    diag = bundle["diag"]
     counts = bundle["counts"]
 
-    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    run_date = bundle.get("run_date", "")
+    generated_at = _html(datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    completion_time = bundle.get("completion_time", "")
 
     # Freshness
-    lc_date = bundle.get("lifecycle", {}).get("finished_at", "") or run_date
     data_age_minutes = "?"
     freshness_status = "unknown"
-    if lc_date:
-        try:
-            lc_dt = datetime.fromisoformat(str(lc_date).replace("Z", "+00:00"))
-            age = (datetime.now(timezone.utc) - lc_dt).total_seconds() / 60
+    if completion_time:
+        ct_parsed = _parse_iso_time(completion_time)
+        if ct_parsed:
+            ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60
             data_age_minutes = str(round(age, 1))
             freshness_status = "fresh" if age <= 90 else ("stale" if age <= 180 else "expired")
-        except (ValueError, TypeError):
-            pass
 
     global_metrics = sc.get("global_metrics", {})
     sample_status = gate.get("sample_status", "UNKNOWN")
     gate_status = gate.get("testnet_gate_status", "UNKNOWN")
 
-    # Strategy rows
+    # Strategy rows — all values escaped
     strat_rows = []
     for s in sc.get("strategy_scorecards", []):
         strat_rows.append(
-            f"<tr><td>{s.get('strategy_id','')}</td>"
-            f"<td>{s.get('closed_count',0)}</td>"
-            f"<td>{round(s.get('win_rate',0)*100,1)}%</td>"
-            f"<td>{round(s.get('profit_factor',0),2)}</td>"
-            f"<td>{round(s.get('avg_r_multiple',0),4)}</td>"
-            f"<td>{round(s.get('avg_r_multiple',0)*s.get('closed_count',0),2)}</td>"
-            f"<td>{round(s.get('max_drawdown_r',0),4)}</td></tr>"
+            f"<tr><td>{_html(s.get('strategy_id',''))}</td>"
+            f"<td>{_html(s.get('closed_count',0))}</td>"
+            f"<td>{_html(round(s.get('win_rate',0)*100,1))}%</td>"
+            f"<td>{_html(round(s.get('profit_factor',0),2))}</td>"
+            f"<td>{_html(round(s.get('avg_r_multiple',0),4))}</td>"
+            f"<td>{_html(round(s.get('avg_r_multiple',0)*s.get('closed_count',0),2))}</td>"
+            f"<td>{_html(round(s.get('max_single_loss_r',0),4))}</td></tr>"
         )
 
     # Open positions table
@@ -305,13 +435,13 @@ def render_readonly_html(
         op_rows = []
         for p in open_positions[:10]:
             op_rows.append(
-                f"<tr><td>{p.get('symbol','')}</td>"
-                f"<td>{p.get('timeframe','')}</td>"
-                f"<td>{p.get('side','')}</td>"
-                f"<td>{p.get('entry_price','')}</td>"
-                f"<td>{p.get('stop_loss','')}</td>"
-                f"<td>{p.get('take_profit','')}</td>"
-                f"<td>{p.get('strategy_id','')}</td></tr>"
+                f"<tr><td>{_html(p.get('symbol',''))}</td>"
+                f"<td>{_html(p.get('timeframe',''))}</td>"
+                f"<td>{_html(p.get('side',''))}</td>"
+                f"<td>{_html(p.get('entry_price',''))}</td>"
+                f"<td>{_html(p.get('stop_loss',''))}</td>"
+                f"<td>{_html(p.get('take_profit',''))}</td>"
+                f"<td>{_html(p.get('strategy_id',''))}</td></tr>"
             )
         open_table = (
             "<table><tr><th>Symbol</th><th>TF</th><th>Side</th>"
@@ -331,12 +461,12 @@ def render_readonly_html(
         cl_rows = []
         for p in closed:
             cl_rows.append(
-                f"<tr><td>{p.get('symbol','')}</td>"
-                f"<td>{p.get('strategy_id','')}</td>"
-                f"<td>{p.get('status','')}</td>"
-                f"<td>{p.get('exit_reason','')}</td>"
-                f"<td>{round(p.get('r_multiple',0),4)}</td>"
-                f"<td>{p.get('closed_at','')}</td></tr>"
+                f"<tr><td>{_html(p.get('symbol',''))}</td>"
+                f"<td>{_html(p.get('strategy_id',''))}</td>"
+                f"<td>{_html(p.get('status',''))}</td>"
+                f"<td>{_html(p.get('exit_reason',''))}</td>"
+                f"<td>{_html(round(p.get('r_multiple',0),4))}</td>"
+                f"<td>{_html(p.get('closed_at',''))}</td></tr>"
             )
         cl_table = (
             "<table><tr><th>Symbol</th><th>Strategy</th><th>Status</th>"
@@ -368,7 +498,7 @@ def render_readonly_html(
             "pf_label": "盈亏比",
             "avg_r_label": "平均R",
             "cum_r_label": "累计R",
-            "mdd_label": "最大回撤",
+            "mdd_label": "最大亏损R",
             "open_positions_title": "当前持仓",
             "recent_closed_title": "最近平仓",
             "lang_switch_label": "语言",
@@ -398,7 +528,7 @@ def render_readonly_html(
             "pf_label": "Profit Factor",
             "avg_r_label": "Avg R",
             "cum_r_label": "Cumulative R",
-            "mdd_label": "Max DD",
+            "mdd_label": "Max Loss R",
             "open_positions_title": "Open Positions",
             "recent_closed_title": "Recent Closed",
             "lang_switch_label": "Language",
@@ -417,27 +547,27 @@ def render_readonly_html(
         generated_label=labels["generated_label"],
         generated_at=generated_at,
         commit_label=labels["commit_label"],
-        server_commit=server_commit or "unknown",
+        server_commit=_html(server_commit or "unknown"),
         freshness_label=labels["freshness_label"],
         freshness_status=freshness_status,
         data_age_minutes=data_age_minutes,
         status_title=labels["status_title"],
         sample_label=labels["sample_label"],
-        sample_status=sample_status,
+        sample_status=_html(sample_status),
         sample_class=_status_class(sample_status),
         gate_label=labels["gate_label"],
-        gate_status=gate_status,
+        gate_status=_html(gate_status),
         gate_class=_status_class(gate_status),
         eligible_label=labels["eligible_label"],
-        eligible_count=counts.get("canonical", 0),
+        eligible_count=_html(counts.get("canonical", 0)),
         open_label=labels["open_label"],
-        open_count=global_metrics.get("open_position_count", 0),
+        open_count=_html(global_metrics.get("open_positions", 0)),
         tp_label=labels["tp_label"],
-        tp_count=global_metrics.get("take_profit_hit", 0),
+        tp_count=_html(global_metrics.get("take_profit_hit", 0)),
         sl_label=labels["sl_label"],
-        sl_count=global_metrics.get("stop_loss_hit", 0),
+        sl_count=_html(global_metrics.get("stop_loss_hit", 0)),
         timeout_label=labels["timeout_label"],
-        timeout_count=global_metrics.get("timeout_exit", 0),
+        timeout_count=_html(global_metrics.get("timeout_exit", 0)),
         strategies_title=labels["strategies_title"],
         strat_id_label=labels["strat_id_label"],
         closed_label=labels["closed_label"],
@@ -458,29 +588,51 @@ def render_readonly_html(
         count_scorecard=counts.get("scorecard_global", 0),
         count_gate=counts.get("gate_cumulative", 0),
         run_label=labels["run_label"],
-        latest_run_at=lc_date,
+        latest_run_at=_html(completion_time),
         safety_label=labels["safety_label"],
     )
 
 
 # ---------------------------------------------------------------------------
-# Public JSON (strict allowlist)
+# Public JSON (strict allowlist with length limits)
 # ---------------------------------------------------------------------------
+
+_FIELD_LENGTH_LIMITS = {
+    "symbol": 32,
+    "strategy_id": 64,
+    "exit_reason": 128,
+    "status": 32,
+    "side": 16,
+    "timeframe": 16,
+}
+
+
+def _truncate_field(value: str, field_name: str) -> str:
+    """Truncate a string field to its allowed length."""
+    limit = _FIELD_LENGTH_LIMITS.get(field_name)
+    if limit and isinstance(value, str) and len(value) > limit:
+        return value[:limit]
+    return value
+
 
 def build_public_json(
     bundle: dict[str, Any],
     server_commit: str = "",
 ) -> dict[str, Any]:
-    """Build public-safe JSON using strict allowlist — no raw report copy."""
+    """Build public-safe JSON using strict allowlist.
+
+    No position_id, intent_id, registry_path, source info, or diagnostics.
+    String fields are length-limited.
+    """
     sc = bundle["scorecard"]
     gate = bundle["gate"]
-    diag = bundle["diag"]
     counts = bundle["counts"]
+    completion_time = bundle.get("completion_time", "")
 
     # Strategy metrics (allowlisted fields only)
     strategies = {}
     for s in sc.get("strategy_scorecards", []):
-        sid = s.get("strategy_id", "")
+        sid = _truncate_field(str(s.get("strategy_id", "")), "strategy_id")
         strategies[sid] = {
             "strategy_id": sid,
             "closed_count": s.get("closed_count"),
@@ -488,25 +640,25 @@ def build_public_json(
             "profit_factor": round(s.get("profit_factor", 0), 2),
             "avg_r": round(s.get("avg_r_multiple", 0), 4),
             "cumulative_r": round(s.get("avg_r_multiple", 0) * s.get("closed_count", 0), 2),
-            "max_drawdown_r": round(s.get("max_drawdown_r", 0), 4),
+            "max_drawdown_r": round(s.get("max_single_loss_r", 0), 4),
         }
 
-    # Current open positions (allowlisted fields only)
+    # Current open positions (allowlisted fields only, no position_id)
     current_positions = []
     for p in bundle.get("all_canonical", []):
         if p.get("status") != "OPEN":
             continue
         current_positions.append({
-            "symbol": p.get("symbol"),
-            "timeframe": p.get("timeframe"),
-            "side": p.get("side"),
+            "symbol": _truncate_field(str(p.get("symbol", "")), "symbol"),
+            "timeframe": _truncate_field(str(p.get("timeframe", "")), "timeframe"),
+            "side": _truncate_field(str(p.get("side", "")), "side"),
             "entry_price": p.get("entry_price"),
             "stop_loss": p.get("stop_loss"),
             "take_profit": p.get("take_profit"),
-            "strategy_id": p.get("strategy_id"),
+            "strategy_id": _truncate_field(str(p.get("strategy_id", "")), "strategy_id"),
         })
 
-    # Recent closed (allowlisted fields only, last 20)
+    # Recent closed (allowlisted fields only, last 20, no position_id)
     closed = sorted(
         [p for p in bundle.get("all_canonical", []) if p.get("status") != "OPEN"],
         key=lambda p: p.get("closed_at", ""),
@@ -515,41 +667,38 @@ def build_public_json(
     recent_closed = []
     for p in closed:
         recent_closed.append({
-            "symbol": p.get("symbol"),
-            "strategy_id": p.get("strategy_id"),
-            "status": p.get("status"),
-            "exit_reason": p.get("exit_reason"),
+            "symbol": _truncate_field(str(p.get("symbol", "")), "symbol"),
+            "strategy_id": _truncate_field(str(p.get("strategy_id", "")), "strategy_id"),
+            "status": _truncate_field(str(p.get("status", "")), "status"),
+            "exit_reason": _truncate_field(str(p.get("exit_reason", "")), "exit_reason"),
             "r_multiple": round(p.get("r_multiple", 0), 4),
             "closed_at": p.get("closed_at"),
         })
 
-    # Freshness
-    run_date = bundle.get("run_date", "")
-    lc_finished = bundle.get("lifecycle", {}).get("finished_at", "") or run_date
+    # Freshness (based on real completion time)
     data_age_minutes = None
     freshness_status = "unknown"
-    if lc_finished:
-        try:
-            lc_dt = datetime.fromisoformat(str(lc_finished).replace("Z", "+00:00"))
-            age = (datetime.now(timezone.utc) - lc_dt).total_seconds() / 60
+    if completion_time:
+        ct_parsed = _parse_iso_time(completion_time)
+        if ct_parsed:
+            ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60
             data_age_minutes = round(age, 1)
             freshness_status = "fresh" if age <= 90 else ("stale" if age <= 180 else "expired")
-        except (ValueError, TypeError):
-            pass
 
     global_metrics = sc.get("global_metrics", {})
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "server_commit": server_commit or "unknown",
-        "run_date": run_date,
-        "latest_run_at": lc_finished,
+        "run_date": bundle.get("run_date", ""),
+        "latest_run_at": completion_time,
         "freshness_status": freshness_status,
         "data_age_minutes": data_age_minutes,
         "sample_status": gate.get("sample_status", "UNKNOWN"),
         "gate_status": gate.get("testnet_gate_status", "UNKNOWN"),
         "eligible_closed_clean": counts.get("canonical", 0),
-        "open_positions": global_metrics.get("open_position_count", 0),
+        "open_positions": global_metrics.get("open_positions", 0),
         "take_profit_count": global_metrics.get("take_profit_hit", 0),
         "stop_loss_count": global_metrics.get("stop_loss_hit", 0),
         "timeout_count": global_metrics.get("timeout_exit", 0),
@@ -595,7 +744,7 @@ def check_sensitive_leaks(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Atomic versioned release
+# Atomic versioned release with retention
 # ---------------------------------------------------------------------------
 
 def _fsync_file(path: str) -> None:
@@ -616,6 +765,41 @@ def _fsync_dir(path: str) -> None:
         os.close(fd)
 
 
+def _cleanup_old_releases(releases_dir: str, current_target: str, keep: int = MAX_RELEASES) -> None:
+    """Remove old releases, keeping at most `keep` versions.
+
+    Never deletes the current target or anything newer.
+    Cleanup failures are logged as warnings, not errors.
+    """
+    try:
+        entries = sorted(os.listdir(releases_dir))
+    except OSError:
+        return
+
+    # current_target is like "releases/20260712-223000-abc12345"
+    current_version = current_target.split("/")[-1] if current_target else ""
+
+    # Keep everything from current_version onward, plus (keep-1) before
+    to_keep = set()
+    versions = sorted(entries, reverse=True)
+    for i, v in enumerate(versions):
+        if i < keep:
+            to_keep.add(v)
+
+    for entry in entries:
+        if entry in to_keep:
+            continue
+        if entry == current_version:
+            continue
+        entry_path = os.path.join(releases_dir, entry)
+        if os.path.isdir(entry_path):
+            try:
+                import shutil
+                shutil.rmtree(entry_path)
+            except OSError:
+                pass  # cleanup failure is non-fatal
+
+
 def generate_console(
     report_dir: str,
     output_dir: str,
@@ -623,13 +807,19 @@ def generate_console(
 ) -> dict[str, Any]:
     """Generate static console with versioned atomic release.
 
-    Returns result dict with success, version_id, release_dir, current_target, errors.
+    Public files are ONLY accessible via <output-dir>/current/.
+    Root-level legacy files are NOT created.
+
+    Returns result dict with success, version_id, release_dir, current_target,
+    public_root, required_nginx_alias, errors.
     """
     result: dict[str, Any] = {
         "success": False,
         "version_id": None,
         "release_dir": None,
         "current_target": None,
+        "public_root": None,
+        "required_nginx_alias": None,
         "errors": [],
     }
 
@@ -639,11 +829,11 @@ def generate_console(
         result["errors"] = errors
         return result
 
-    # 2. Render HTML (read-only template, no control code)
+    # 2. Render HTML (read-only template, all dynamic values escaped)
     html_zh = render_readonly_html(bundle, lang="zh", server_commit=server_commit)
     html_en = render_readonly_html(bundle, lang="en", server_commit=server_commit)
 
-    # 3. Build JSON
+    # 3. Build JSON (strict allowlist, field length limits)
     public_json = build_public_json(bundle, server_commit=server_commit)
     json_str = json.dumps(public_json, ensure_ascii=False, indent=2)
 
@@ -663,7 +853,7 @@ def generate_console(
 
     # 6. Verify no control code in HTML
     control_patterns = [
-        r"<button", r"<form", r"<input", r"onclick", r"runAction",
+        r"<button", r"<form", r"<input\b", r"onclick", r"runAction",
         r"loadReport", r"run-lifecycle", r"run-update-only",
         r"run-sample-gate", r"print-status", r"fetch\(",
         r"XMLHttpRequest", r"WebSocket", r"\bPOST\b",
@@ -680,6 +870,7 @@ def generate_console(
     version_dir = os.path.join(releases_dir, version_id)
     current_link = os.path.join(output_dir, "current")
     current_tmp = os.path.join(output_dir, "current.next")
+    tmp_version_dir = version_dir + ".tmp"
 
     files = {
         "index.html": html_zh,
@@ -692,7 +883,6 @@ def generate_console(
         os.makedirs(releases_dir, exist_ok=True)
 
         # Create version directory (temp name first)
-        tmp_version_dir = version_dir + ".tmp"
         os.makedirs(tmp_version_dir, exist_ok=True)
 
         # Write all files with fsync
@@ -734,6 +924,11 @@ def generate_console(
         result["version_id"] = version_id
         result["release_dir"] = version_dir
         result["current_target"] = os.path.join("releases", version_id)
+        result["public_root"] = os.path.join(output_dir, "current")
+        result["required_nginx_alias"] = os.path.join(output_dir, "current") + "/"
+
+        # 8. Cleanup old releases (after successful switch)
+        _cleanup_old_releases(releases_dir, result["current_target"])
 
     except Exception as e:
         # Clean up temp artifacts
@@ -771,6 +966,8 @@ def main():
         print(f"Console generated: version={result['version_id']}")
         print(f"  release_dir: {result['release_dir']}")
         print(f"  current_target: {result['current_target']}")
+        print(f"  public_root: {result['public_root']}")
+        print(f"  required_nginx_alias: {result['required_nginx_alias']}")
         return 0
     else:
         print("Console generation FAILED:")

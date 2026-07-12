@@ -13,9 +13,12 @@ run_step() {
     local name="$1"
     shift
     echo "=== ${name} ==="
-    if ! "$@"; then
-        echo "${name} FAILED (exit=$?)"
-        return 1
+    if "$@"; then
+        return 0
+    else
+        local rc=$?
+        echo "${name} FAILED (exit=${rc})"
+        return "${rc}"
     fi
 }
 
@@ -48,11 +51,11 @@ run_step() {
   echo
   echo "=== Static Console ==="
   SERVER_COMMIT="$(git rev-parse HEAD)"
-  if ! python3 scripts/generate_static_console.py --server-commit "$SERVER_COMMIT"; then
-    echo "CONSOLE FAILED, LAST-GOOD PRESERVED"
-    CONSOLE_FAILED=1
+  if python3 scripts/generate_static_console.py --server-commit "$SERVER_COMMIT"; then
+    CONSOLE_RC=0
   else
-    CONSOLE_FAILED=0
+    CONSOLE_RC=$?
+    echo "CONSOLE FAILED (exit=${CONSOLE_RC}), LAST-GOOD PRESERVED"
   fi
 
   echo
@@ -63,8 +66,7 @@ run_step() {
   echo "=== Cloud Shadow Collection End ==="
   date
 
-  if [ "$CONSOLE_FAILED" -ne 0 ]; then
-    echo "Pipeline completed with console failure"
-    exit 1
+  if [ "$CONSOLE_RC" -ne 0 ]; then
+    exit "$CONSOLE_RC"
   fi
 } 2>&1 | tee "$LOG_FILE"

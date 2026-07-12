@@ -43,6 +43,11 @@ from core.paper_trading.shadow_run_registry import (
 NOW_ISO = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
 
 
+_DATE = "2026-07-10"
+_RUN_ID = "test_run_20260710_001"
+_FINISHED_AT = "2026-07-10T22:30:00+08:00"
+
+
 def _pos(position_id: str, status: str = "OPEN", **kw) -> dict:
     """Base position record for testing."""
     rec = {
@@ -62,6 +67,7 @@ def _pos(position_id: str, status: str = "OPEN", **kw) -> dict:
         "quarantine_status": "CLEAN",
         "source_mode": "real_public_readonly",
         "recorded_at": NOW_ISO,
+        "date": _DATE,
     }
     if status in ("TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT"):
         rec.update({
@@ -927,43 +933,100 @@ class TestStaticConsoleGenerator:
         ledger = os.path.join(report_dir, f"{date_prefix}_paper_position_ledger.jsonl")
         _write(ledger, [pos])
 
-        # Scorecard
+        # Scorecard (production schema)
         with open(os.path.join(report_dir, f"{date_prefix}_paper_performance_scorecard.json"), "w") as f:
             json.dump({
                 "date": date_prefix,
                 "global_metrics": {
-                    "clean_position_count": 1, "closed_position_count": 1,
-                    "excluded_position_count": 0, "open_position_count": 0,
-                    "win_rate": 1.0, "profit_factor": 2.0,
+                    "total_positions": 1, "clean_positions": 1,
+                    "excluded_positions": 0, "open_positions": 0,
+                    "closed_positions": 1,
                     "take_profit_hit": 1, "stop_loss_hit": 0, "timeout_exit": 0,
+                    "realized_pnl": 10.0, "unrealized_pnl": 0.0,
+                    "avg_r_multiple": 2.0, "win_rate": 1.0, "loss_rate": 0.0,
+                    "profit_factor": 99.0, "expectancy_r": 2.0,
+                    "max_single_loss_r": 0.0, "max_single_win_r": 2.0,
+                    "sample_status": "PASS",
                 },
                 "strategy_scorecards": [{
-                    "strategy_id": strategy_id, "closed_count": 1,
-                    "win_rate": 1.0, "profit_factor": 2.0, "expectancy_r": 1.0,
-                    "avg_r_multiple": 1.0, "max_drawdown_r": 0.0, "max_losing_streak": 0,
+                    "strategy_id": strategy_id, "strategy_type": "macd",
+                    "symbol_count": 1, "position_count": 1,
+                    "open_count": 0, "closed_count": 1,
+                    "tp_count": 1, "sl_count": 0, "timeout_count": 0,
+                    "realized_pnl": 10.0, "unrealized_pnl": 0.0,
+                    "win_rate": 1.0, "profit_factor": 99.0, "expectancy_r": 2.0,
+                    "avg_r_multiple": 2.0, "strategy_score": 1.0,
+                    "sample_status": "PASS", "strategy_status": "PASS",
                 }],
-                "clean_position_count": 1, "excluded_position_count": 0, "safety_flags": [],
+                "clean_position_count": 1, "excluded_position_count": 0,
+                "cumulative_closed_clean": 1,
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
             }, f)
-        # Sample gate
+        # Sample gate (production schema)
         with open(os.path.join(report_dir, f"{date_prefix}_shadow_sample_gate.json"), "w") as f:
             json.dump({
-                "date": date_prefix, "total_runs": 1, "latest_run_id": "test_run",
-                "closed_clean_positions": 1, "sample_status": "PASS",
+                "date": date_prefix, "total_runs": 1, "latest_run_id": _RUN_ID,
+                "closed_clean_positions": 1, "cumulative_closed_clean": 1,
+                "sample_status": "PASS",
                 "testnet_gate_status": "BLOCKED", "testnet_gate_reasons": ["shadow_only"],
-                "registry_path": "test", "safety_flags": [],
+                "registry_path": "test", "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
             }, f)
-        # Lifecycle
+        # Lifecycle (production schema)
         with open(os.path.join(report_dir, f"{date_prefix}_shadow_lifecycle_result.json"), "w") as f:
             json.dump({
                 "date": date_prefix,
-                "pipeline_status": "OK",
+                "pipeline_status": "PASS",
                 "mode": "real_public_http",
-                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
                 "allow_public_http": True,
+                "steps": [{
+                    "step_name": "lifecycle", "command": "test",
+                    "started_at": "2026-07-10T22:00:00+08:00",
+                    "finished_at": _FINISHED_AT,
+                    "duration_seconds": 30, "exit_code": 0, "status": "PASS",
+                    "stdout_tail": "", "stderr_tail": "",
+                }],
+                "summary": {},
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+                "run_id": _RUN_ID,
+                "sample_gate_status": "BLOCKED",
+                "sample_gate_reasons": ["shadow_only"],
+                "registry_written": True, "registry_path": "test",
             }, f)
-        # Update result
+        # Update result (production schema)
         with open(os.path.join(report_dir, f"{date_prefix}_shadow_position_update_result.json"), "w") as f:
-            json.dump({"date": date_prefix, "pipeline_status": "OK"}, f)
+            json.dump({
+                "date": date_prefix, "pipeline_status": "PASS",
+                "mode": "real_public_http", "pipeline_type": "update_only",
+                "allow_public_http": True,
+                "steps": [{
+                    "step_name": "update_only", "command": "test",
+                    "started_at": "2026-07-10T22:15:00+08:00",
+                    "finished_at": _FINISHED_AT,
+                    "duration_seconds": 10, "exit_code": 0, "status": "PASS",
+                    "stdout_tail": "", "stderr_tail": "",
+                }],
+                "summary": {},
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+                "run_id": _RUN_ID,
+            }, f)
+        # Registry (production schema)
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_run_registry.jsonl"), "w") as f:
+            f.write(json.dumps({
+                "run_id": _RUN_ID, "date": date_prefix,
+                "started_at": "2026-07-10T22:00:00+08:00",
+                "finished_at": _FINISHED_AT,
+                "mode": "real_public_http", "allow_public_http": True,
+                "pipeline_status": "PASS",
+                "steps_passed": 4, "steps_failed": 0,
+                "clean_positions": 1, "excluded_positions": 0,
+                "open_clean_positions": 0, "closed_clean_positions": 1,
+                "cumulative_closed_clean": 1,
+                "accounting_status": "OK", "accounting_error": None,
+                "sample_status": "PASS",
+                "testnet_gate_status": "BLOCKED",
+                "testnet_gate_reasons": ["shadow_only"],
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+            }) + "\n")
 
     def test_generator_creates_files(self):
         """Generator creates versioned release with HTML, EN HTML, JSON."""

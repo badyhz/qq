@@ -379,26 +379,58 @@ def _should_replace(old: dict[str, Any], new: dict[str, Any]) -> bool:
     return False  # keep existing
 
 
+def _is_finite_number(value: Any) -> bool:
+    """Check if value is a finite number (not NaN, Inf, or non-numeric)."""
+    import math
+    if value is None:
+        return False
+    if isinstance(value, (int,)):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    try:
+        from decimal import Decimal
+        d = Decimal(str(value))
+        return d.is_finite()
+    except (ValueError, TypeError, ArithmeticError):
+        return False
+
+
 def _normalize_fingerprint_value(value: Any) -> str:
     """Normalize a value for stable fingerprinting.
 
     Numeric values: 100, 100.0, 100.00, Decimal("100.000") all produce "100".
+    Non-finite values: NaN, +Inf, -Inf produce canonical labels.
+    -0.0 normalizes to 0.
     Other values: str() as-is.
     """
+    import math
+
     if value is None:
         return ""
-    if isinstance(value, (int, float)):
-        # Normalize to integer if no fractional part
-        fval = float(value)
-        if fval == int(fval):
-            return str(int(fval))
-        return str(fval)
+    if isinstance(value, float):
+        if math.isnan(value):
+            return "NON_FINITE_NAN"
+        if math.isinf(value):
+            return "NON_FINITE_POS_INF" if value > 0 else "NON_FINITE_NEG_INF"
+        # Normalize -0.0 to 0
+        if value == 0:
+            return "0"
+        if value == int(value):
+            return str(int(value))
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
     try:
         from decimal import Decimal
         d = Decimal(str(value))
-        # Strip trailing zeros: Decimal("100.000") → "100"
+        if not d.is_finite():
+            if d.is_nan():
+                return "NON_FINITE_NAN"
+            return "NON_FINITE_POS_INF" if d > 0 else "NON_FINITE_NEG_INF"
         normalized = d.normalize()
-        # If no fractional part, format as int
+        if normalized == 0:
+            return "0"
         if normalized == int(normalized):
             return str(int(normalized))
         return str(normalized)
@@ -488,14 +520,24 @@ def load_canonical_positions(
                     else:
                         sel = select_canonical_position_state(old, rec)
                         latest_by_key[key] = sel.selected
-                        if sel.conflict and sel.decision == "conflict_terminal":
+                        if sel.conflict:
+                            conflict_type = "terminal_status_conflict"
+                            fatal = True
+                            if sel.conflict_reason == "terminal_irreversible":
+                                conflict_type = "terminal_regression"
+                                fatal = False
+                            elif sel.conflict_reason == "terminal_field_change":
+                                conflict_type = "terminal_field_change"
+                                fatal = True
                             diagnostics["terminal_conflicts"].append({
                                 "position_id": rec.get("position_id"),
+                                "conflict_type": conflict_type,
                                 "old_status": old.get("status"),
                                 "new_status": rec.get("status"),
                                 "old_ts": old.get("recorded_at") or old.get("closed_at", ""),
                                 "new_ts": rec.get("recorded_at") or rec.get("closed_at", ""),
                                 "reason": sel.conflict_reason,
+                                "fatal": fatal,
                             })
                             diagnostics["terminal_conflict_count"] += 1
             diagnostics["files_read"] += 1
@@ -584,20 +626,36 @@ def load_canonical_closed_clean_positions(
                 exclusions["source_unknown"] += 1
             continue
 
+        # Check for non-finite values in accounting-critical fields
+        has_non_finite = False
+        for field in ("entry_price", "exit_price", "stop_loss", "take_profit", "r_multiple"):
+            val = p.get(field)
+            if val is not None and not _is_finite_number(val):
+                has_non_finite = True
+                fatal_errors.append(
+                    f"Non-finite value in {p.get('position_id')}.{field}: {val}"
+                )
+                break
+
         # Additional CLOSED-specific validation
-        if (p.get("lifecycle_mode") == "future_only" and
+        if not has_non_finite and (
+            p.get("lifecycle_mode") == "future_only" and
             p.get("entry_price") and p.get("exit_price") is not None and
             p.get("r_multiple") is not None and p.get("closed_at")):
             eligible_positions.append(p)
 
-    # Terminal conflicts are fatal: different CLOSED statuses = data corruption
+    # Terminal conflicts: fatal for status/field changes, non-fatal for regressions
     terminal_conflicts = load_diag.get("terminal_conflicts", [])
+    terminal_regressions = []
     if terminal_conflicts:
         for tc in terminal_conflicts:
-            fatal_errors.append(
-                f"Terminal conflict: {tc['position_id']} "
-                f"{tc['old_status']} vs {tc['new_status']}"
-            )
+            if tc.get("fatal", True):
+                fatal_errors.append(
+                    f"Terminal conflict ({tc.get('conflict_type', 'unknown')}): "
+                    f"{tc['position_id']} {tc['old_status']} vs {tc['new_status']}"
+                )
+            else:
+                terminal_regressions.append(tc)
 
     # Determine fatal errors (technical issues that block Gate/Scorecard)
     if load_diag.get("load_error"):
@@ -621,6 +679,7 @@ def load_canonical_closed_clean_positions(
         "fatal_errors": fatal_errors,
         "terminal_conflicts": terminal_conflicts,
         "terminal_conflict_count": load_diag.get("terminal_conflict_count", 0),
+        "terminal_regressions": terminal_regressions,
         "missing_position_id": load_diag.get("excluded_no_position_id", 0),
         "files_read": load_diag.get("files_read", 0),
         "files_error": load_diag.get("files_error", 0),
