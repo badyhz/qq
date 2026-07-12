@@ -15,6 +15,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sys
 import tempfile
 import uuid
@@ -54,6 +55,18 @@ def _find_latest(report_dir: str, suffix: str) -> str | None:
     return files[-1] if files else None
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Sanitize a float value: replace NaN/Inf with default."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    import math
+    if math.isnan(f) or math.isinf(f):
+        return default
+    return f
+
+
 def _load_json(path: str) -> dict | None:
     """Load JSON file, return None on any error."""
     try:
@@ -63,34 +76,121 @@ def _load_json(path: str) -> dict | None:
         return None
 
 
-def _extract_completion_time(data: dict) -> str | None:
-    """Extract a real ISO completion time from pipeline result.
+def _require_nonnegative_int(
+    mapping: dict, field: str, label: str, errors: list[str],
+) -> int | None:
+    """Require a non-negative int field. Appends to errors if missing/invalid.
 
-    Looks at the last step's finished_at field.
-    Returns None if no valid time found.
+    Rejects: missing key, None, bool, float, negative, string numbers.
     """
-    steps = data.get("steps", [])
-    if steps and isinstance(steps[-1], dict):
-        finished = steps[-1].get("finished_at", "")
-        if finished and "T" in str(finished):
-            return str(finished)
-    # Fallback: top-level finished_at (registry records have this)
-    finished = data.get("finished_at", "")
-    if finished and "T" in str(finished):
-        return str(finished)
-    return None
+    if field not in mapping:
+        errors.append(f"{label}: missing field '{field}'")
+        return None
+    value = mapping[field]
+    if value is None:
+        errors.append(f"{label}: field '{field}' is None")
+        return None
+    if isinstance(value, bool):
+        errors.append(f"{label}: field '{field}' is bool, not int")
+        return None
+    if not isinstance(value, int):
+        errors.append(f"{label}: field '{field}' is {type(value).__name__}, not int")
+        return None
+    if value < 0:
+        errors.append(f"{label}: field '{field}' is negative ({value})")
+        return None
+    return value
 
 
-def _parse_iso_time(time_str: str) -> datetime | None:
-    """Parse ISO time string, return None if invalid."""
+def _require_str(mapping: dict, field: str, label: str, errors: list[str]) -> str | None:
+    """Require a non-empty string field."""
+    if field not in mapping:
+        errors.append(f"{label}: missing field '{field}'")
+        return None
+    value = mapping[field]
+    if not isinstance(value, str) or not value:
+        errors.append(f"{label}: field '{field}' must be non-empty string")
+        return None
+    return value
+
+
+def _parse_iso_datetime(time_str: str) -> datetime | None:
+    """Parse ISO datetime string. Rejects date-only strings.
+
+    Returns timezone-aware datetime (assumes UTC if naive).
+    Returns None if invalid or date-only.
+    """
+    if not isinstance(time_str, str):
+        return None
+    # Must contain T to be a datetime (not just a date)
+    if "T" not in time_str:
+        return None
     try:
-        return datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    # Ensure timezone-aware
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _validate_steps(pipeline: dict, label: str, errors: list[str]) -> bool:
+    """Validate step-level status for a pipeline result.
+
+    Returns True if all steps pass. Checks:
+    - steps is non-empty list
+    - each step is dict with status=="PASS", exit_code==0, started_at, finished_at
+    - Contradictory top-level PASS + step FAIL is fatal
+    """
+    steps = pipeline.get("steps")
+    if not isinstance(steps, list) or len(steps) == 0:
+        errors.append(f"{label}: steps is empty or missing")
+        return False
+
+    all_pass = True
+    for i, step in enumerate(steps):
+        if not isinstance(step, dict):
+            errors.append(f"{label}: step[{i}] is not a dict")
+            all_pass = False
+            continue
+        step_status = step.get("status")
+        if step_status != "PASS":
+            errors.append(f"{label}: step[{i}] status='{step_status}', expected PASS")
+            all_pass = False
+        exit_code = step.get("exit_code")
+        if exit_code != 0:
+            errors.append(f"{label}: step[{i}] exit_code={exit_code}, expected 0")
+            all_pass = False
+        if not step.get("started_at"):
+            errors.append(f"{label}: step[{i}] missing started_at")
+            all_pass = False
+        if not step.get("finished_at"):
+            errors.append(f"{label}: step[{i}] missing finished_at")
+            all_pass = False
+        # Timeline: started_at <= finished_at
+        sa = _parse_iso_datetime(str(step.get("started_at", "")))
+        fa = _parse_iso_datetime(str(step.get("finished_at", "")))
+        if sa and fa and sa > fa:
+            errors.append(f"{label}: step[{i}] started_at > finished_at")
+            all_pass = False
+
+    return all_pass
 
 
 def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     """Validate all required inputs exist and are consistent.
+
+    Strict validation order:
+    1. Read inputs
+    2. Schema required fields
+    3. Run ID four-way consistency
+    4. Date five-way consistency
+    5. Step-level status validation
+    6. Timeline validation
+    7. Accounting validation
+    8. Six-way count validation
+    9. Return bundle for JSON/HTML generation
 
     Returns (data_bundle, errors).
     If errors is non-empty, generation must not proceed.
@@ -98,159 +198,201 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     errors: list[str] = []
     bundle: dict[str, Any] = {}
 
-    # 1. Find lifecycle result (determines run_date)
+    # --- 1. Read lifecycle ---
     lc_path = _find_latest(report_dir, "_shadow_lifecycle_result.json")
     if not lc_path:
-        errors.append("Missing lifecycle result")
+        errors.append("Missing lifecycle result file")
         return bundle, errors
-
     lc_data = _load_json(lc_path)
     if not lc_data:
         errors.append("Corrupt lifecycle result JSON")
         return bundle, errors
 
-    # Validate lifecycle pipeline_status
-    lc_status = lc_data.get("pipeline_status", "")
-    if lc_status != "PASS":
-        errors.append(f"Lifecycle status is '{lc_status}', not PASS")
-        return bundle, errors
-
-    run_date = lc_data.get("date", "")
-    run_id = lc_data.get("run_id", "")
-    if not run_date:
-        errors.append("Lifecycle result missing date")
-        return bundle, errors
-
-    bundle["lifecycle"] = lc_data
-    bundle["run_date"] = run_date
-    bundle["run_id"] = run_id
-
-    # 2. Find update result for same date
+    # --- 2. Read update ---
     update_path = _find_latest(report_dir, "_shadow_position_update_result.json")
     if not update_path:
-        errors.append("Missing update result")
+        errors.append("Missing update result file")
         return bundle, errors
-
     update_data = _load_json(update_path)
     if not update_data:
         errors.append("Corrupt update result JSON")
         return bundle, errors
 
-    # Validate update pipeline_status
-    update_status = update_data.get("pipeline_status", "")
-    if update_status != "PASS":
-        errors.append(f"Update status is '{update_status}', not PASS")
-        return bundle, errors
-
-    if update_data.get("date") != run_date:
-        errors.append(
-            f"Date mismatch: lifecycle={run_date}, update={update_data.get('date')}"
-        )
-        return bundle, errors
-
-    bundle["update"] = update_data
-
-    # 3. Find scorecard for same date
+    # --- 3. Read scorecard ---
     sc_path = _find_latest(report_dir, "_paper_performance_scorecard.json")
     if not sc_path:
-        errors.append("Missing performance scorecard")
+        errors.append("Missing performance scorecard file")
         return bundle, errors
-
     sc_data = _load_json(sc_path)
     if not sc_data:
         errors.append("Corrupt scorecard JSON")
         return bundle, errors
 
-    if sc_data.get("date") != run_date:
-        errors.append(
-            f"Date mismatch: lifecycle={run_date}, scorecard={sc_data.get('date')}"
-        )
-        return bundle, errors
-
-    bundle["scorecard"] = sc_data
-
-    # 4. Find sample gate for same date
+    # --- 4. Read gate ---
     gate_path = _find_latest(report_dir, "_shadow_sample_gate.json")
     if not gate_path:
-        errors.append("Missing sample gate")
+        errors.append("Missing sample gate file")
         return bundle, errors
-
     gate_data = _load_json(gate_path)
     if not gate_data:
-        errors.append("Corrupt sample gate JSON")
+        errors.append("Corrupt gate JSON")
         return bundle, errors
 
-    if gate_data.get("date") != run_date:
-        errors.append(
-            f"Date mismatch: lifecycle={run_date}, gate={gate_data.get('date')}"
-        )
-        return bundle, errors
-
-    bundle["gate"] = gate_data
-
-    # 5. Find registry and match by run_id
+    # --- 5. Read registry ---
     reg_path = _find_latest(report_dir, "_shadow_run_registry.jsonl")
     if not reg_path:
         errors.append("Missing registry file")
         return bundle, errors
 
-    matching_reg = None
+    reg_records = []
     try:
         with open(reg_path) as f:
             for line in f:
                 line = line.strip()
-                if not line:
-                    continue
-                rec = json.loads(line)
-                if rec.get("run_id") == run_id:
-                    matching_reg = rec
-                    break
+                if line:
+                    reg_records.append(json.loads(line))
     except (OSError, json.JSONDecodeError) as e:
         errors.append(f"Registry read error: {e}")
         return bundle, errors
 
-    if not matching_reg:
-        errors.append(f"Registry missing matching run_id={run_id}")
+    if errors:
         return bundle, errors
 
+    # --- Schema: required top-level fields ---
+    _require_str(lc_data, "pipeline_status", "Lifecycle", errors)
+    _require_str(lc_data, "date", "Lifecycle", errors)
+    _require_str(update_data, "pipeline_status", "Update", errors)
+    _require_str(update_data, "date", "Update", errors)
+    _require_str(sc_data, "date", "Scorecard", errors)
+    _require_str(gate_data, "date", "Gate", errors)
+
+    if errors:
+        return bundle, errors
+
+    # --- Pipeline status must be PASS ---
+    if lc_data["pipeline_status"] != "PASS":
+        errors.append(f"Lifecycle pipeline_status='{lc_data['pipeline_status']}', not PASS")
+    if update_data["pipeline_status"] != "PASS":
+        errors.append(f"Update pipeline_status='{update_data['pipeline_status']}', not PASS")
+    if errors:
+        return bundle, errors
+
+    # --- Step-level validation (must happen before timeline) ---
+    _validate_steps(lc_data, "Lifecycle", errors)
+    _validate_steps(update_data, "Update", errors)
+    if errors:
+        return bundle, errors
+
+    # --- Five-way date consistency ---
+    dates = {
+        "lifecycle": lc_data["date"],
+        "update": update_data["date"],
+        "scorecard": sc_data["date"],
+        "gate": gate_data["date"],
+    }
+    # Registry date comes from matching record (found below), validate after run_id
+
+    if len(set(dates.values())) > 1:
+        errors.append(f"Date mismatch: {dates}")
+        return bundle, errors
+    run_date = lc_data["date"]
+
+    # --- Four-way Run ID consistency ---
+    lc_run_id = lc_data.get("run_id", "")
+    update_run_id = update_data.get("run_id", "")
+    gate_run_id = gate_data.get("latest_run_id", "")
+
+    run_ids = {
+        "lifecycle": lc_run_id,
+        "update": update_run_id,
+        "gate_latest": gate_run_id,
+    }
+
+    # Validate run_ids are non-empty strings
+    for label, rid in run_ids.items():
+        if not rid or not isinstance(rid, str):
+            errors.append(f"Run ID: {label} run_id is missing or empty")
+    if errors:
+        return bundle, errors
+
+    # All four must match
+    if len(set(run_ids.values())) > 1:
+        errors.append(f"Run ID mismatch: {run_ids}")
+        return bundle, errors
+
+    run_id = lc_run_id
+
+    # Find exactly one matching registry record
+    matching_regs = [r for r in reg_records if r.get("run_id") == run_id]
+    if len(matching_regs) == 0:
+        errors.append(f"Registry: no record with run_id={run_id}")
+        return bundle, errors
+    if len(matching_regs) > 1:
+        errors.append(f"Registry: {len(matching_regs)} records with run_id={run_id}, expected 1")
+        return bundle, errors
+    matching_reg = matching_regs[0]
+
+    # Registry run_id fourth source
+    run_ids["registry"] = matching_reg.get("run_id", "")
+    if run_ids["registry"] != run_id:
+        errors.append(f"Run ID mismatch: registry={run_ids['registry']}, expected={run_id}")
+        return bundle, errors
+
+    # Registry date must match
+    reg_date = matching_reg.get("date", "")
+    if reg_date != run_date:
+        errors.append(f"Date mismatch: lifecycle={run_date}, registry={reg_date}")
+        return bundle, errors
+
+    # Registry accounting_status
     if matching_reg.get("accounting_status") != "OK":
-        errors.append(
-            f"Registry accounting_status={matching_reg.get('accounting_status')}"
-        )
+        errors.append(f"Registry accounting_status={matching_reg.get('accounting_status')}")
         return bundle, errors
 
+    bundle["lifecycle"] = lc_data
+    bundle["update"] = update_data
+    bundle["scorecard"] = sc_data
+    bundle["gate"] = gate_data
     bundle["registry"] = matching_reg
+    bundle["run_date"] = run_date
+    bundle["run_id"] = run_id
 
-    # 6. Extract real completion time
-    lc_finished = _extract_completion_time(lc_data)
-    reg_finished = matching_reg.get("finished_at", "")
+    # --- Timeline validation ---
+    # Registry.finished_at >= Lifecycle.finished_at and >= Update.finished_at
+    lc_finished = _parse_iso_datetime(str(lc_data.get("steps", [{}])[-1].get("finished_at", "")))
+    update_finished = _parse_iso_datetime(str(update_data.get("steps", [{}])[-1].get("finished_at", "")))
+    reg_finished = _parse_iso_datetime(str(matching_reg.get("finished_at", "")))
 
-    # Prefer registry finished_at (it's the authoritative record)
-    completion_time = reg_finished if reg_finished and "T" in str(reg_finished) else lc_finished
-
-    if not completion_time or "T" not in str(completion_time):
-        errors.append("No valid completion time found (need ISO datetime, not date-only)")
+    if not reg_finished:
+        errors.append("Registry finished_at is missing or invalid")
         return bundle, errors
 
-    ct_parsed = _parse_iso_time(str(completion_time))
-    if not ct_parsed:
-        errors.append(f"Cannot parse completion time: {completion_time}")
+    if lc_finished and reg_finished < lc_finished:
+        errors.append(
+            f"Timeline: Registry finished_at ({matching_reg.get('finished_at')}) "
+            f"< Lifecycle finished_at ({lc_data['steps'][-1].get('finished_at')})"
+        )
+    if update_finished and reg_finished < update_finished:
+        errors.append(
+            f"Timeline: Registry finished_at ({matching_reg.get('finished_at')}) "
+            f"< Update finished_at ({update_data['steps'][-1].get('finished_at')})"
+        )
+    if errors:
         return bundle, errors
 
-    # Reject future time (more than 5 minutes ahead)
-    now = datetime.now(timezone.utc)
-    ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
-    if ct_utc > now:
-        age_min = (ct_utc - now).total_seconds() / 60
-        if age_min > 5:
-            errors.append(f"Completion time is {age_min:.1f} minutes in the future")
-            return bundle, errors
+    # Also check registry started_at <= finished_at
+    reg_started = _parse_iso_datetime(str(matching_reg.get("started_at", "")))
+    if reg_started and reg_finished and reg_started > reg_finished:
+        errors.append("Timeline: Registry started_at > finished_at")
+        return bundle, errors
+
+    # Completion time = registry.finished_at (authoritative)
+    completion_time = matching_reg.get("finished_at", "")
 
     bundle["completion_time"] = str(completion_time)
 
-    # 7. Load canonical positions and check accounting status
+    # --- Accounting validation ---
     eligible, all_canonical, diag = load_canonical_closed_clean_positions(report_dir)
-
     if diag.get("accounting_status") != "OK":
         errors.append(f"Accounting status: {diag.get('accounting_status')}")
         for fe in diag.get("fatal_errors", []):
@@ -261,26 +403,55 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     bundle["all_canonical"] = all_canonical
     bundle["diag"] = diag
 
-    # 8. Six-way count verification
-    # 1. Canonical eligible count
+    # --- Six-way count verification (all mandatory) ---
     canonical_count = len(eligible)
 
-    # 2. Scorecard global_metrics.closed_positions
-    sc_global_closed = sc_data.get("global_metrics", {}).get("closed_positions", -1)
-
-    # 3. Scorecard strategy sum
-    sc_strat_sum = sum(
-        s.get("closed_count", 0) for s in sc_data.get("strategy_scorecards", [])
+    # Scorecard global_metrics.closed_positions
+    sc_global = sc_data.get("global_metrics")
+    if not isinstance(sc_global, dict):
+        errors.append("Scorecard: global_metrics is missing or not a dict")
+        return bundle, errors
+    sc_global_closed = _require_nonnegative_int(
+        sc_global, "closed_positions", "Scorecard global_metrics", errors,
     )
 
-    # 4. Scorecard top-level cumulative_closed_clean
-    sc_cumulative = sc_data.get("cumulative_closed_clean", -1)
+    # Scorecard strategy sum
+    sc_strategies = sc_data.get("strategy_scorecards")
+    if not isinstance(sc_strategies, list):
+        errors.append("Scorecard: strategy_scorecards is missing or not a list")
+        return bundle, errors
+    if canonical_count > 0 and len(sc_strategies) == 0:
+        errors.append("Scorecard: strategy_scorecards is empty but canonical count > 0")
+        return bundle, errors
 
-    # 5. Gate cumulative_closed_clean
-    gate_cumulative = gate_data.get("cumulative_closed_clean", -1)
+    sc_strat_sum = 0
+    for i, strat in enumerate(sc_strategies):
+        if not isinstance(strat, dict):
+            errors.append(f"Scorecard: strategy_scorecards[{i}] is not a dict")
+            continue
+        cc = _require_nonnegative_int(
+            strat, "closed_count", f"Scorecard strategy[{i}]", errors,
+        )
+        if cc is not None:
+            sc_strat_sum += cc
 
-    # 6. Registry matching record cumulative_closed_clean
-    reg_cumulative = matching_reg.get("cumulative_closed_clean", -1)
+    # Scorecard top-level cumulative_closed_clean
+    sc_cumulative = _require_nonnegative_int(
+        sc_data, "cumulative_closed_clean", "Scorecard", errors,
+    )
+
+    # Gate cumulative_closed_clean
+    gate_cumulative = _require_nonnegative_int(
+        gate_data, "cumulative_closed_clean", "Gate", errors,
+    )
+
+    # Registry cumulative_closed_clean
+    reg_cumulative = _require_nonnegative_int(
+        matching_reg, "cumulative_closed_clean", "Registry", errors,
+    )
+
+    if errors:
+        return bundle, errors
 
     counts = {
         "canonical": canonical_count,
@@ -291,12 +462,10 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         "registry_cumulative": reg_cumulative,
     }
 
-    # All non-negative counts must agree
-    non_neg = {k: v for k, v in counts.items() if v is not None and v >= 0}
-    if non_neg:
-        values = set(non_neg.values())
-        if len(values) > 1:
-            errors.append(f"Count mismatch: {counts}")
+    # All six must agree
+    values = set(counts.values())
+    if len(values) > 1:
+        errors.append(f"Count mismatch: {counts}")
 
     bundle["counts"] = counts
     return bundle, errors
@@ -403,7 +572,7 @@ def render_readonly_html(
     data_age_minutes = "?"
     freshness_status = "unknown"
     if completion_time:
-        ct_parsed = _parse_iso_time(completion_time)
+        ct_parsed = _parse_iso_datetime(completion_time)
         if ct_parsed:
             ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
             age = (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60
@@ -679,7 +848,7 @@ def build_public_json(
     data_age_minutes = None
     freshness_status = "unknown"
     if completion_time:
-        ct_parsed = _parse_iso_time(completion_time)
+        ct_parsed = _parse_iso_datetime(completion_time)
         if ct_parsed:
             ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
             age = (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60
@@ -765,39 +934,58 @@ def _fsync_dir(path: str) -> None:
         os.close(fd)
 
 
-def _cleanup_old_releases(releases_dir: str, current_target: str, keep: int = MAX_RELEASES) -> None:
-    """Remove old releases, keeping at most `keep` versions.
+_VERSION_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{8}$")
 
-    Never deletes the current target or anything newer.
-    Cleanup failures are logged as warnings, not errors.
+
+def _cleanup_old_releases(releases_dir: str, current_target: str, keep: int = MAX_RELEASES) -> list[str]:
+    """Remove old releases, keeping at most `keep` valid versions.
+
+    Always retains the current target. Sorts by mtime then name.
+    Only considers directories matching the version naming pattern.
+    Returns list of warnings (non-fatal).
     """
+    warnings: list[str] = []
     try:
-        entries = sorted(os.listdir(releases_dir))
+        all_entries = os.listdir(releases_dir)
     except OSError:
-        return
+        return warnings
 
-    # current_target is like "releases/20260712-223000-abc12345"
     current_version = current_target.split("/")[-1] if current_target else ""
 
-    # Keep everything from current_version onward, plus (keep-1) before
-    to_keep = set()
-    versions = sorted(entries, reverse=True)
-    for i, v in enumerate(versions):
-        if i < keep:
-            to_keep.add(v)
-
-    for entry in entries:
-        if entry in to_keep:
-            continue
-        if entry == current_version:
+    # Collect only valid release directories
+    valid_releases = []
+    for entry in all_entries:
+        if not _VERSION_PATTERN.match(entry):
             continue
         entry_path = os.path.join(releases_dir, entry)
-        if os.path.isdir(entry_path):
-            try:
-                import shutil
-                shutil.rmtree(entry_path)
-            except OSError:
-                pass  # cleanup failure is non-fatal
+        if not os.path.isdir(entry_path):
+            continue
+        try:
+            mtime = os.stat(entry_path).st_mtime_ns
+        except OSError:
+            mtime = 0
+        valid_releases.append((mtime, entry, entry_path))
+
+    # Sort by mtime descending, then name descending as tiebreaker
+    valid_releases.sort(key=lambda x: (x[0], x[1]), reverse=True)
+
+    # Build keep set: current + (keep-1) newest
+    keep_set = {current_version}
+    for _, name, _ in valid_releases:
+        if len(keep_set) >= keep:
+            break
+        keep_set.add(name)
+
+    # Remove everything not in keep_set
+    for _, name, path in valid_releases:
+        if name in keep_set:
+            continue
+        try:
+            shutil.rmtree(path)
+        except OSError as e:
+            warnings.append(f"Failed to remove old release {name}: {e}")
+
+    return warnings
 
 
 def generate_console(
@@ -833,9 +1021,15 @@ def generate_console(
     html_zh = render_readonly_html(bundle, lang="zh", server_commit=server_commit)
     html_en = render_readonly_html(bundle, lang="en", server_commit=server_commit)
 
-    # 3. Build JSON (strict allowlist, field length limits)
+    # 3. Build JSON (strict allowlist, field length limits, no NaN/Inf)
     public_json = build_public_json(bundle, server_commit=server_commit)
-    json_str = json.dumps(public_json, ensure_ascii=False, indent=2)
+    try:
+        json_str = json.dumps(
+            public_json, ensure_ascii=False, indent=2, allow_nan=False,
+        )
+    except (ValueError, TypeError, OverflowError) as e:
+        result["errors"].append(f"JSON serialization failed: {e}")
+        return result
 
     # 4. Validate JSON roundtrip
     try:
@@ -900,7 +1094,7 @@ def generate_console(
                     os.unlink(tmp_path)
                 except OSError:
                     pass
-                raise e
+                raise
 
             _fsync_file(filepath)
 
@@ -928,7 +1122,9 @@ def generate_console(
         result["required_nginx_alias"] = os.path.join(output_dir, "current") + "/"
 
         # 8. Cleanup old releases (after successful switch)
-        _cleanup_old_releases(releases_dir, result["current_target"])
+        cleanup_warnings = _cleanup_old_releases(releases_dir, result["current_target"])
+        if cleanup_warnings:
+            result["warnings"] = cleanup_warnings
 
     except Exception as e:
         # Clean up temp artifacts
@@ -937,7 +1133,6 @@ def generate_console(
                 if os.path.islink(cleanup):
                     os.unlink(cleanup)
                 elif os.path.isdir(cleanup):
-                    import shutil
                     shutil.rmtree(cleanup)
             except OSError:
                 pass
