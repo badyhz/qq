@@ -19,7 +19,7 @@ import shutil
 import sys
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from html import escape as _html_escape
 from typing import Any
 
@@ -53,18 +53,6 @@ def _find_latest(report_dir: str, suffix: str) -> str | None:
     pattern = os.path.join(report_dir, f"*{suffix}")
     files = sorted(glob.glob(pattern))
     return files[-1] if files else None
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    """Sanitize a float value: replace NaN/Inf with default."""
-    try:
-        f = float(value)
-    except (TypeError, ValueError):
-        return default
-    import math
-    if math.isnan(f) or math.isinf(f):
-        return default
-    return f
 
 
 def _load_json(path: str) -> dict | None:
@@ -114,25 +102,45 @@ def _require_str(mapping: dict, field: str, label: str, errors: list[str]) -> st
     return value
 
 
-def _parse_iso_datetime(time_str: str) -> datetime | None:
-    """Parse ISO datetime string. Rejects date-only strings.
-
-    Returns timezone-aware datetime (assumes UTC if naive).
-    Returns None if invalid or date-only.
-    """
-    if not isinstance(time_str, str):
-        return None
-    # Must contain T to be a datetime (not just a date)
-    if "T" not in time_str:
+def _parse_iso_date(value: object) -> date | None:
+    """Parse a strict YYYY-MM-DD calendar date."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         return None
     try:
-        dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _parse_aware_iso_datetime(value: object) -> datetime | None:
+    """Parse an ISO datetime that explicitly includes a timezone."""
+    if not isinstance(value, str):
+        return None
+    if "T" not in value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
-    # Ensure timezone-aware
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt if dt.tzinfo is not None and dt.utcoffset() is not None else None
+
+
+def _public_profit_factor(value: object) -> tuple[float | None, str, str]:
+    """Return standards-compliant JSON value, status, and HTML display."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None, "UNDEFINED", "—"
+    if math.isnan(number):
+        return None, "UNDEFINED", "—"
+    if math.isinf(number):
+        if number > 0:
+            return None, "INFINITE", "∞"
+        raise ValueError("negative infinite profit_factor is invalid")
+    if number < 0:
+        raise ValueError("negative profit_factor is invalid")
+    rounded = round(number, 2)
+    return rounded, "FINITE", str(rounded)
 
 
 def _validate_steps(pipeline: dict, label: str, errors: list[str]) -> bool:
@@ -168,10 +176,15 @@ def _validate_steps(pipeline: dict, label: str, errors: list[str]) -> bool:
         if not step.get("finished_at"):
             errors.append(f"{label}: step[{i}] missing finished_at")
             all_pass = False
-        # Timeline: started_at <= finished_at
-        sa = _parse_iso_datetime(str(step.get("started_at", "")))
-        fa = _parse_iso_datetime(str(step.get("finished_at", "")))
-        if sa and fa and sa > fa:
+        sa = _parse_aware_iso_datetime(step.get("started_at"))
+        fa = _parse_aware_iso_datetime(step.get("finished_at"))
+        if sa is None:
+            errors.append(f"{label}: step[{i}] invalid timezone-aware started_at")
+            all_pass = False
+        if fa is None:
+            errors.append(f"{label}: step[{i}] invalid timezone-aware finished_at")
+            all_pass = False
+        if sa is not None and fa is not None and sa > fa:
             errors.append(f"{label}: step[{i}] started_at > finished_at")
             all_pass = False
 
@@ -296,6 +309,11 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         errors.append(f"Date mismatch: {dates}")
         return bundle, errors
     run_date = lc_data["date"]
+    for label, value in dates.items():
+        if _parse_iso_date(value) is None:
+            errors.append(f"Date: {label} has invalid YYYY-MM-DD calendar date '{value}'")
+    if errors:
+        return bundle, errors
 
     # --- Four-way Run ID consistency ---
     lc_run_id = lc_data.get("run_id", "")
@@ -340,6 +358,9 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
 
     # Registry date must match
     reg_date = matching_reg.get("date", "")
+    if _parse_iso_date(reg_date) is None:
+        errors.append(f"Date: registry has invalid YYYY-MM-DD calendar date '{reg_date}'")
+        return bundle, errors
     if reg_date != run_date:
         errors.append(f"Date mismatch: lifecycle={run_date}, registry={reg_date}")
         return bundle, errors
@@ -359,9 +380,9 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
 
     # --- Timeline validation ---
     # Registry.finished_at >= Lifecycle.finished_at and >= Update.finished_at
-    lc_finished = _parse_iso_datetime(str(lc_data.get("steps", [{}])[-1].get("finished_at", "")))
-    update_finished = _parse_iso_datetime(str(update_data.get("steps", [{}])[-1].get("finished_at", "")))
-    reg_finished = _parse_iso_datetime(str(matching_reg.get("finished_at", "")))
+    lc_finished = _parse_aware_iso_datetime(lc_data.get("steps", [{}])[-1].get("finished_at"))
+    update_finished = _parse_aware_iso_datetime(update_data.get("steps", [{}])[-1].get("finished_at"))
+    reg_finished = _parse_aware_iso_datetime(matching_reg.get("finished_at"))
 
     if not reg_finished:
         errors.append("Registry finished_at is missing or invalid")
@@ -381,9 +402,17 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         return bundle, errors
 
     # Also check registry started_at <= finished_at
-    reg_started = _parse_iso_datetime(str(matching_reg.get("started_at", "")))
-    if reg_started and reg_finished and reg_started > reg_finished:
+    reg_started = _parse_aware_iso_datetime(matching_reg.get("started_at"))
+    if reg_started is None:
+        errors.append("Registry started_at is missing, invalid, or lacks timezone")
+        return bundle, errors
+    if reg_started > reg_finished:
         errors.append("Timeline: Registry started_at > finished_at")
+        return bundle, errors
+
+    now_utc = datetime.now(timezone.utc)
+    if reg_finished.astimezone(timezone.utc) > now_utc + timedelta(minutes=5):
+        errors.append("Timeline: Registry finished_at is more than 5 minutes in the future")
         return bundle, errors
 
     # Completion time = registry.finished_at (authoritative)
@@ -572,10 +601,10 @@ def render_readonly_html(
     data_age_minutes = "?"
     freshness_status = "unknown"
     if completion_time:
-        ct_parsed = _parse_iso_datetime(completion_time)
+        ct_parsed = _parse_aware_iso_datetime(completion_time)
         if ct_parsed:
             ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60
+            age = max(0.0, (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60)
             data_age_minutes = str(round(age, 1))
             freshness_status = "fresh" if age <= 90 else ("stale" if age <= 180 else "expired")
 
@@ -586,11 +615,12 @@ def render_readonly_html(
     # Strategy rows — all values escaped
     strat_rows = []
     for s in sc.get("strategy_scorecards", []):
+        _, _, pf_display = _public_profit_factor(s.get("profit_factor"))
         strat_rows.append(
             f"<tr><td>{_html(s.get('strategy_id',''))}</td>"
             f"<td>{_html(s.get('closed_count',0))}</td>"
             f"<td>{_html(round(s.get('win_rate',0)*100,1))}%</td>"
-            f"<td>{_html(round(s.get('profit_factor',0),2))}</td>"
+            f"<td>{_html(pf_display)}</td>"
             f"<td>{_html(round(s.get('avg_r_multiple',0),4))}</td>"
             f"<td>{_html(round(s.get('avg_r_multiple',0)*s.get('closed_count',0),2))}</td>"
             f"<td>{_html(round(s.get('max_single_loss_r',0),4))}</td></tr>"
@@ -802,11 +832,13 @@ def build_public_json(
     strategies = {}
     for s in sc.get("strategy_scorecards", []):
         sid = _truncate_field(str(s.get("strategy_id", "")), "strategy_id")
+        pf_value, pf_status, _ = _public_profit_factor(s.get("profit_factor"))
         strategies[sid] = {
             "strategy_id": sid,
             "closed_count": s.get("closed_count"),
             "win_rate": round(s.get("win_rate", 0) * 100, 1),
-            "profit_factor": round(s.get("profit_factor", 0), 2),
+            "profit_factor": pf_value,
+            "profit_factor_status": pf_status,
             "avg_r": round(s.get("avg_r_multiple", 0), 4),
             "cumulative_r": round(s.get("avg_r_multiple", 0) * s.get("closed_count", 0), 2),
             "max_drawdown_r": round(s.get("max_single_loss_r", 0), 4),
@@ -848,10 +880,10 @@ def build_public_json(
     data_age_minutes = None
     freshness_status = "unknown"
     if completion_time:
-        ct_parsed = _parse_iso_datetime(completion_time)
+        ct_parsed = _parse_aware_iso_datetime(completion_time)
         if ct_parsed:
             ct_utc = ct_parsed.astimezone(timezone.utc) if ct_parsed.tzinfo else ct_parsed.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60
+            age = max(0.0, (datetime.now(timezone.utc) - ct_utc).total_seconds() / 60)
             data_age_minutes = round(age, 1)
             freshness_status = "fresh" if age <= 90 else ("stale" if age <= 180 else "expired")
 
@@ -1017,12 +1049,14 @@ def generate_console(
         result["errors"] = errors
         return result
 
-    # 2. Render HTML (read-only template, all dynamic values escaped)
-    html_zh = render_readonly_html(bundle, lang="zh", server_commit=server_commit)
-    html_en = render_readonly_html(bundle, lang="en", server_commit=server_commit)
-
-    # 3. Build JSON (strict allowlist, field length limits, no NaN/Inf)
-    public_json = build_public_json(bundle, server_commit=server_commit)
+    # 2-3. Render public representations; invalid metric semantics fail closed.
+    try:
+        html_zh = render_readonly_html(bundle, lang="zh", server_commit=server_commit)
+        html_en = render_readonly_html(bundle, lang="en", server_commit=server_commit)
+        public_json = build_public_json(bundle, server_commit=server_commit)
+    except (ValueError, TypeError, OverflowError) as e:
+        result["errors"].append(f"Public metric rendering failed: {e}")
+        return result
     try:
         json_str = json.dumps(
             public_json, ensure_ascii=False, indent=2, allow_nan=False,

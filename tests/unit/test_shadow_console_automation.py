@@ -51,23 +51,14 @@ from core.paper_trading.shadow_run_registry import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-NOW_ISO = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
-
-
-def _sanitize_inf(obj):
-    """Replace inf/nan with 0 in nested dicts/lists for JSON safety."""
-    import math
-    if isinstance(obj, dict):
-        return {k: _sanitize_inf(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_sanitize_inf(v) for v in obj]
-    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
-        return 0.0
-    return obj
-_RUN_ID = "test_run_20260713_001"
-_DATE = "2026-07-13"
-_STARTED_AT = "2026-07-13T22:00:00+08:00"
-_FINISHED_AT = "2026-07-13T22:30:00+08:00"
+_NOW = _dt.datetime.now(_dt.timezone.utc)
+NOW_ISO = _NOW.isoformat(timespec="seconds")
+_FINISHED = _NOW - _dt.timedelta(minutes=5)
+_STARTED = _FINISHED - _dt.timedelta(minutes=30)
+_RUN_ID = "test_run_dynamic_001"
+_DATE = _FINISHED.date().isoformat()
+_STARTED_AT = _STARTED.isoformat(timespec="seconds")
+_FINISHED_AT = _FINISHED.isoformat(timespec="seconds")
 
 
 # ---------------------------------------------------------------------------
@@ -824,8 +815,8 @@ class TestTimelineValidation:
             _, errors = validate_inputs(rd)
             assert any("finished_at" in e.lower() or "invalid" in e.lower() for e in errors)
 
-    def test_future_time_accepted(self):
-        """Far-future timestamps pass validation (no hard rejection)."""
+    def test_future_time_rejected(self):
+        """Far-future timestamps fail closed."""
         from scripts.generate_static_console import validate_inputs
         with tempfile.TemporaryDirectory() as rd:
             _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
@@ -835,7 +826,7 @@ class TestTimelineValidation:
             with open(reg_path, "w") as f:
                 f.write(json.dumps(rec) + "\n")
             _, errors = validate_inputs(rd)
-            assert not any("future" in e.lower() for e in errors)
+            assert any("future" in e.lower() for e in errors)
 
 
 # ===========================================================================
@@ -1171,7 +1162,7 @@ class TestFormalConstructorChain:
 
                 assert diag["accounting_status"] == "OK"
                 scorecard = compute_performance(eligible, _DATE)
-                sc_dict = _sanitize_inf(scorecard.to_dict())
+                sc_dict = scorecard.to_dict()
                 sc_dict["cumulative_closed_clean"] = len(eligible)
 
                 sc_path = os.path.join(rd, f"{_DATE}_paper_performance_scorecard.json")
@@ -1226,6 +1217,15 @@ class TestFormalConstructorChain:
                 # 7. Generate console
                 result = generate_console(rd, od)
                 assert result["success"] is True
+                assert math.isinf(sc_dict["strategy_scorecards"][0]["profit_factor"])
+                current = os.path.join(od, "current")
+                with open(os.path.join(current, "console_data.json")) as f:
+                    public = json.load(f)
+                strategy = public["strategies"]["test_strat"]
+                assert strategy["profit_factor"] is None
+                assert strategy["profit_factor_status"] == "INFINITE"
+                with open(os.path.join(current, "index.html")) as f:
+                    assert "∞" in f.read()
 
                 # 8. Verify six-way count
                 from scripts.generate_static_console import validate_inputs
@@ -1239,3 +1239,32 @@ class TestFormalConstructorChain:
                 assert c["scorecard_cumulative"] == expected
                 assert c["gate_cumulative"] == expected
                 assert c["registry_cumulative"] == expected
+
+
+class TestStrictTimeAndDateContract:
+    @pytest.mark.parametrize("value", [
+        "garbage", "2026-07-13", "2026-07-13T22:30:00", None,
+    ])
+    def test_timezone_aware_datetime_required(self, value):
+        from scripts.generate_static_console import _parse_aware_iso_datetime
+        assert _parse_aware_iso_datetime(value) is None
+
+    @pytest.mark.parametrize("value", [
+        "2026-7-3", "13/07/2026", "abc", "2026-02-30", "2026-13-01", None,
+    ])
+    def test_strict_calendar_date_required(self, value):
+        from scripts.generate_static_console import _parse_iso_date
+        assert _parse_iso_date(value) is None
+
+    @pytest.mark.parametrize("field", ["started_at", "finished_at"])
+    def test_invalid_step_time_blocks_generation(self, field):
+        from scripts.generate_static_console import validate_inputs
+        with tempfile.TemporaryDirectory() as rd:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            path = os.path.join(rd, f"{_DATE}_shadow_lifecycle_result.json")
+            data = json.load(open(path))
+            data["steps"][0][field] = "garbage"
+            with open(path, "w") as f:
+                json.dump(data, f)
+            _, errors = validate_inputs(rd)
+            assert any(field in error for error in errors)
