@@ -314,6 +314,12 @@ def finalize_batch_registry(
         "safety_flags": SAFETY_FLAGS,
     }
     record = build_run_record(pipeline_result, run_id=run_id, output_dir=output_dir)
+    if record.pipeline_status != "PASS":
+        raise ValueError(f"Final Registry pipeline status is {record.pipeline_status}")
+    if record.accounting_status != "OK":
+        raise ValueError(
+            f"Final Registry accounting failed: {record.accounting_error or 'unknown error'}"
+        )
     return append_registry_record(record, output_dir)
 
 

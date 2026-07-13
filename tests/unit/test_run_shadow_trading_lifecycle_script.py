@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -267,6 +268,47 @@ class TestBatchContract:
         assert registry_finished >= update_finished
         with pytest.raises(ValueError, match="already contains"):
             finalize_batch_registry("2026-07-13", str(tmp_path), run_id, started.isoformat())
+
+    def test_accounting_failure_writes_no_final_registry(self, monkeypatch):
+        batch_started = datetime.now(timezone.utc) - timedelta(minutes=2)
+        lifecycle_finished = batch_started + timedelta(seconds=30)
+        update_started = lifecycle_finished + timedelta(seconds=1)
+        update_finished = update_started + timedelta(seconds=30)
+
+        def result(start, finish):
+            return {
+                "date": "2026-07-13", "pipeline_status": "PASS", "run_id": "RUN-ERR",
+                "started_at": start.isoformat(), "finished_at": finish.isoformat(),
+                "steps": [{"status": "PASS", "exit_code": 0,
+                           "started_at": start.isoformat(), "finished_at": finish.isoformat()}],
+            }
+
+        results = iter([
+            result(batch_started, lifecycle_finished),
+            result(update_started, update_finished),
+        ])
+        monkeypatch.setattr(lifecycle_script, "_load_json", lambda path: next(results))
+        monkeypatch.setattr(lifecycle_script, "read_registry", lambda path: [])
+        monkeypatch.setattr(lifecycle_script, "_extract_summary", lambda *a: ({}, []))
+        monkeypatch.setattr(
+            lifecycle_script,
+            "build_run_record",
+            lambda *a, **k: SimpleNamespace(
+                pipeline_status="PASS",
+                accounting_status="ERROR",
+                accounting_error="canonical ledger invalid",
+            ),
+        )
+        monkeypatch.setattr(
+            lifecycle_script,
+            "append_registry_record",
+            lambda *a, **k: pytest.fail("accounting failure must not be appended"),
+        )
+
+        with pytest.raises(ValueError, match="canonical ledger invalid"):
+            finalize_batch_registry(
+                "2026-07-13", "/unused", "RUN-ERR", batch_started.isoformat(),
+            )
 
 
 class TestRenderMarkdown:
