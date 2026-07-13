@@ -25,6 +25,7 @@ import json
 import math
 import os
 import re
+import stat
 import subprocess
 import tempfile
 import datetime as _dt
@@ -1161,6 +1162,103 @@ class TestAtomicRelease:
                 v2 = r2["version_id"]
                 assert v2 != v1
                 assert os.readlink(current) == f"releases/{v2}"
+
+
+class TestPublicReleasePermissions:
+    FILES = ("index.html", "index_en.html", "console_data.json")
+
+    @staticmethod
+    def _mode(path) -> int:
+        return stat.S_IMODE(os.stat(path).st_mode)
+
+    def _assert_public_modes(self, output_dir: str, result: dict) -> None:
+        release = Path(result["release_dir"])
+        assert self._mode(output_dir) == 0o755
+        assert self._mode(Path(output_dir, "releases")) == 0o755
+        assert self._mode(release) == 0o755
+        for name in self.FILES:
+            assert self._mode(release / name) == 0o644
+            assert self._mode(Path(output_dir, "current", name)) == 0o644
+
+    def test_default_public_modes_and_current_target(self):
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            original_owner = (os.stat(od).st_uid, os.stat(od).st_gid)
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            result = generate_console(rd, od)
+            assert result["success"] is True
+            self._assert_public_modes(od, result)
+            assert (os.stat(od).st_uid, os.stat(od).st_gid) == original_owner
+            assert os.readlink(Path(od, "current")) == result["current_target"]
+
+    def test_restrictive_umask_does_not_change_public_modes(self):
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            previous_umask = os.umask(0o077)
+            try:
+                result = generate_console(rd, od)
+            finally:
+                os.umask(previous_umask)
+            assert result["success"] is True
+            self._assert_public_modes(od, result)
+
+    def test_file_mode_failure_preserves_last_good(self, monkeypatch):
+        import scripts.generate_static_console as generator
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            first = generator.generate_console(rd, od)
+            assert first["success"] is True
+            current = Path(od, "current")
+            target = os.readlink(current)
+            hashes = {name: (current / name).read_bytes() for name in self.FILES}
+            modes = {name: self._mode(current / name) for name in self.FILES}
+
+            def fail_file_mode(fd, path, mode):
+                raise PermissionError("injected file mode failure")
+
+            monkeypatch.setattr(generator, "_set_exact_fd_mode", fail_file_mode)
+            second = generator.generate_console(rd, od)
+            assert second["success"] is False
+            assert os.readlink(current) == target
+            assert all((current / name).read_bytes() == hashes[name] for name in self.FILES)
+            assert all(self._mode(current / name) == modes[name] for name in self.FILES)
+            assert not Path(od, "current.next").exists()
+            assert not any(path.name.endswith(".tmp") for path in Path(od, "releases").iterdir())
+
+    def test_release_directory_mode_failure_preserves_current(self, monkeypatch):
+        import scripts.generate_static_console as generator
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            first = generator.generate_console(rd, od)
+            current = Path(od, "current")
+            target = os.readlink(current)
+            original = generator._set_exact_mode
+
+            def fail_new_release(path, mode):
+                if str(path).endswith(".tmp"):
+                    raise PermissionError("injected release directory mode failure")
+                original(path, mode)
+
+            monkeypatch.setattr(generator, "_set_exact_mode", fail_new_release)
+            second = generator.generate_console(rd, od)
+            assert second["success"] is False
+            assert os.readlink(current) == target
+            assert Path(od, first["current_target"]).is_dir()
+            assert not any(path.name.endswith(".tmp") for path in Path(od, "releases").iterdir())
+
+    def test_historical_release_mode_is_not_changed(self):
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            first = generate_console(rd, od)
+            historical = Path(first["release_dir"])
+            os.chmod(historical, 0o711)
+            second = generate_console(rd, od)
+            assert second["success"] is True
+            assert historical.is_dir()
+            assert self._mode(historical) == 0o711
+            self._assert_public_modes(od, second)
 
     def test_preserves_last_good_on_failure(self):
         from scripts.generate_static_console import generate_console

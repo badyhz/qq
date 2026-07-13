@@ -16,6 +16,7 @@ import math
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 import uuid
@@ -33,6 +34,8 @@ DEFAULT_OUTPUT_DIR = "/www/wwwroot/quant-shadow-console"
 
 # Maximum release versions to keep (including current)
 MAX_RELEASES = 5
+PUBLIC_DIRECTORY_MODE = 0o755
+PUBLIC_FILE_MODE = 0o644
 
 
 # ---------------------------------------------------------------------------
@@ -997,6 +1000,37 @@ def _fsync_dir(path: str) -> None:
         os.close(fd)
 
 
+def _set_exact_mode(path: str, mode: int) -> None:
+    """Set and verify an exact filesystem mode without changing ownership."""
+    os.chmod(path, mode)
+    actual = stat.S_IMODE(os.stat(path).st_mode)
+    if actual != mode:
+        raise PermissionError(
+            f"Mode verification failed for {path}: "
+            f"expected={oct(mode)}, actual={oct(actual)}"
+        )
+
+
+def _set_exact_fd_mode(fd: int, path: str, mode: int) -> None:
+    """Set and verify an exact mode while the published file is still open."""
+    os.fchmod(fd, mode)
+    actual = stat.S_IMODE(os.fstat(fd).st_mode)
+    if actual != mode:
+        raise PermissionError(
+            f"Mode verification failed for {path}: "
+            f"expected={oct(mode)}, actual={oct(actual)}"
+        )
+
+
+def _verify_exact_mode(path: str, mode: int) -> None:
+    actual = stat.S_IMODE(os.stat(path).st_mode)
+    if actual != mode:
+        raise PermissionError(
+            f"Mode verification failed for {path}: "
+            f"expected={oct(mode)}, actual={oct(actual)}"
+        )
+
+
 _VERSION_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{8}$")
 
 
@@ -1137,14 +1171,23 @@ def generate_console(
         "console_data.json": json_str,
     }
 
+    current_switched = False
     try:
+        # The public root and Generator-managed directories must be traversable
+        # by the Nginx worker regardless of the service process umask.
+        os.makedirs(output_dir, exist_ok=True)
+        _set_exact_mode(output_dir, PUBLIC_DIRECTORY_MODE)
+
         # Create releases directory
         os.makedirs(releases_dir, exist_ok=True)
+        _set_exact_mode(releases_dir, PUBLIC_DIRECTORY_MODE)
 
         # Create version directory (temp name first)
         os.makedirs(tmp_version_dir, exist_ok=True)
+        _set_exact_mode(tmp_version_dir, PUBLIC_DIRECTORY_MODE)
 
-        # Write all files with fsync
+        # Write, fsync, and make each file publicly readable before it can be
+        # renamed into a release that current may reference.
         for filename, content in files.items():
             filepath = os.path.join(tmp_version_dir, filename)
             fd, tmp_path = tempfile.mkstemp(dir=tmp_version_dir, suffix=".tmp")
@@ -1152,6 +1195,8 @@ def generate_console(
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(content)
                     f.flush()
+                    os.fsync(f.fileno())
+                    _set_exact_fd_mode(f.fileno(), tmp_path, PUBLIC_FILE_MODE)
                     os.fsync(f.fileno())
                 os.replace(tmp_path, filepath)
             except Exception as e:
@@ -1162,12 +1207,21 @@ def generate_console(
                 raise
 
             _fsync_file(filepath)
+            _verify_exact_mode(filepath, PUBLIC_FILE_MODE)
 
-        # fsync version directory
+        # Verify the complete temporary release before finalizing it.
+        _set_exact_mode(tmp_version_dir, PUBLIC_DIRECTORY_MODE)
+        for filename in files:
+            _verify_exact_mode(os.path.join(tmp_version_dir, filename), PUBLIC_FILE_MODE)
         _fsync_dir(tmp_version_dir)
 
         # Rename temp version dir to final
         os.replace(tmp_version_dir, version_dir)
+        _verify_exact_mode(output_dir, PUBLIC_DIRECTORY_MODE)
+        _verify_exact_mode(releases_dir, PUBLIC_DIRECTORY_MODE)
+        _verify_exact_mode(version_dir, PUBLIC_DIRECTORY_MODE)
+        for filename in files:
+            _verify_exact_mode(os.path.join(version_dir, filename), PUBLIC_FILE_MODE)
         _fsync_dir(releases_dir)
 
         # Create temp symlink and atomic replace
@@ -1177,6 +1231,7 @@ def generate_console(
 
         # Atomic replace current symlink
         os.replace(current_tmp, current_link)
+        current_switched = True
         _fsync_dir(output_dir)
 
         result["success"] = True
@@ -1193,7 +1248,10 @@ def generate_console(
 
     except Exception as e:
         # Clean up temp artifacts
-        for cleanup in [current_tmp, tmp_version_dir]:
+        cleanup_paths = [current_tmp, tmp_version_dir]
+        if not current_switched:
+            cleanup_paths.append(version_dir)
+        for cleanup in cleanup_paths:
             try:
                 if os.path.islink(cleanup):
                     os.unlink(cleanup)
