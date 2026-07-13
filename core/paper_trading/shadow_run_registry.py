@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from core.paper_trading.paper_position import (
@@ -151,7 +151,7 @@ GATE_SAFETY_FLAGS = [
 
 
 def generate_run_id() -> str:
-    return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ") + "_shadow_lifecycle"
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_shadow_lifecycle"
 
 
 def build_run_record(
@@ -166,8 +166,12 @@ def build_run_record(
     """
     summary = pipeline_result.get("summary", {})
     steps = pipeline_result.get("steps", [])
-    started = steps[0]["started_at"] if steps else pipeline_result.get("date", "")
-    finished = steps[-1]["finished_at"] if steps else ""
+    started = pipeline_result.get("started_at") or (
+        steps[0]["started_at"] if steps else pipeline_result.get("date", "")
+    )
+    finished = pipeline_result.get("finished_at") or (
+        steps[-1]["finished_at"] if steps else ""
+    )
 
     steps_passed = sum(1 for s in steps if s.get("status") == "PASS")
     steps_failed = sum(1 for s in steps if s.get("status") == "FAIL")

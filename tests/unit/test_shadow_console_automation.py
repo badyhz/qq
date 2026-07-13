@@ -122,6 +122,8 @@ def _make_lifecycle(date: str = _DATE, status: str = "PASS",
         "mode": "real_public_http",
         "allow_public_http": True,
         "pipeline_status": status,
+        "started_at": _STARTED_AT,
+        "finished_at": _FINISHED_AT,
         "steps": steps if steps is not None else _make_steps(status),
         "summary": {},
         "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
@@ -137,6 +139,8 @@ def _make_update(date: str = _DATE, status: str = "PASS",
         "pipeline_type": "update_only",
         "allow_public_http": True,
         "pipeline_status": status,
+        "started_at": _STARTED_AT,
+        "finished_at": _FINISHED_AT,
         "steps": steps if steps is not None else _make_steps(status),
         "summary": {},
         "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
@@ -951,6 +955,72 @@ class TestShellPipeline:
         )
         assert result.returncode == 0
 
+    def test_cloud_wrapper_uses_one_shared_batch_id_in_formal_order(self):
+        content = open(str(REPO_ROOT / "scripts" / "run_cloud_shadow_collection_once.sh")).read()
+        assert content.count("print(generate_run_id()") == 1
+        assert content.count('--run-id "$BATCH_RUN_ID"') == 3
+        assert "--defer-registry" in content
+        lifecycle = content.index('run_step "Lifecycle"')
+        update = content.index('run_step "Update-Only"')
+        scorecard = content.index('run_step "Scorecard"')
+        registry = content.index('run_step "Final Registry"')
+        gate = content.index('run_step "Gate"')
+        console = content.index('echo "=== Static Console ==="')
+        post = content.index('echo "=== Post Status ==="')
+        assert lifecycle < update < scorecard < registry < gate < console < post
+
+    def test_cloud_wrapper_defers_provisional_outputs(self):
+        content = open(str(REPO_ROOT / "scripts" / "run_cloud_shadow_collection_once.sh")).read()
+        lifecycle_block = content[content.index('run_step "Lifecycle"'):
+                                  content.index('run_step "Update-Only"')]
+        update_block = content[content.index('run_step "Update-Only"'):
+                               content.index('run_step "Scorecard"')]
+        assert "--defer-scorecard" in lifecycle_block
+        assert "--defer-registry" in lifecycle_block
+        assert "--defer-scorecard" in update_block
+        assert "--defer-gate" in update_block
+        assert "--defer-registry" in update_block
+
+    def test_update_failure_writes_no_registry_and_stops_downstream(self, tmp_path):
+        project = tmp_path / "project"
+        fakebin = project / "fakebin"
+        (project / ".venv" / "bin").mkdir(parents=True)
+        (project / "logs" / "cloud_shadow").mkdir(parents=True)
+        fakebin.mkdir()
+        activate = project / ".venv" / "bin" / "activate"
+        activate.write_text(f'export PATH="{fakebin}:$PATH"\n')
+        call_log = tmp_path / "calls.log"
+
+        fake_python = fakebin / "python3"
+        fake_python.write_text(
+            "#!/usr/bin/env bash\n"
+            "printf '%s\\n' \"$*\" >> \"$CALL_LOG\"\n"
+            "if [ \"${1:-}\" = '-c' ]; then\n"
+            "  echo 'RUN-123 2026-07-13T00:00:00+00:00'\n"
+            "elif [[ \"$*\" == *run_shadow_position_update_only.py* ]]; then\n"
+            "  exit 23\n"
+            "fi\n"
+        )
+        fake_python.chmod(0o755)
+        fake_git = fakebin / "git"
+        fake_git.write_text("#!/usr/bin/env bash\necho d7d9adf\n")
+        fake_git.chmod(0o755)
+
+        env = os.environ.copy()
+        env.update({"PROJECT_DIR": str(project), "CALL_LOG": str(call_log)})
+        result = subprocess.run(
+            ["bash", str(REPO_ROOT / "scripts" / "run_cloud_shadow_collection_once.sh")],
+            capture_output=True, text=True, env=env,
+        )
+        assert result.returncode == 23
+        calls = call_log.read_text()
+        assert "run_shadow_trading_lifecycle.py" in calls
+        assert "run_shadow_position_update_only.py" in calls
+        assert "run_paper_performance_scorecard.py" not in calls
+        assert "--finalize-registry" not in calls
+        assert "run_sample_collection_gate.py" not in calls
+        assert "generate_static_console.py" not in calls
+
 
 # ===========================================================================
 # 13. Generator CLI
@@ -1152,7 +1222,12 @@ class TestFormalConstructorChain:
                 _write(ledger_path, [pos])
 
                 # 2. Write lifecycle result BEFORE loading positions (needed for source verification)
-                lc_result = _make_lifecycle()
+                midpoint = _STARTED + _dt.timedelta(minutes=10)
+                lc_result = _make_lifecycle(steps=_make_steps(
+                    started=_STARTED_AT,
+                    finished=midpoint.isoformat(timespec="seconds"),
+                ))
+                lc_result["finished_at"] = midpoint.isoformat(timespec="seconds")
                 lc_path = os.path.join(rd, f"{_DATE}_shadow_lifecycle_result.json")
                 with open(lc_path, "w") as f:
                     json.dump(lc_result, f)
@@ -1170,46 +1245,40 @@ class TestFormalConstructorChain:
                     json.dump(sc_dict, f)
 
                 # 4. Build update result
-                update_result = _make_update()
+                update_started = midpoint + _dt.timedelta(seconds=1)
+                update_result = _make_update(steps=_make_steps(
+                    started=update_started.isoformat(timespec="seconds"),
+                    finished=_FINISHED_AT,
+                ))
+                update_result["started_at"] = update_started.isoformat(timespec="seconds")
                 up_path = os.path.join(rd, f"{_DATE}_shadow_position_update_result.json")
                 with open(up_path, "w") as f:
                     json.dump(update_result, f)
 
-                # 5. Build registry record via formal constructor
-                pipeline_result = {**lc_result, "summary": {
-                    "closed_clean_positions": len(eligible),
-                    "clean_count": len(all_canonical),
-                    "quarantined_count": 0,
-                    "open_count": 0,
-                    "tp_count": 1,
-                    "sl_count": 0,
-                    "timeout_count": 0,
-                    "strategy_scorecard_rows": 1,
-                }}
-                run_record = build_run_record(pipeline_result, run_id=_RUN_ID, output_dir=rd)
-                reg_dict = run_record.to_dict()
+                # 5. Write the remaining formal runner outputs, then let the
+                # production finalizer create the one authoritative record.
+                with open(os.path.join(rd, f"{_DATE}_strategy_run_summary.json"), "w") as f:
+                    json.dump({"candidate_count": 1}, f)
+                with open(os.path.join(rd, f"{_DATE}_trade_intents.json"), "w") as f:
+                    json.dump({"intent_count": 1, "status_counts": {"SHADOW_READY": 1}}, f)
+                with open(os.path.join(rd, f"{_DATE}_paper_position_summary.json"), "w") as f:
+                    json.dump({"status_counts": {"TAKE_PROFIT_HIT": 1},
+                               "lifecycle_stats": {"new_positions_count": 0,
+                                                   "existing_positions_count": 1,
+                                                   "positions_updated_count": 1}}, f)
+                with open(os.path.join(rd, f"{_DATE}_paper_positions_quarantine.json"), "w") as f:
+                    json.dump({"quarantined_count": 0, "clean_count": 1}, f)
 
-                reg_path = os.path.join(rd, f"{_DATE}_shadow_run_registry.jsonl")
-                with open(reg_path, "w") as f:
-                    f.write(json.dumps(reg_dict) + "\n")
+                from scripts.run_shadow_trading_lifecycle import finalize_batch_registry
+                from core.paper_trading.shadow_run_registry import compute_sample_gate, read_registry
+                finalize_batch_registry(_DATE, rd, _RUN_ID, _STARTED_AT)
+                registry = read_registry(rd)
+                assert len([r for r in registry if r["run_id"] == _RUN_ID]) == 1
+                reg_dict = registry[0]
 
-                # 6. Build gate result via formal constructor
-                gate_status, gate_reasons = evaluate_gate(
-                    reg_dict["cumulative_closed_clean"],
-                    "EVALUABLE" if reg_dict["cumulative_closed_clean"] >= 10 else "LOW_SAMPLE_SIZE",
-                )
-                gate = ShadowSampleGateResult(
-                    date=_DATE,
-                    total_runs=1,
-                    latest_run_id=_RUN_ID,
-                    closed_clean_positions=reg_dict["cumulative_closed_clean"],
-                    cumulative_closed_clean=reg_dict["cumulative_closed_clean"],
-                    sample_status="PASS",
-                    testnet_gate_status=gate_status,
-                    testnet_gate_reasons=gate_reasons,
-                    registry_path="test",
-                    safety_flags=["PAPER_ONLY", "SHADOW_ONLY"],
-                )
+                # 6. Gate reads that final record through its formal constructor.
+                gate = compute_sample_gate(rd)
+                assert gate.latest_run_id == _RUN_ID
                 gate_path = os.path.join(rd, f"{_DATE}_shadow_sample_gate.json")
                 with open(gate_path, "w") as f:
                     json.dump(gate.to_dict(), f)

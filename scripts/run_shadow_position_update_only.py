@@ -16,7 +16,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.paper_trading.shadow_run_registry import (
@@ -44,12 +44,12 @@ def _today_str() -> str:
 
 
 def _ts() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _run_step(step_name: str, cmd: list[str]) -> dict:
     started = _ts()
-    t0 = datetime.now()
+    t0 = datetime.now(timezone.utc)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         exit_code = proc.returncode
@@ -62,7 +62,7 @@ def _run_step(step_name: str, cmd: list[str]) -> dict:
         exit_code, stdout_tail, stderr_tail, status = -1, "", str(e), "FAIL"
 
     finished = _ts()
-    duration = (datetime.now() - t0).total_seconds()
+    duration = (datetime.now(timezone.utc) - t0).total_seconds()
     return {
         "step_name": step_name,
         "command": cmd,
@@ -125,7 +125,13 @@ def _extract_summary(date_str: str, output_dir: str) -> tuple[dict, list[str]]:
     return summary, missing
 
 
-def _build_steps(date_str: str, output_dir: str, allow_public_http: bool) -> list[dict]:
+def _build_steps(
+    date_str: str,
+    output_dir: str,
+    allow_public_http: bool,
+    defer_scorecard: bool = False,
+    defer_gate: bool = False,
+) -> list[dict]:
     py = sys.executable
 
     # Step 1: update existing positions only
@@ -161,12 +167,15 @@ def _build_steps(date_str: str, output_dir: str, allow_public_http: bool) -> lis
         "--output-dir", output_dir,
     ]
 
-    return [
+    steps = [
         {"name": "run_paper_position_simulator_update_only", "cmd": cmd1},
         {"name": "run_paper_position_quarantine", "cmd": cmd2},
-        {"name": "run_paper_performance_scorecard", "cmd": cmd3},
-        {"name": "run_sample_collection_gate", "cmd": cmd4},
     ]
+    if not defer_scorecard:
+        steps.append({"name": "run_paper_performance_scorecard", "cmd": cmd3})
+    if not defer_gate:
+        steps.append({"name": "run_sample_collection_gate", "cmd": cmd4})
+    return steps
 
 
 def render_markdown(result: dict) -> str:
@@ -273,6 +282,10 @@ def main():
     parser.add_argument("--allow-public-http", action="store_true", default=False)
     parser.add_argument("--stop-on-failure", action="store_true", default=True)
     parser.add_argument("--output-dir", type=str, default=REPORT_DIR)
+    parser.add_argument("--run-id", type=str, default=None)
+    parser.add_argument("--defer-registry", action="store_true", default=False)
+    parser.add_argument("--defer-scorecard", action="store_true", default=False)
+    parser.add_argument("--defer-gate", action="store_true", default=False)
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
@@ -280,13 +293,21 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     mode = "real_public_readonly" if args.allow_public_http else "offline"
+    pipeline_started_at = _ts()
+    run_id = args.run_id or generate_run_id()
     print(f"Shadow Position Update-Only Pipeline")
     print(f"Date: {date_str}")
     print(f"Mode: {mode}")
     print(f"Output: {output_dir}")
     print()
 
-    step_defs = _build_steps(date_str, output_dir, args.allow_public_http)
+    step_defs = _build_steps(
+        date_str,
+        output_dir,
+        args.allow_public_http,
+        defer_scorecard=args.defer_scorecard,
+        defer_gate=args.defer_gate,
+    )
     step_results = []
     pipeline_status = "PASS"
 
@@ -319,13 +340,14 @@ def main():
     sample_status = summary.get("sample_status", "UNKNOWN")
     gate_status, gate_reasons = evaluate_gate(closed, sample_status)
 
-    run_id = generate_run_id()
     pipeline_result = {
         "date": date_str,
         "mode": mode,
         "pipeline_type": "update_only",
         "allow_public_http": args.allow_public_http,
         "pipeline_status": pipeline_status,
+        "started_at": pipeline_started_at,
+        "finished_at": _ts(),
         "steps": step_results,
         "summary": summary,
         "missing_output_fields": missing_fields,
@@ -335,14 +357,15 @@ def main():
         "sample_gate_reasons": gate_reasons,
     }
 
-    # Registry (best-effort)
+    # Cloud batches defer the one final registry record to the outer wrapper.
     registry_written = False
-    try:
-        record = build_run_record(pipeline_result, run_id=run_id, output_dir=output_dir)
-        append_registry_record(record, output_dir)
-        registry_written = True
-    except Exception as e:
-        print(f"WARNING: registry write failed: {e}")
+    if not args.defer_registry:
+        try:
+            record = build_run_record(pipeline_result, run_id=run_id, output_dir=output_dir)
+            append_registry_record(record, output_dir)
+            registry_written = True
+        except Exception as e:
+            print(f"WARNING: registry write failed: {e}")
 
     pipeline_result["registry_written"] = registry_written
 

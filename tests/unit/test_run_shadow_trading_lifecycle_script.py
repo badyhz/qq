@@ -7,6 +7,7 @@ import py_compile
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -16,8 +17,10 @@ SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "..", "..",
 # Import internals for unit testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from scripts.run_shadow_trading_lifecycle import (
-    _build_steps, _extract_summary, _run_step, render_markdown,
+    _build_steps, _extract_summary, _run_step, _ts,
+    finalize_batch_registry, render_markdown,
 )
+import scripts.run_shadow_trading_lifecycle as lifecycle_script
 
 
 def _run(args: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -160,6 +163,110 @@ class TestRunStep:
         assert "started_at" in result
         assert "finished_at" in result
         assert "duration_seconds" in result
+
+    def test_timestamps_are_timezone_aware(self):
+        assert datetime.fromisoformat(_ts()).tzinfo is not None
+
+
+class TestBatchContract:
+    def test_explicit_run_id_is_preserved_without_registry(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(lifecycle_script, "_build_steps", lambda *a, **k: [])
+        monkeypatch.setattr(
+            lifecycle_script,
+            "_extract_summary",
+            lambda *a, **k: ({"closed_clean_positions": 0}, []),
+        )
+        monkeypatch.setattr(
+            lifecycle_script,
+            "generate_run_id",
+            lambda: pytest.fail("explicit run ID must not be regenerated"),
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [SCRIPT_PATH, "--date", "2026-07-13", "--output-dir", str(tmp_path),
+             "--run-id", "RUN-123", "--defer-scorecard", "--defer-registry"],
+        )
+        assert lifecycle_script.main() == 0
+        result = json.loads(
+            (tmp_path / "2026-07-13_shadow_lifecycle_result.json").read_text()
+        )
+        assert result["run_id"] == "RUN-123"
+        assert result["registry_written"] is False
+        assert datetime.fromisoformat(result["started_at"]).tzinfo is not None
+        assert datetime.fromisoformat(result["finished_at"]).tzinfo is not None
+
+    def test_standalone_run_generates_compatible_id(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(lifecycle_script, "_build_steps", lambda *a, **k: [])
+        monkeypatch.setattr(
+            lifecycle_script,
+            "_extract_summary",
+            lambda *a, **k: ({"closed_clean_positions": 0}, []),
+        )
+        monkeypatch.setattr(lifecycle_script, "generate_run_id", lambda: "AUTO-RUN")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [SCRIPT_PATH, "--date", "2026-07-13", "--output-dir", str(tmp_path),
+             "--defer-scorecard", "--defer-registry"],
+        )
+        assert lifecycle_script.main() == 0
+        result = json.loads(
+            (tmp_path / "2026-07-13_shadow_lifecycle_result.json").read_text()
+        )
+        assert result["run_id"] == "AUTO-RUN"
+
+    def test_final_registry_is_unique_and_after_both_runners(self, tmp_path):
+        run_id = "RUN-123"
+        started = datetime.now(timezone.utc) - timedelta(minutes=2)
+        lifecycle_finished = started + timedelta(seconds=30)
+        update_started = lifecycle_finished + timedelta(seconds=1)
+        update_finished = update_started + timedelta(seconds=30)
+
+        def result(start, finish, name):
+            return {
+                "date": "2026-07-13", "mode": "offline", "pipeline_status": "PASS",
+                "allow_public_http": False, "run_id": run_id,
+                "started_at": start.isoformat(), "finished_at": finish.isoformat(),
+                "steps": [{"step_name": name, "status": "PASS", "exit_code": 0,
+                           "started_at": start.isoformat(), "finished_at": finish.isoformat()}],
+            }
+
+        (tmp_path / "2026-07-13_shadow_lifecycle_result.json").write_text(
+            json.dumps(result(started, lifecycle_finished, "lifecycle"))
+        )
+        (tmp_path / "2026-07-13_shadow_position_update_result.json").write_text(
+            json.dumps(result(update_started, update_finished, "update"))
+        )
+        (tmp_path / "2026-07-13_strategy_run_summary.json").write_text(
+            json.dumps({"candidate_count": 0})
+        )
+        (tmp_path / "2026-07-13_trade_intents.json").write_text(
+            json.dumps({"intent_count": 0, "status_counts": {}})
+        )
+        (tmp_path / "2026-07-13_paper_position_summary.json").write_text(
+            json.dumps({"status_counts": {}, "lifecycle_stats": {}})
+        )
+        (tmp_path / "2026-07-13_paper_positions_quarantine.json").write_text(
+            json.dumps({"quarantined_count": 0, "clean_count": 0})
+        )
+        (tmp_path / "2026-07-13_paper_performance_scorecard.json").write_text(
+            json.dumps({"global_metrics": {"closed_positions": 0,
+                                            "sample_status": "LOW_SAMPLE_SIZE"},
+                        "cumulative_closed_clean": 0, "strategy_scorecards": []})
+        )
+
+        finalize_batch_registry("2026-07-13", str(tmp_path), run_id, started.isoformat())
+        records = [json.loads(line) for line in
+                   (tmp_path / "shadow_run_registry.jsonl").read_text().splitlines()]
+        assert len(records) == 1
+        assert records[0]["run_id"] == run_id
+        assert datetime.fromisoformat(records[0]["started_at"]).tzinfo is not None
+        registry_finished = datetime.fromisoformat(records[0]["finished_at"])
+        assert registry_finished >= lifecycle_finished
+        assert registry_finished >= update_finished
+        with pytest.raises(ValueError, match="already contains"):
+            finalize_batch_registry("2026-07-13", str(tmp_path), run_id, started.isoformat())
 
 
 class TestRenderMarkdown:

@@ -2,10 +2,15 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import py_compile
+import sys
+from datetime import datetime
 
 import pytest
+
+import scripts.run_shadow_position_update_only as update_script
 
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "run_shadow_position_update_only.py")
 
@@ -79,6 +84,56 @@ class TestPipelineSteps:
             content = f.read()
         assert "_shadow_position_update_result.json" in content
         assert "_shadow_position_update_result.md" in content
+
+
+class TestBatchContract:
+    def test_explicit_run_id_and_aware_times(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(update_script, "_build_steps", lambda *a, **k: [])
+        monkeypatch.setattr(
+            update_script,
+            "_extract_summary",
+            lambda *a, **k: ({"closed_clean_positions": 0}, []),
+        )
+        monkeypatch.setattr(
+            update_script,
+            "generate_run_id",
+            lambda: pytest.fail("explicit run ID must not be regenerated"),
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [SCRIPT, "--date", "2026-07-13", "--output-dir", str(tmp_path),
+             "--run-id", "RUN-123", "--defer-scorecard", "--defer-gate",
+             "--defer-registry"],
+        )
+        assert update_script.main() == 0
+        result = json.loads(
+            (tmp_path / "2026-07-13_shadow_position_update_result.json").read_text()
+        )
+        assert result["run_id"] == "RUN-123"
+        assert result["registry_written"] is False
+        assert datetime.fromisoformat(result["started_at"]).tzinfo is not None
+        assert datetime.fromisoformat(result["finished_at"]).tzinfo is not None
+
+    def test_standalone_run_generates_compatible_id(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(update_script, "_build_steps", lambda *a, **k: [])
+        monkeypatch.setattr(
+            update_script,
+            "_extract_summary",
+            lambda *a, **k: ({"closed_clean_positions": 0}, []),
+        )
+        monkeypatch.setattr(update_script, "generate_run_id", lambda: "AUTO-RUN")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [SCRIPT, "--date", "2026-07-13", "--output-dir", str(tmp_path),
+             "--defer-scorecard", "--defer-gate", "--defer-registry"],
+        )
+        assert update_script.main() == 0
+        result = json.loads(
+            (tmp_path / "2026-07-13_shadow_position_update_result.json").read_text()
+        )
+        assert result["run_id"] == "AUTO-RUN"
 
 
 class TestSafety:

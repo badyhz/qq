@@ -16,12 +16,12 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.paper_trading.shadow_run_registry import (
     build_run_record, append_registry_record, generate_run_id,
-    evaluate_gate, GATE_BLOCKED_INSUFFICIENT,
+    evaluate_gate, read_registry, GATE_BLOCKED_INSUFFICIENT,
 )
 from core.paper_trading.paper_position import (
     load_canonical_positions, filter_canonical_closed_clean,
@@ -44,7 +44,7 @@ def _today_str() -> str:
 
 
 def _ts() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _run_step(
@@ -53,7 +53,7 @@ def _run_step(
     stop_on_failure: bool = True,
 ) -> dict:
     started = _ts()
-    t0 = datetime.now()
+    t0 = datetime.now(timezone.utc)
     try:
         proc = subprocess.run(
             cmd,
@@ -77,7 +77,7 @@ def _run_step(
         status = "FAIL"
 
     finished = _ts()
-    duration = (datetime.now() - t0).total_seconds()
+    duration = (datetime.now(timezone.utc) - t0).total_seconds()
 
     return {
         "step_name": step_name,
@@ -161,6 +161,7 @@ def _build_steps(
     output_dir: str,
     allow_public_http: bool,
     offline_sample: bool,
+    defer_scorecard: bool = False,
 ) -> list[dict]:
     py = sys.executable
 
@@ -205,13 +206,115 @@ def _build_steps(
         "--output-dir", output_dir,
     ]
 
-    return [
+    steps = [
         {"name": "run_enabled_strategies", "cmd": cmd1},
         {"name": "run_strategy_trade_intents", "cmd": cmd2},
         {"name": "run_paper_position_simulator", "cmd": cmd3},
         {"name": "run_paper_position_quarantine", "cmd": cmd4},
-        {"name": "run_paper_performance_scorecard", "cmd": cmd5},
     ]
+    if not defer_scorecard:
+        steps.append({"name": "run_paper_performance_scorecard", "cmd": cmd5})
+    return steps
+
+
+def _load_json(path: str) -> dict:
+    with open(path) as f:
+        return json.load(f)
+
+
+def _parse_aware_timestamp(value: object, label: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} is missing")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} is invalid: {value!r}") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{label} must include a timezone offset")
+    return parsed
+
+
+def finalize_batch_registry(
+    date_str: str,
+    output_dir: str,
+    run_id: str,
+    batch_started_at: str,
+) -> str:
+    """Write the one final registry record for a completed cloud batch."""
+    lifecycle_path = os.path.join(output_dir, f"{date_str}_shadow_lifecycle_result.json")
+    update_path = os.path.join(output_dir, f"{date_str}_shadow_position_update_result.json")
+    lifecycle = _load_json(lifecycle_path)
+    update = _load_json(update_path)
+    batch_started = _parse_aware_timestamp(batch_started_at, "batch_started_at")
+    runner_times: dict[str, tuple[datetime, datetime]] = {}
+    latest_step_finished = batch_started
+
+    for label, result in (("Lifecycle", lifecycle), ("Update", update)):
+        if result.get("date") != date_str:
+            raise ValueError(f"{label} date mismatch: {result.get('date')!r}")
+        if result.get("pipeline_status") != "PASS":
+            raise ValueError(f"{label} pipeline is not PASS")
+        if result.get("run_id") != run_id:
+            raise ValueError(
+                f"{label} run_id mismatch: {result.get('run_id')!r} != {run_id!r}"
+            )
+        result_started = _parse_aware_timestamp(
+            result.get("started_at"), f"{label}.started_at",
+        )
+        result_finished = _parse_aware_timestamp(
+            result.get("finished_at"), f"{label}.finished_at",
+        )
+        if result_started > result_finished:
+            raise ValueError(f"{label} starts after it finishes")
+        if result_started < batch_started:
+            raise ValueError(f"{label} starts before batch_started_at")
+        runner_times[label] = (result_started, result_finished)
+        steps = result.get("steps", [])
+        if not steps:
+            raise ValueError(f"{label} has no completed steps")
+        for index, step in enumerate(steps):
+            if step.get("status") != "PASS" or step.get("exit_code") != 0:
+                raise ValueError(f"{label}.steps[{index}] is not PASS")
+            started = _parse_aware_timestamp(
+                step.get("started_at"), f"{label}.steps[{index}].started_at",
+            )
+            finished = _parse_aware_timestamp(
+                step.get("finished_at"), f"{label}.steps[{index}].finished_at",
+            )
+            if started > finished:
+                raise ValueError(f"{label}.steps[{index}] starts after it finishes")
+            latest_step_finished = max(latest_step_finished, finished)
+
+    if runner_times["Lifecycle"][1] > runner_times["Update"][0]:
+        raise ValueError("Update starts before Lifecycle finishes")
+
+    existing = read_registry(output_dir)
+    if any(record.get("run_id") == run_id for record in existing):
+        raise ValueError(f"Registry already contains run_id={run_id}")
+
+    summary, missing_fields = _extract_summary(date_str, output_dir)
+    if missing_fields:
+        raise ValueError(f"Final batch outputs missing: {missing_fields}")
+
+    batch_finished_at = _ts()
+    batch_finished = _parse_aware_timestamp(batch_finished_at, "batch_finished_at")
+    if batch_started > batch_finished:
+        raise ValueError("batch_started_at is after batch_finished_at")
+    if latest_step_finished > batch_finished:
+        raise ValueError("batch_finished_at is earlier than a runner step")
+    pipeline_result = {
+        "date": date_str,
+        "mode": lifecycle.get("mode", ""),
+        "allow_public_http": lifecycle.get("allow_public_http", False),
+        "pipeline_status": "PASS",
+        "started_at": batch_started_at,
+        "finished_at": batch_finished_at,
+        "steps": lifecycle.get("steps", []) + update.get("steps", []),
+        "summary": summary,
+        "safety_flags": SAFETY_FLAGS,
+    }
+    record = build_run_record(pipeline_result, run_id=run_id, output_dir=output_dir)
+    return append_registry_record(record, output_dir)
 
 
 def render_markdown(result: dict) -> str:
@@ -336,20 +439,46 @@ def main():
     parser.add_argument("--offline-sample", action="store_true", default=False)
     parser.add_argument("--stop-on-failure", action="store_true", default=True)
     parser.add_argument("--output-dir", type=str, default=REPORT_DIR)
+    parser.add_argument("--run-id", type=str, default=None)
+    parser.add_argument("--defer-registry", action="store_true", default=False)
+    parser.add_argument("--defer-scorecard", action="store_true", default=False)
+    parser.add_argument("--finalize-registry", action="store_true", default=False)
+    parser.add_argument("--batch-started-at", type=str, default=None)
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
+    if args.finalize_registry:
+        if not args.run_id or not args.batch_started_at:
+            parser.error("--finalize-registry requires --run-id and --batch-started-at")
+        try:
+            path = finalize_batch_registry(
+                date_str, output_dir, args.run_id, args.batch_started_at,
+            )
+        except Exception as exc:
+            print(f"Final Registry FAILED: {exc}", file=sys.stderr)
+            return 1
+        print(f"Final Registry: {path}")
+        return 0
+
     mode = "real_public_readonly" if args.allow_public_http else "offline_sample"
+    pipeline_started_at = _ts()
+    run_id = args.run_id or generate_run_id()
     print(f"Shadow Trading Lifecycle Pipeline")
     print(f"Date: {date_str}")
     print(f"Mode: {mode}")
     print(f"Output: {output_dir}")
     print()
 
-    step_defs = _build_steps(date_str, output_dir, args.allow_public_http, args.offline_sample)
+    step_defs = _build_steps(
+        date_str,
+        output_dir,
+        args.allow_public_http,
+        args.offline_sample,
+        defer_scorecard=args.defer_scorecard,
+    )
     step_results = []
     pipeline_status = "PASS"
 
@@ -379,7 +508,6 @@ def main():
     summary, missing_fields = _extract_summary(date_str, output_dir)
 
     # Registry and gate
-    run_id = generate_run_id()
     closed = summary.get("closed_clean_positions", 0)
     sample_status = summary.get("sample_status", "UNKNOWN")
     gate_status, gate_reasons = evaluate_gate(closed, sample_status)
@@ -389,6 +517,8 @@ def main():
         "mode": mode,
         "allow_public_http": args.allow_public_http,
         "pipeline_status": pipeline_status,
+        "started_at": pipeline_started_at,
+        "finished_at": _ts(),
         "steps": step_results,
         "summary": summary,
         "missing_output_fields": missing_fields,
@@ -398,15 +528,17 @@ def main():
         "sample_gate_reasons": gate_reasons,
     }
 
-    # Write registry (best-effort, must not block pipeline)
+    # Standalone runs retain their historical registry behavior.  The cloud
+    # wrapper defers this so it can write exactly one record after Update.
     registry_written = False
     registry_path = ""
-    try:
-        record = build_run_record(pipeline_result, run_id=run_id, output_dir=output_dir)
-        registry_path = append_registry_record(record, output_dir)
-        registry_written = True
-    except Exception as e:
-        print(f"WARNING: registry write failed: {e}")
+    if not args.defer_registry:
+        try:
+            record = build_run_record(pipeline_result, run_id=run_id, output_dir=output_dir)
+            registry_path = append_registry_record(record, output_dir)
+            registry_written = True
+        except Exception as e:
+            print(f"WARNING: registry write failed: {e}")
 
     pipeline_result["registry_written"] = registry_written
     pipeline_result["registry_path"] = registry_path
