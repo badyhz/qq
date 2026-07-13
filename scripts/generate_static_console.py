@@ -276,7 +276,11 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         return bundle, errors
 
     # --- 5. Read registry ---
-    reg_path = _find_latest(report_dir, "_shadow_run_registry.jsonl")
+    # The production registry has a stable, non-date-prefixed filename.
+    reg_path = os.path.join(report_dir, "shadow_run_registry.jsonl")
+    if not os.path.isfile(reg_path):
+        # Retain compatibility with older/date-prefixed fixtures and archives.
+        reg_path = _find_latest(report_dir, "_shadow_run_registry.jsonl")
     if not reg_path:
         errors.append("Missing registry file")
         return bundle, errors

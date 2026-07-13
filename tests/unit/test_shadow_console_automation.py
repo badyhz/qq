@@ -1339,3 +1339,13 @@ class TestLatestStepCompletionTimeline:
             assert generate_console(rd, od)["success"] is False
             assert os.readlink(current) == target
             assert all((current / name).read_bytes() == data for name, data in contents.items())
+
+
+def test_production_registry_filename_is_accepted():
+    from scripts.generate_static_console import validate_inputs
+    with tempfile.TemporaryDirectory() as rd:
+        _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+        dated = next(Path(rd).glob("*_shadow_run_registry.jsonl"))
+        dated.rename(Path(rd, "shadow_run_registry.jsonl"))
+        _, errors = validate_inputs(rd)
+        assert errors == []
