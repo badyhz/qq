@@ -208,6 +208,64 @@ def dict_to_position(d: dict[str, Any]) -> PaperPosition:
 
 TERMINAL_STATUSES = {"TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT", "INVALID"}
 
+
+@dataclass(frozen=True)
+class PositionSelection:
+    """Result of canonical state selection between two records for the same position."""
+    selected: dict
+    decision: str  # "keep_old", "use_new", "conflict_terminal"
+    conflict: bool
+    conflict_reason: str | None
+
+
+def select_canonical_position_state(
+    old: dict[str, Any],
+    new: dict[str, Any],
+) -> PositionSelection:
+    """Select canonical state between two records for the same position_id.
+
+    Rules:
+    - OPEN → OPEN: newer timestamp wins
+    - OPEN → CLOSED: select CLOSED
+    - CLOSED → OPEN: keep CLOSED (terminal irreversible)
+    - CLOSED → same CLOSED: keep old if only observation fields differ
+    - CLOSED → different CLOSED: conflict (terminal state changed)
+    """
+    old_status = old.get("status")
+    new_status = new.get("status")
+    old_terminal = _is_terminal_status(old_status)
+    new_terminal = _is_terminal_status(new_status)
+
+    # Both non-terminal: newer timestamp wins
+    if not old_terminal and not new_terminal:
+        old_ts = _position_sort_ts(old)
+        new_ts = _position_sort_ts(new)
+        if new_ts > old_ts:
+            return PositionSelection(new, "use_new", False, None)
+        return PositionSelection(old, "keep_old", False, None)
+
+    # OPEN → CLOSED: select CLOSED
+    if not old_terminal and new_terminal:
+        return PositionSelection(new, "use_new", False, None)
+
+    # CLOSED → OPEN: keep CLOSED, terminal is irreversible
+    if old_terminal and not new_terminal:
+        return PositionSelection(old, "keep_old", True, "terminal_irreversible")
+
+    # Both terminal
+    if old_status == new_status:
+        # Same terminal status: check if only observation fields changed
+        if position_state_fingerprint(old) == position_state_fingerprint(new):
+            return PositionSelection(old, "keep_old", False, None)
+        # Meaningful change within same status: keep first (trustworthy)
+        return PositionSelection(old, "keep_old", True, "terminal_field_change")
+
+    # Different terminal statuses: CONFLICT
+    return PositionSelection(
+        old, "conflict_terminal", True,
+        f"terminal_conflict: {old_status} vs {new_status}",
+    )
+
 # Source whitelist — only these are eligible for canonical counting
 ELIGIBLE_SOURCES = frozenset({
     "real_public_readonly",
@@ -296,11 +354,19 @@ def _is_terminal_status(status: str | None) -> bool:
 def _should_replace(old: dict[str, Any], new: dict[str, Any]) -> bool:
     """Decide whether new record should replace old for the same dedup key.
 
-    Rules:
-    1. Higher timestamp wins.
-    2. If timestamps equal: terminal status beats non-terminal.
-    3. If both terminal or both non-terminal: keep existing (first seen wins).
+    Rules (terminal state is irreversible):
+    1. If old is terminal and new is non-terminal: NEVER replace.
+    2. Higher timestamp wins.
+    3. If timestamps equal: terminal status beats non-terminal.
+    4. If both terminal or both non-terminal: keep existing (first seen wins).
     """
+    old_terminal = _is_terminal_status(old.get("status"))
+    new_terminal = _is_terminal_status(new.get("status"))
+
+    # Terminal state is irreversible: CLOSED cannot be overwritten by OPEN
+    if old_terminal and not new_terminal:
+        return False
+
     old_ts = _position_sort_ts(old)
     new_ts = _position_sort_ts(new)
     if new_ts > old_ts:
@@ -308,11 +374,68 @@ def _should_replace(old: dict[str, Any], new: dict[str, Any]) -> bool:
     if new_ts < old_ts:
         return False
     # Equal timestamp: terminal beats non-terminal
-    old_terminal = _is_terminal_status(old.get("status"))
-    new_terminal = _is_terminal_status(new.get("status"))
     if new_terminal and not old_terminal:
         return True
     return False  # keep existing
+
+
+def _is_finite_number(value: Any) -> bool:
+    """Check if value is a finite number (not NaN, Inf, or non-numeric)."""
+    import math
+    if value is None:
+        return False
+    if isinstance(value, (int,)):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    try:
+        from decimal import Decimal
+        d = Decimal(str(value))
+        return d.is_finite()
+    except (ValueError, TypeError, ArithmeticError):
+        return False
+
+
+def _normalize_fingerprint_value(value: Any) -> str:
+    """Normalize a value for stable fingerprinting.
+
+    Numeric values: 100, 100.0, 100.00, Decimal("100.000") all produce "100".
+    Non-finite values: NaN, +Inf, -Inf produce canonical labels.
+    -0.0 normalizes to 0.
+    Other values: str() as-is.
+    """
+    import math
+
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if math.isnan(value):
+            return "NON_FINITE_NAN"
+        if math.isinf(value):
+            return "NON_FINITE_POS_INF" if value > 0 else "NON_FINITE_NEG_INF"
+        # Normalize -0.0 to 0
+        if value == 0:
+            return "0"
+        if value == int(value):
+            return str(int(value))
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    try:
+        from decimal import Decimal
+        d = Decimal(str(value))
+        if not d.is_finite():
+            if d.is_nan():
+                return "NON_FINITE_NAN"
+            return "NON_FINITE_POS_INF" if d > 0 else "NON_FINITE_NEG_INF"
+        normalized = d.normalize()
+        if normalized == 0:
+            return "0"
+        if normalized == int(normalized):
+            return str(int(normalized))
+        return str(normalized)
+    except (ValueError, TypeError, ArithmeticError):
+        return str(value)
 
 
 def position_state_fingerprint(rec: dict[str, Any]) -> str:
@@ -320,16 +443,22 @@ def position_state_fingerprint(rec: dict[str, Any]) -> str:
 
     Used for idempotent ledger writes — if the fingerprint hasn't changed,
     don't append a new line.
+
+    Excludes observation-only fields (last_checked_at, recorded_at, generated_at,
+    updated_at) to avoid duplicate appends when only check time changes.
+    Numeric fields are normalized so 100 == 100.0 == 100.00.
     """
     import hashlib
     parts = [
         str(rec.get("position_id", "")),
         str(rec.get("status", "")),
-        str(rec.get("exit_price", "")),
+        _normalize_fingerprint_value(rec.get("entry_price")),
+        _normalize_fingerprint_value(rec.get("exit_price")),
         str(rec.get("exit_reason", "")),
-        str(rec.get("r_multiple", "")),
+        _normalize_fingerprint_value(rec.get("stop_loss")),
+        _normalize_fingerprint_value(rec.get("take_profit")),
+        _normalize_fingerprint_value(rec.get("r_multiple")),
         str(rec.get("closed_at", "")),
-        str(rec.get("last_checked_at", "")),
         str(rec.get("quarantine_status", "")),
     ]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
@@ -363,6 +492,8 @@ def load_canonical_positions(
         "files_error": 0,
         "load_error": None,
         "corrupted_lines": 0,
+        "terminal_conflicts": [],
+        "terminal_conflict_count": 0,
     }
 
     pattern = os.path.join(report_dir, f"{date_glob}_paper_position_ledger.jsonl")
@@ -383,8 +514,32 @@ def load_canonical_positions(
                     if key is None:
                         diagnostics["excluded_no_position_id"] += 1
                         continue
-                    if _should_replace(latest_by_key.get(key, {}), rec):
+                    old = latest_by_key.get(key, {})
+                    if not old:
                         latest_by_key[key] = rec
+                    else:
+                        sel = select_canonical_position_state(old, rec)
+                        latest_by_key[key] = sel.selected
+                        if sel.conflict:
+                            conflict_type = "terminal_status_conflict"
+                            fatal = True
+                            if sel.conflict_reason == "terminal_irreversible":
+                                conflict_type = "terminal_regression"
+                                fatal = False
+                            elif sel.conflict_reason == "terminal_field_change":
+                                conflict_type = "terminal_field_change"
+                                fatal = True
+                            diagnostics["terminal_conflicts"].append({
+                                "position_id": rec.get("position_id"),
+                                "conflict_type": conflict_type,
+                                "old_status": old.get("status"),
+                                "new_status": rec.get("status"),
+                                "old_ts": old.get("recorded_at") or old.get("closed_at", ""),
+                                "new_ts": rec.get("recorded_at") or rec.get("closed_at", ""),
+                                "reason": sel.conflict_reason,
+                                "fatal": fatal,
+                            })
+                            diagnostics["terminal_conflict_count"] += 1
             diagnostics["files_read"] += 1
         except OSError as e:
             diagnostics["files_error"] += 1
@@ -471,11 +626,36 @@ def load_canonical_closed_clean_positions(
                 exclusions["source_unknown"] += 1
             continue
 
+        # Check for non-finite values in accounting-critical fields
+        has_non_finite = False
+        for field in ("entry_price", "exit_price", "stop_loss", "take_profit", "r_multiple"):
+            val = p.get(field)
+            if val is not None and not _is_finite_number(val):
+                has_non_finite = True
+                fatal_errors.append(
+                    f"Non-finite value in {p.get('position_id')}.{field}: {val}"
+                )
+                break
+
         # Additional CLOSED-specific validation
-        if (p.get("lifecycle_mode") == "future_only" and
+        if not has_non_finite and (
+            p.get("lifecycle_mode") == "future_only" and
             p.get("entry_price") and p.get("exit_price") is not None and
             p.get("r_multiple") is not None and p.get("closed_at")):
             eligible_positions.append(p)
+
+    # Terminal conflicts: fatal for status/field changes, non-fatal for regressions
+    terminal_conflicts = load_diag.get("terminal_conflicts", [])
+    terminal_regressions = []
+    if terminal_conflicts:
+        for tc in terminal_conflicts:
+            if tc.get("fatal", True):
+                fatal_errors.append(
+                    f"Terminal conflict ({tc.get('conflict_type', 'unknown')}): "
+                    f"{tc['position_id']} {tc['old_status']} vs {tc['new_status']}"
+                )
+            else:
+                terminal_regressions.append(tc)
 
     # Determine fatal errors (technical issues that block Gate/Scorecard)
     if load_diag.get("load_error"):
@@ -497,6 +677,9 @@ def load_canonical_closed_clean_positions(
         "derived_clean": derived_clean,
         "exclusions": exclusions,
         "fatal_errors": fatal_errors,
+        "terminal_conflicts": terminal_conflicts,
+        "terminal_conflict_count": load_diag.get("terminal_conflict_count", 0),
+        "terminal_regressions": terminal_regressions,
         "missing_position_id": load_diag.get("excluded_no_position_id", 0),
         "files_read": load_diag.get("files_read", 0),
         "files_error": load_diag.get("files_error", 0),

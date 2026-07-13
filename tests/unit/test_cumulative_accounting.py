@@ -43,6 +43,11 @@ from core.paper_trading.shadow_run_registry import (
 NOW_ISO = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
 
 
+_DATE = "2026-07-10"
+_RUN_ID = "test_run_20260710_001"
+_FINISHED_AT = "2026-07-10T22:30:00+08:00"
+
+
 def _pos(position_id: str, status: str = "OPEN", **kw) -> dict:
     """Base position record for testing."""
     rec = {
@@ -62,6 +67,7 @@ def _pos(position_id: str, status: str = "OPEN", **kw) -> dict:
         "quarantine_status": "CLEAN",
         "source_mode": "real_public_readonly",
         "recorded_at": NOW_ISO,
+        "date": _DATE,
     }
     if status in ("TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT"):
         rec.update({
@@ -217,10 +223,10 @@ class TestTerminalStatePrecedence:
         assert not _should_replace(closed_rec, open_rec)
 
     def test_higher_ts_wins_regardless(self):
-        """Higher timestamp always wins."""
-        old_closed = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-01-01T00:00:00Z")
-        new_open = _pos("PP_001", "OPEN", recorded_at="2026-07-01T00:00:00Z")
-        assert _should_replace(old_closed, new_open)
+        """Higher timestamp wins — but terminal state is irreversible."""
+        old_open = _pos("PP_001", "OPEN", recorded_at="2026-01-01T00:00:00Z")
+        new_closed = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-01T00:00:00Z")
+        assert _should_replace(old_open, new_closed)
 
     def test_mixed_units(self):
         """Seconds vs milliseconds comparison works."""
@@ -850,3 +856,279 @@ class TestScorecardInput:
             assert "PP_001" in eligible_ids
             assert "PP_002" in eligible_ids
             assert "PP_003" not in eligible_ids
+
+
+# --- 19. Terminal state irreversibility ---
+
+class TestTerminalStateIrreversibility:
+    def test_closed_not_overwritten_by_newer_open(self):
+        """CLOSED state must not be replaced by a newer OPEN record."""
+        old = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T10:00:00Z")
+        new = _pos("PP_001", "OPEN", recorded_at="2026-07-10T12:00:00Z")
+        assert _should_replace(old, new) is False
+
+    def test_closed_beats_older_open(self):
+        """CLOSED record should replace older OPEN."""
+        old = _pos("PP_001", "OPEN", recorded_at="2026-07-10T10:00:00Z")
+        new = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T12:00:00Z")
+        assert _should_replace(old, new) is True
+
+    def test_newer_closed_replaces_older_closed(self):
+        """Newer CLOSED can replace older CLOSED."""
+        old = _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T10:00:00Z")
+        new = _pos("PP_001", "STOP_LOSS_HIT", recorded_at="2026-07-10T12:00:00Z")
+        assert _should_replace(old, new) is True
+
+    def test_canonical_load_preserves_closed(self):
+        """Canonical load must preserve CLOSED when newer OPEN exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ledger = os.path.join(tmpdir, "2026-07-10_paper_position_ledger.jsonl")
+            _write(ledger, [
+                _pos("PP_001", "TAKE_PROFIT_HIT", recorded_at="2026-07-10T10:00:00Z"),
+                _pos("PP_001", "OPEN", recorded_at="2026-07-10T12:00:00Z"),
+            ])
+            positions, _ = load_canonical_positions(tmpdir)
+            assert len(positions) == 1
+            assert positions[0]["status"] == "TAKE_PROFIT_HIT"
+
+
+# --- 20. Fingerprint excludes observation-only fields ---
+
+class TestFingerprintStability:
+    def test_last_checked_at_change_no_duplicate(self):
+        """Changing last_checked_at alone should not change fingerprint."""
+        p1 = _pos("PP_001", "OPEN", last_checked_at="2026-07-10T10:00:00Z")
+        p2 = _pos("PP_001", "OPEN", last_checked_at="2026-07-10T12:00:00Z")
+        assert position_state_fingerprint(p1) == position_state_fingerprint(p2)
+
+    def test_recorded_at_change_no_duplicate(self):
+        """Changing recorded_at alone should not change fingerprint."""
+        p1 = _pos("PP_001", "OPEN", recorded_at="2026-07-10T10:00:00Z")
+        p2 = _pos("PP_001", "OPEN", recorded_at="2026-07-10T12:00:00Z")
+        assert position_state_fingerprint(p1) == position_state_fingerprint(p2)
+
+    def test_status_change_changes_fingerprint(self):
+        """Status change must change fingerprint."""
+        p1 = _pos("PP_001", "OPEN")
+        p2 = _pos("PP_001", "TAKE_PROFIT_HIT")
+        assert position_state_fingerprint(p1) != position_state_fingerprint(p2)
+
+    def test_exit_price_change_changes_fingerprint(self):
+        """Exit price change must change fingerprint."""
+        p1 = _pos("PP_001", "TAKE_PROFIT_HIT", exit_price=110.0)
+        p2 = _pos("PP_001", "TAKE_PROFIT_HIT", exit_price=115.0)
+        assert position_state_fingerprint(p1) != position_state_fingerprint(p2)
+
+
+# --- 21. Static console generator ---
+
+class TestStaticConsoleGenerator:
+    DATE_PREFIX = "2026-07-10"
+
+    @staticmethod
+    def _write_full_report(report_dir: str, pos: dict, date_prefix: str = "2026-07-10",
+                           strategy_id: str = "test_strat"):
+        """Create all report files including ledger for the generator."""
+        # Ledger (canonical source)
+        ledger = os.path.join(report_dir, f"{date_prefix}_paper_position_ledger.jsonl")
+        _write(ledger, [pos])
+
+        # Scorecard (production schema)
+        with open(os.path.join(report_dir, f"{date_prefix}_paper_performance_scorecard.json"), "w") as f:
+            json.dump({
+                "date": date_prefix,
+                "global_metrics": {
+                    "total_positions": 1, "clean_positions": 1,
+                    "excluded_positions": 0, "open_positions": 0,
+                    "closed_positions": 1,
+                    "take_profit_hit": 1, "stop_loss_hit": 0, "timeout_exit": 0,
+                    "realized_pnl": 10.0, "unrealized_pnl": 0.0,
+                    "avg_r_multiple": 2.0, "win_rate": 1.0, "loss_rate": 0.0,
+                    "profit_factor": 99.0, "expectancy_r": 2.0,
+                    "max_single_loss_r": 0.0, "max_single_win_r": 2.0,
+                    "sample_status": "PASS",
+                },
+                "strategy_scorecards": [{
+                    "strategy_id": strategy_id, "strategy_type": "macd",
+                    "symbol_count": 1, "position_count": 1,
+                    "open_count": 0, "closed_count": 1,
+                    "tp_count": 1, "sl_count": 0, "timeout_count": 0,
+                    "realized_pnl": 10.0, "unrealized_pnl": 0.0,
+                    "win_rate": 1.0, "profit_factor": 99.0, "expectancy_r": 2.0,
+                    "avg_r_multiple": 2.0, "strategy_score": 1.0,
+                    "sample_status": "PASS", "strategy_status": "PASS",
+                }],
+                "clean_position_count": 1, "excluded_position_count": 0,
+                "cumulative_closed_clean": 1,
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+            }, f)
+        # Sample gate (production schema)
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_sample_gate.json"), "w") as f:
+            json.dump({
+                "date": date_prefix, "total_runs": 1, "latest_run_id": _RUN_ID,
+                "closed_clean_positions": 1, "cumulative_closed_clean": 1,
+                "sample_status": "PASS",
+                "testnet_gate_status": "BLOCKED", "testnet_gate_reasons": ["shadow_only"],
+                "registry_path": "test", "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+            }, f)
+        # Lifecycle (production schema)
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_lifecycle_result.json"), "w") as f:
+            json.dump({
+                "date": date_prefix,
+                "pipeline_status": "PASS",
+                "mode": "real_public_http",
+                "allow_public_http": True,
+                "steps": [{
+                    "step_name": "lifecycle", "command": "test",
+                    "started_at": "2026-07-10T22:00:00+08:00",
+                    "finished_at": _FINISHED_AT,
+                    "duration_seconds": 30, "exit_code": 0, "status": "PASS",
+                    "stdout_tail": "", "stderr_tail": "",
+                }],
+                "summary": {},
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+                "run_id": _RUN_ID,
+                "sample_gate_status": "BLOCKED",
+                "sample_gate_reasons": ["shadow_only"],
+                "registry_written": True, "registry_path": "test",
+            }, f)
+        # Update result (production schema)
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_position_update_result.json"), "w") as f:
+            json.dump({
+                "date": date_prefix, "pipeline_status": "PASS",
+                "mode": "real_public_http", "pipeline_type": "update_only",
+                "allow_public_http": True,
+                "steps": [{
+                    "step_name": "update_only", "command": "test",
+                    "started_at": "2026-07-10T22:15:00+08:00",
+                    "finished_at": _FINISHED_AT,
+                    "duration_seconds": 10, "exit_code": 0, "status": "PASS",
+                    "stdout_tail": "", "stderr_tail": "",
+                }],
+                "summary": {},
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+                "run_id": _RUN_ID,
+            }, f)
+        # Registry (production schema)
+        with open(os.path.join(report_dir, f"{date_prefix}_shadow_run_registry.jsonl"), "w") as f:
+            f.write(json.dumps({
+                "run_id": _RUN_ID, "date": date_prefix,
+                "started_at": "2026-07-10T22:00:00+08:00",
+                "finished_at": _FINISHED_AT,
+                "mode": "real_public_http", "allow_public_http": True,
+                "pipeline_status": "PASS",
+                "steps_passed": 4, "steps_failed": 0,
+                "clean_positions": 1, "excluded_positions": 0,
+                "open_clean_positions": 0, "closed_clean_positions": 1,
+                "cumulative_closed_clean": 1,
+                "accounting_status": "OK", "accounting_error": None,
+                "sample_status": "PASS",
+                "testnet_gate_status": "BLOCKED",
+                "testnet_gate_reasons": ["shadow_only"],
+                "safety_flags": ["PAPER_ONLY", "SHADOW_ONLY"],
+            }) + "\n")
+
+    def test_generator_creates_files(self):
+        """Generator creates versioned release with HTML, EN HTML, JSON."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_full_report(report_dir, pos)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is True
+                assert result["version_id"] is not None
+                assert result["release_dir"] is not None
+                assert result["current_target"] is not None
+
+                # Verify files exist via symlink
+                current = os.path.join(output_dir, "current")
+                assert os.path.islink(current)
+                for fname in ["index.html", "index_en.html", "console_data.json"]:
+                    assert os.path.isfile(os.path.join(current, fname))
+
+    def test_generator_json_valid(self):
+        """Generator produces valid JSON."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_full_report(report_dir, pos)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is True
+
+                json_path = os.path.join(output_dir, "current", "console_data.json")
+                with open(json_path) as f:
+                    data = json.load(f)
+                assert "generated_at" in data
+                assert "strategies" in data
+                assert "server_commit" in data
+
+    def test_generator_no_sensitive_leaks(self):
+        """Generator does not expose sensitive paths."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_full_report(report_dir, pos)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is True
+
+                for fname in ["index.html", "index_en.html"]:
+                    with open(os.path.join(output_dir, "current", fname)) as f:
+                        content = f.read()
+                    assert "/opt/quant-shadow" not in content
+                    assert "10.66.66" not in content
+
+    def test_generator_no_control_code(self):
+        """Generator HTML contains no control code."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_full_report(report_dir, pos)
+
+                result = generate_console(report_dir, output_dir)
+                assert result["success"] is True
+
+                for fname in ["index.html", "index_en.html"]:
+                    with open(os.path.join(output_dir, "current", fname)) as f:
+                        content = f.read()
+                    assert "<button" not in content
+                    assert "<form" not in content
+                    assert "onclick" not in content
+                    assert "runAction" not in content
+                    assert "fetch(" not in content
+
+    def test_generator_preserves_last_good_on_error(self):
+        """Generator preserves existing files when generation fails."""
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as report_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                # Create a valid first release
+                pos = _pos("PP_001", "TAKE_PROFIT_HIT")
+                self._write_full_report(report_dir, pos)
+                result1 = generate_console(report_dir, output_dir)
+                assert result1["success"] is True
+
+                # Verify first release exists
+                current = os.path.join(output_dir, "current")
+                first_version = os.readlink(current)
+
+                # Corrupt the scorecard with sensitive data
+                scpath = os.path.join(report_dir, f"{self.DATE_PREFIX}_paper_performance_scorecard.json")
+                with open(scpath, "w") as f:
+                    json.dump({
+                        "date": self.DATE_PREFIX,
+                        "global_metrics": {"closed_position_count": 1},
+                        "strategy_scorecards": [{"strategy_id": "/opt/quant-shadow/bad", "closed_count": 1}],
+                    }, f)
+
+                result2 = generate_console(report_dir, output_dir)
+                assert result2["success"] is False
+
+                # Current symlink should still point to first version
+                assert os.readlink(current) == first_version
