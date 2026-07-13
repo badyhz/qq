@@ -1268,3 +1268,74 @@ class TestStrictTimeAndDateContract:
                 json.dump(data, f)
             _, errors = validate_inputs(rd)
             assert any(field in error for error in errors)
+
+
+class TestLatestStepCompletionTimeline:
+    @staticmethod
+    def _set_steps(report_dir, suffix, finished_minutes):
+        path = next(Path(report_dir).glob(f"*{suffix}"))
+        data = json.load(open(path))
+        now = _dt.datetime.now(_dt.timezone.utc)
+        steps = []
+        for index, minutes in enumerate(finished_minutes):
+            finished = now - _dt.timedelta(minutes=minutes)
+            started = finished - _dt.timedelta(minutes=1)
+            steps.append({
+                "step_name": f"step-{index}",
+                "status": "PASS",
+                "exit_code": 0,
+                "started_at": started.isoformat(),
+                "finished_at": finished.isoformat(),
+            })
+        data["steps"] = steps
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+    @staticmethod
+    def _set_registry_finished(report_dir, minutes):
+        path = next(Path(report_dir).glob("*_shadow_run_registry.jsonl"))
+        record = json.loads(path.read_text().strip())
+        finished = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=minutes)
+        record["finished_at"] = finished.isoformat()
+        record["started_at"] = (finished - _dt.timedelta(minutes=30)).isoformat()
+        path.write_text(json.dumps(record) + "\n")
+
+    @pytest.mark.parametrize("suffix,label", [
+        ("_shadow_lifecycle_result.json", "Lifecycle"),
+        ("_shadow_position_update_result.json", "Update"),
+    ])
+    def test_shuffled_latest_step_blocks_early_registry(self, suffix, label):
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            self._set_steps(rd, suffix, [1, 7])
+            self._set_registry_finished(rd, 5)
+            result = generate_console(rd, od)
+            assert result["success"] is False
+            assert any(f"{label} latest step" in error for error in result["errors"])
+
+    def test_shuffled_steps_succeed_when_registry_is_latest(self):
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            self._set_steps(rd, "_shadow_lifecycle_result.json", [3, 10, 6])
+            self._set_steps(rd, "_shadow_position_update_result.json", [3, 10, 6])
+            self._set_registry_finished(rd, 1)
+            assert generate_console(rd, od)["success"] is True
+
+    def test_shuffled_failure_preserves_last_good(self):
+        from scripts.generate_static_console import generate_console
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            first = generate_console(rd, od)
+            assert first["success"] is True
+            current = Path(od, "current")
+            target = os.readlink(current)
+            contents = {name: (current / name).read_bytes() for name in (
+                "index.html", "index_en.html", "console_data.json",
+            )}
+            self._set_steps(rd, "_shadow_lifecycle_result.json", [1, 7])
+            self._set_registry_finished(rd, 5)
+            assert generate_console(rd, od)["success"] is False
+            assert os.readlink(current) == target
+            assert all((current / name).read_bytes() == data for name, data in contents.items())

@@ -191,6 +191,30 @@ def _validate_steps(pipeline: dict, label: str, errors: list[str]) -> bool:
     return all_pass
 
 
+def _latest_step_finished_at(
+    pipeline: dict,
+    label: str,
+    errors: list[str],
+) -> datetime | None:
+    """Return the latest completion across all steps, independent of list order."""
+    parsed: list[tuple[int, datetime]] = []
+    for index, step in enumerate(pipeline.get("steps", [])):
+        if not isinstance(step, dict):
+            errors.append(f"{label}: step[{index}] is not a dict")
+            continue
+        finished = _parse_aware_iso_datetime(step.get("finished_at"))
+        if finished is None:
+            errors.append(
+                f"{label}: step[{index}] invalid timezone-aware finished_at"
+            )
+            continue
+        parsed.append((index, finished))
+    if not parsed:
+        errors.append(f"{label}: no valid step finished_at values")
+        return None
+    return max(parsed, key=lambda item: item[1])[1]
+
+
 def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     """Validate all required inputs exist and are consistent.
 
@@ -380,9 +404,12 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
 
     # --- Timeline validation ---
     # Registry.finished_at >= Lifecycle.finished_at and >= Update.finished_at
-    lc_finished = _parse_aware_iso_datetime(lc_data.get("steps", [{}])[-1].get("finished_at"))
-    update_finished = _parse_aware_iso_datetime(update_data.get("steps", [{}])[-1].get("finished_at"))
+    lc_finished = _latest_step_finished_at(lc_data, "Lifecycle", errors)
+    update_finished = _latest_step_finished_at(update_data, "Update", errors)
     reg_finished = _parse_aware_iso_datetime(matching_reg.get("finished_at"))
+
+    if errors:
+        return bundle, errors
 
     if not reg_finished:
         errors.append("Registry finished_at is missing or invalid")
@@ -391,12 +418,12 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     if lc_finished and reg_finished < lc_finished:
         errors.append(
             f"Timeline: Registry finished_at ({matching_reg.get('finished_at')}) "
-            f"< Lifecycle finished_at ({lc_data['steps'][-1].get('finished_at')})"
+            f"< Lifecycle latest step finished_at ({lc_finished.isoformat()})"
         )
     if update_finished and reg_finished < update_finished:
         errors.append(
             f"Timeline: Registry finished_at ({matching_reg.get('finished_at')}) "
-            f"< Update finished_at ({update_data['steps'][-1].get('finished_at')})"
+            f"< Update latest step finished_at ({update_finished.isoformat()})"
         )
     if errors:
         return bundle, errors
