@@ -310,7 +310,7 @@ class TestOverlapGuard:
         pos = open_position(_make_intent())
         pos_dict = pos.to_dict()
         pos_dict["status"] = "STOP_LOSS_HIT"
-        intent2 = _make_intent(intent_id="TI_new_after_close")
+        intent2 = _make_intent(intent_id="TI_new_after_close", entry_price=1.14)
         r = simulate_intent_only([intent2], "2026-06-18", existing_positions=[pos_dict])
         assert r.position_count == 2  # existing closed + new
         assert r.lifecycle_stats["positions_skipped_overlap_open"] == 0
@@ -359,7 +359,7 @@ class TestOverlapGuard:
         details = r2.lifecycle_stats["skipped_overlap_intents"]
         assert len(details) == 1
         assert details[0]["intent_id"] == "TI_detail"
-        assert details[0]["reason"] == "existing_open_position_overlap"
+        assert details[0]["reason"] == "existing_open_exposure"
 
     def test_overlap_guard_enabled_flag(self):
         r = simulate_intent_only([], "2026-06-18")

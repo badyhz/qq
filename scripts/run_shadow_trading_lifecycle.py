@@ -162,6 +162,7 @@ def _build_steps(
     allow_public_http: bool,
     offline_sample: bool,
     defer_scorecard: bool = False,
+    defer_position_update: bool = False,
 ) -> list[dict]:
     py = sys.executable
 
@@ -191,6 +192,8 @@ def _build_steps(
     ]
     if allow_public_http:
         cmd3.extend(["--allow-public-http", "--update-with-klines"])
+    if defer_position_update:
+        cmd3.append("--entry-only")
 
     # Step 4: quarantine
     cmd4 = [
@@ -448,6 +451,7 @@ def main():
     parser.add_argument("--run-id", type=str, default=None)
     parser.add_argument("--defer-registry", action="store_true", default=False)
     parser.add_argument("--defer-scorecard", action="store_true", default=False)
+    parser.add_argument("--defer-position-update", action="store_true", default=False)
     parser.add_argument("--finalize-registry", action="store_true", default=False)
     parser.add_argument("--batch-started-at", type=str, default=None)
     args = parser.parse_args()
@@ -484,6 +488,7 @@ def main():
         args.allow_public_http,
         args.offline_sample,
         defer_scorecard=args.defer_scorecard,
+        defer_position_update=args.defer_position_update,
     )
     step_results = []
     pipeline_status = "PASS"

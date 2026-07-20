@@ -7,7 +7,6 @@ No orders, no accounts, no secrets, no testnet, no live.
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 import sys
@@ -16,7 +15,15 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core.paper_trading.paper_position import dict_to_position, CLOSED_STATUSES, position_state_fingerprint, select_canonical_position_state
+from core.paper_trading.paper_position import (
+    CLOSED_STATUSES,
+    OVERLAP_MANIFEST_FILENAME,
+    build_overlap_exclusion_manifest,
+    exposure_identity,
+    load_canonical_positions,
+    position_state_fingerprint,
+    select_canonical_position_state,
+)
 from core.paper_trading.paper_position_simulator import (
     simulate_intent_only, simulate_with_klines,
     simulate_existing_positions_update_only,
@@ -51,37 +58,6 @@ def _positions_path(output_dir: str, date_str: str) -> str:
     return os.path.join(output_dir, f"{date_str}_paper_positions.json")
 
 
-def _load_existing_positions(path: str) -> list[dict]:
-    """Load existing positions from JSON file."""
-    if not os.path.isfile(path):
-        return []
-    try:
-        with open(path) as f:
-            data = json.load(f)
-        return data.get("positions", [])
-    except Exception:
-        return []
-
-
-def _load_ledger_positions(path: str) -> list[dict]:
-    """Load position records from one JSONL ledger file."""
-    if not os.path.isfile(path):
-        return []
-    positions: list[dict] = []
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                record = json.loads(line)
-                if isinstance(record, dict):
-                    positions.append(record)
-    except Exception:
-        return positions
-    return positions
-
-
 def _position_dedupe_key(position: dict) -> str:
     pid = str(position.get("position_id") or "").strip()
     if pid:
@@ -105,54 +81,114 @@ def _load_update_existing_positions(output_dir: str, date_str: str) -> list[dict
 
     Raises RuntimeError on terminal state conflicts (caller must abort).
     """
-    latest_by_key: dict[str, dict] = {}
-    conflicts: list[str] = []
+    open_positions, _all_positions, _signal_keys, _diag = _load_entry_guard_state(
+        output_dir, date_str,
+    )
+    return open_positions
 
-    ledger_paths = sorted(glob.glob(os.path.join(output_dir, "*_paper_position_ledger.jsonl")))
-    for path in ledger_paths:
-        for position in _load_ledger_positions(path):
+
+def _load_entry_guard_state(
+    output_dir: str,
+    date_str: str,
+) -> tuple[list[dict], list[dict], set[str], dict]:
+    """Load all historical canonical state before any new entry is evaluated."""
+    canonical, diagnostics = load_canonical_positions(output_dir)
+    fatal = []
+    if diagnostics.get("load_error"):
+        fatal.append(f"load_error={diagnostics['load_error']}")
+    if diagnostics.get("files_error"):
+        fatal.append(f"files_error={diagnostics['files_error']}")
+    if diagnostics.get("corrupted_lines"):
+        fatal.append(f"corrupted_lines={diagnostics['corrupted_lines']}")
+    if diagnostics.get("excluded_no_position_id"):
+        fatal.append(f"missing_position_id={diagnostics['excluded_no_position_id']}")
+    for conflict in diagnostics.get("terminal_conflicts", []):
+        if conflict.get("fatal", True):
+            fatal.append(
+                f"terminal_conflict={conflict.get('position_id')}:"
+                f"{conflict.get('old_status')}->{conflict.get('new_status')}"
+            )
+
+    latest_by_key = {
+        _position_dedupe_key(position): position
+        for position in canonical
+        if _position_dedupe_key(position)
+    }
+    current_path = _positions_path(output_dir, date_str)
+    if os.path.isfile(current_path):
+        try:
+            with open(current_path) as f:
+                current_data = json.load(f)
+            current_positions = current_data.get("positions", [])
+            if not isinstance(current_positions, list):
+                raise ValueError("positions is not a list")
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            fatal.append(f"current_snapshot_error={exc}")
+            current_positions = []
+        for position in current_positions:
+            if not isinstance(position, dict):
+                fatal.append("current_snapshot_non_object_position")
+                continue
             key = _position_dedupe_key(position)
             if not key:
+                fatal.append("current_snapshot_missing_position_id")
                 continue
             old = latest_by_key.get(key)
             if old is None:
                 latest_by_key[key] = position
-            else:
-                sel = select_canonical_position_state(old, position)
-                latest_by_key[key] = sel.selected
-                if sel.conflict and sel.decision == "conflict_terminal":
-                    conflicts.append(
-                        f"{position.get('position_id')}: "
-                        f"{old.get('status')} vs {position.get('status')}"
-                    )
-
-    current_positions_path = _positions_path(output_dir, date_str)
-    for position in _load_existing_positions(current_positions_path):
-        key = _position_dedupe_key(position)
-        if not key:
-            continue
-        old = latest_by_key.get(key)
-        if old is None:
-            latest_by_key[key] = position
-        else:
-            sel = select_canonical_position_state(old, position)
-            latest_by_key[key] = sel.selected
-            if sel.conflict and sel.decision == "conflict_terminal":
-                conflicts.append(
-                    f"{position.get('position_id')}: "
-                    f"{old.get('status')} vs {position.get('status')}"
+                continue
+            selected = select_canonical_position_state(old, position)
+            latest_by_key[key] = selected.selected
+            if selected.conflict and selected.conflict_reason != "terminal_irreversible":
+                fatal.append(
+                    f"Terminal state conflicts: current_snapshot={position.get('position_id')}:"
+                    f"{old.get('status')}->{position.get('status')}"
                 )
 
-    if conflicts:
-        raise RuntimeError(
-            f"Terminal state conflicts detected in update-only load: "
-            f"{'; '.join(conflicts)}"
-        )
+    if fatal:
+        raise RuntimeError("Canonical entry guard failed closed: " + "; ".join(fatal))
 
-    return [
-        position for position in latest_by_key.values()
-        if position.get("status") == "OPEN"
-    ]
+    all_positions = sorted(
+        latest_by_key.values(), key=lambda item: str(item.get("position_id") or ""),
+    )
+    open_positions = [p for p in all_positions if p.get("status") == "OPEN"]
+    exposure_owners: dict[str, str] = {}
+    duplicate_open_exposures = 0
+    for position in open_positions:
+        try:
+            key = exposure_identity(position)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Canonical OPEN has invalid exposure identity: {position.get('position_id')}: {exc}"
+            ) from exc
+        if key in exposure_owners:
+            duplicate_open_exposures += 1
+        else:
+            exposure_owners[key] = str(position.get("position_id") or "")
+
+    signal_keys = {
+        str(position.get("signal_key"))
+        for position in all_positions if position.get("signal_key")
+    }
+    diagnostics["canonical_open_count_before_new_entries"] = len(open_positions)
+    diagnostics["duplicate_canonical_open_exposures"] = duplicate_open_exposures
+    return open_positions, all_positions, signal_keys, diagnostics
+
+
+def _ensure_overlap_manifest(output_dir: str, canonical_positions: list[dict]) -> str:
+    """Create the fixed legacy exclusion manifest once; never rewrite ledgers."""
+    path = os.path.join(output_dir, OVERLAP_MANIFEST_FILENAME)
+    if os.path.isfile(path):
+        return path
+    cohort_start = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    manifest = build_overlap_exclusion_manifest(canonical_positions, cohort_start)
+    os.makedirs(output_dir, exist_ok=True)
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+        f.write("\n")
+    os.replace(temp_path, path)
+    return path
 
 
 def render_markdown(result: dict) -> str:
@@ -283,12 +319,11 @@ def main():
     parser.add_argument("--future-only", action="store_true", default=True)
     parser.add_argument("--allow-update-newly-opened", action="store_true", default=False)
     parser.add_argument("--update-existing-only", action="store_true", default=False)
+    parser.add_argument("--entry-only", action="store_true", default=False)
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
     input_path = args.input_file or _default_input_path(date_str)
-    positions_path = _positions_path(args.output_dir, date_str)
-
     if not os.path.isfile(input_path):
         print(f"ERROR: input file not found: {input_path}")
         return 1
@@ -301,19 +336,24 @@ def main():
     print(f"Total intents: {len(intents)}")
     print(f"SHADOW_READY: {len(shadow_intents)}")
 
-    # Load existing positions for dedup/update-only
-    if args.update_existing_only:
-        try:
-            existing = _load_update_existing_positions(args.output_dir, date_str)
-        except RuntimeError as e:
-            print(f"ERROR: {e}")
-            return 1
-    else:
-        existing = _load_existing_positions(positions_path)
-    existing_intent_ids = {p.get("intent_id") for p in existing}
+    # Restore all historical canonical OPEN before evaluating any new intent.
+    try:
+        existing, canonical_positions, existing_signal_keys, guard_diag = (
+            _load_entry_guard_state(args.output_dir, date_str)
+        )
+        if not args.update_existing_only:
+            manifest_path = _ensure_overlap_manifest(args.output_dir, canonical_positions)
+            print(f"Overlap exclusion manifest: {manifest_path}")
+    except (RuntimeError, ValueError, OSError) as e:
+        print(f"ERROR: {e}")
+        return 1
     print(f"Existing positions: {len(existing)}")
+    print(
+        "CANONICAL_OPEN_COUNT_BEFORE_NEW_ENTRIES="
+        f"{guard_diag['canonical_open_count_before_new_entries']}"
+    )
 
-    if args.allow_public_http and args.update_with_klines:
+    if args.allow_public_http and args.update_with_klines and not args.entry_only:
         if args.update_existing_only:
             print("Mode: update_existing_only (future_only)")
         else:
@@ -356,6 +396,7 @@ def main():
             result = simulate_with_klines(
                 shadow_intents, bars_by_key, date_str,
                 existing_positions=existing,
+                existing_signal_keys=existing_signal_keys,
                 paper_equity=args.paper_equity_preview,
                 timeout_bars=args.timeout_bars,
                 future_only=args.future_only,
@@ -373,6 +414,7 @@ def main():
         result = simulate_intent_only(
             shadow_intents, date_str,
             existing_positions=existing,
+            existing_signal_keys=existing_signal_keys,
             paper_equity=args.paper_equity_preview,
         )
 

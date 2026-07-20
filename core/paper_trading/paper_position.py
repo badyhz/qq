@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -27,6 +28,69 @@ POSITION_SAFETY_FLAGS = [
 ]
 
 CLOSED_STATUSES = {"TAKE_PROFIT_HIT", "STOP_LOSS_HIT", "TIMEOUT_EXIT", "INVALID"}
+SIGNAL_IDENTITY_SCHEMA_VERSION = "shadow_signal_v1"
+EXPOSURE_IDENTITY_SCHEMA_VERSION = "shadow_exposure_v1"
+OVERLAP_AUDIT_RULE_VERSION = "cross_day_exposure_v1"
+OVERLAP_MANIFEST_FILENAME = "paper_position_overlap_exclusions.json"
+
+
+def exposure_identity(record: dict[str, Any]) -> str:
+    """Return the non-pyramiding economic exposure identity.
+
+    An incomplete identity is unsafe: callers must fail closed rather than let an
+    unidentifiable intent bypass the open-exposure guard.
+    """
+    parts = (
+        str(record.get("strategy_id") or "").strip(),
+        str(record.get("symbol") or "").strip().upper(),
+        str(record.get("timeframe") or "").strip().lower(),
+        str(record.get("side") or "").strip().upper(),
+    )
+    if not all(parts) or parts[3] not in {"LONG", "SHORT"}:
+        raise ValueError("incomplete exposure identity")
+    return "|".join((EXPOSURE_IDENTITY_SCHEMA_VERSION, *parts))
+
+
+def stable_signal_key(intent: dict[str, Any]) -> str:
+    """Build a stable, non-secret identity for one observed strategy signal.
+
+    Newer producers may provide signal_bar_close_time.  The current legacy
+    producer does not, so its compatibility reference uses only deterministic
+    signal content (collection date and quoted levels), never process time,
+    run id, file path, or a random UUID.
+    """
+    bar_time = intent.get("signal_bar_close_time")
+    if bar_time is not None and str(bar_time).strip():
+        ts = _normalize_timestamp_to_seconds(bar_time)
+        if ts <= 0:
+            raise ValueError("invalid signal_bar_close_time")
+        signal_reference = datetime.fromtimestamp(ts, timezone.utc).isoformat()
+        reference_type = "signal_bar_close_time"
+    else:
+        reference_type = "legacy_deterministic_signal_content"
+        signal_reference = json.dumps({
+            "date": str(intent.get("date") or ""),
+            "entry_price": _normalize_fingerprint_value(intent.get("entry_price")),
+            "stop_loss": _normalize_fingerprint_value(intent.get("stop_loss")),
+            "take_profit": _normalize_fingerprint_value(intent.get("take_profit")),
+            "source_reason": str(intent.get("source_reason") or ""),
+        }, sort_keys=True, separators=(",", ":"))
+
+    payload = {
+        "schema_version": SIGNAL_IDENTITY_SCHEMA_VERSION,
+        "strategy_id": str(intent.get("strategy_id") or "").strip(),
+        "symbol": str(intent.get("symbol") or "").strip().upper(),
+        "timeframe": str(intent.get("timeframe") or "").strip().lower(),
+        "side": str(intent.get("side") or "").strip().upper(),
+        "strategy_version": str(intent.get("strategy_version") or "unspecified"),
+        "reference_type": reference_type,
+        "signal_reference": signal_reference,
+    }
+    exposure_identity(intent)
+    if not payload["strategy_id"] or not signal_reference:
+        raise ValueError("incomplete signal identity")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -34,6 +98,8 @@ class PaperPosition:
     """Shadow-only paper position. Never results in a real order."""
     position_id: str
     intent_id: str
+    signal_key: str
+    signal_key_schema_version: str
     date: str
     source: str
     strategy_id: str
@@ -70,6 +136,8 @@ class PaperPosition:
         return {
             "position_id": self.position_id,
             "intent_id": self.intent_id,
+            "signal_key": self.signal_key,
+            "signal_key_schema_version": self.signal_key_schema_version,
             "date": self.date,
             "source": self.source,
             "strategy_id": self.strategy_id,
@@ -133,6 +201,8 @@ def open_position(intent: dict[str, Any], paper_equity: float = 10000.0) -> Opti
     return PaperPosition(
         position_id=f"PP_{uuid.uuid4().hex[:12]}",
         intent_id=str(intent.get("intent_id") or ""),
+        signal_key=stable_signal_key(intent),
+        signal_key_schema_version=SIGNAL_IDENTITY_SCHEMA_VERSION,
         date=str(intent.get("date") or ""),
         source="trade_intent",
         strategy_id=str(intent.get("strategy_id") or ""),
@@ -172,6 +242,8 @@ def dict_to_position(d: dict[str, Any]) -> PaperPosition:
     return PaperPosition(
         position_id=d["position_id"],
         intent_id=d["intent_id"],
+        signal_key=str(d.get("signal_key") or ""),
+        signal_key_schema_version=str(d.get("signal_key_schema_version") or "legacy_missing"),
         date=d["date"],
         source=d["source"],
         strategy_id=d["strategy_id"],
@@ -338,7 +410,10 @@ def _position_sort_ts(rec: dict[str, Any]) -> float:
     All values normalized to seconds.
     Returns 0 if none available.
     """
-    for field in ("recorded_at", "closed_at", "last_checked_at", "opened_at", "created_at"):
+    for field in (
+        "recorded_at", "closed_at", "last_checked_at", "last_checked_bar_time",
+        "opened_at", "created_at",
+    ):
         val = rec.get(field)
         ts = _normalize_timestamp_to_seconds(val)
         if ts > 0:
@@ -550,6 +625,94 @@ def load_canonical_positions(
     return positions, diagnostics
 
 
+def build_overlap_exclusion_manifest(
+    canonical_positions: list[dict[str, Any]],
+    trusted_cohort_start_at: str,
+) -> dict[str, Any]:
+    """Identify later positions opened while the same exposure was still OPEN.
+
+    The canonical ledger is read only.  The later opening is excluded; the
+    earliest still-open position remains the reference exposure.
+    """
+    cohort_ts = _normalize_timestamp_to_seconds(trusted_cohort_start_at)
+    if cohort_ts <= 0:
+        raise ValueError("trusted_cohort_start_at must be a timezone-aware timestamp")
+
+    ordered: list[tuple[float, str, dict[str, Any]]] = []
+    for position in canonical_positions:
+        opened_ts = _normalize_timestamp_to_seconds(position.get("opened_at"))
+        pid = str(position.get("position_id") or "").strip()
+        if opened_ts <= 0 or not pid:
+            raise ValueError(f"position {pid or '<missing>'} has no valid opened_at")
+        exposure_identity(position)
+        ordered.append((opened_ts, pid, position))
+    ordered.sort(key=lambda item: (item[0], item[1]))
+
+    active: dict[str, list[dict[str, Any]]] = {}
+    exclusions: list[dict[str, Any]] = []
+    for opened_ts, _pid, position in ordered:
+        key = exposure_identity(position)
+        still_active = []
+        for prior in active.get(key, []):
+            prior_closed_ts = _normalize_timestamp_to_seconds(prior.get("closed_at"))
+            if prior_closed_ts <= 0 or prior_closed_ts > opened_ts:
+                still_active.append(prior)
+        if still_active:
+            existing = min(
+                still_active,
+                key=lambda item: (
+                    _normalize_timestamp_to_seconds(item.get("opened_at")),
+                    str(item.get("position_id") or ""),
+                ),
+            )
+            exclusions.append({
+                "position_id": position.get("position_id"),
+                "exclusion_reason": "overlapping_open_exposure",
+                "overlaps_with_position_id": existing.get("position_id"),
+                "strategy": position.get("strategy_id"),
+                "symbol": position.get("symbol"),
+                "timeframe": position.get("timeframe"),
+                "side": position.get("side"),
+                "opened_at": position.get("opened_at"),
+                "existing_position_opened_at": existing.get("opened_at"),
+                "existing_position_closed_at": existing.get("closed_at"),
+                "audit_rule_version": OVERLAP_AUDIT_RULE_VERSION,
+                "excluded_at": trusted_cohort_start_at,
+                "source": "independent_audit_remediation",
+            })
+        still_active.append(position)
+        active[key] = still_active
+
+    return {
+        "schema_version": 1,
+        "audit_rule_version": OVERLAP_AUDIT_RULE_VERSION,
+        "trusted_cohort_start_at": trusted_cohort_start_at,
+        "trusted_cohort_rule_version": OVERLAP_AUDIT_RULE_VERSION,
+        "raw_canonical_positions": len(canonical_positions),
+        "excluded_overlap_positions": len(exclusions),
+        "exclusions": exclusions,
+    }
+
+
+def load_overlap_exclusion_manifest(report_dir: str) -> dict[str, Any] | None:
+    """Load and validate the fixed legacy overlap exclusion manifest."""
+    path = os.path.join(report_dir, OVERLAP_MANIFEST_FILENAME)
+    if not os.path.isfile(path):
+        return None
+    with open(path) as f:
+        manifest = json.load(f)
+    if manifest.get("audit_rule_version") != OVERLAP_AUDIT_RULE_VERSION:
+        raise ValueError("unsupported overlap exclusion audit rule")
+    if not isinstance(manifest.get("exclusions"), list):
+        raise ValueError("overlap exclusion manifest has no exclusions list")
+    if _normalize_timestamp_to_seconds(manifest.get("trusted_cohort_start_at")) <= 0:
+        raise ValueError("overlap exclusion manifest has invalid trusted cohort start")
+    ids = [str(item.get("position_id") or "") for item in manifest["exclusions"]]
+    if any(not pid for pid in ids) or len(ids) != len(set(ids)):
+        raise ValueError("overlap exclusion manifest has missing or duplicate position ids")
+    return manifest
+
+
 def load_canonical_closed_clean_positions(
     report_dir: str,
     strict: bool = True,
@@ -570,8 +733,20 @@ def load_canonical_closed_clean_positions(
     # Load all canonical positions
     all_positions, load_diag = load_canonical_positions(report_dir)
 
-    # Load lifecycle metadata for source verification
+    # Load lifecycle metadata and the fixed legacy-overlap exclusion set.
     lifecycle_metadata = _load_lifecycle_metadata(report_dir)
+    overlap_manifest = None
+    overlap_manifest_error = None
+    try:
+        overlap_manifest = load_overlap_exclusion_manifest(report_dir)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        overlap_manifest_error = str(exc)
+    overlap_ids = {
+        str(item.get("position_id"))
+        for item in (overlap_manifest or {}).get("exclusions", [])
+    }
+    trusted_cohort_start_at = (overlap_manifest or {}).get("trusted_cohort_start_at")
+    trusted_cohort_start_ts = _normalize_timestamp_to_seconds(trusted_cohort_start_at)
 
     # Evaluate eligibility for each position
     eligible_positions = []
@@ -584,6 +759,7 @@ def load_canonical_closed_clean_positions(
         "quarantine_unverifiable": 0,
         "source_ineligible": 0,
         "source_unknown": 0,
+        "overlapping_open_exposure": 0,
         "open": 0,
         "invalid": 0,
     }
@@ -598,6 +774,11 @@ def load_canonical_closed_clean_positions(
         else:
             # OPEN positions are business exclusions
             exclusions["open"] += 1
+            exclusions["total"] += 1
+            continue
+
+        if str(p.get("position_id") or "") in overlap_ids:
+            exclusions["overlapping_open_exposure"] += 1
             exclusions["total"] += 1
             continue
 
@@ -664,6 +845,8 @@ def load_canonical_closed_clean_positions(
         fatal_errors.append(f"File errors: {load_diag['files_error']} files failed")
     if load_diag.get("corrupted_lines", 0) > 0:
         fatal_errors.append(f"Corrupted lines: {load_diag['corrupted_lines']}")
+    if overlap_manifest_error:
+        fatal_errors.append(f"Overlap exclusion manifest error: {overlap_manifest_error}")
 
     accounting_status = "ERROR" if fatal_errors else "OK"
 
@@ -673,6 +856,20 @@ def load_canonical_closed_clean_positions(
         "unique_positions": len(all_positions),
         "closed_positions": len(closed_positions),
         "eligible_closed_clean": len(eligible_positions),
+        "raw_canonical_closed": len(closed_positions),
+        "excluded_overlap_closed": exclusions["overlapping_open_exposure"],
+        "eligible_legacy_closed": sum(
+            1 for p in eligible_positions
+            if trusted_cohort_start_ts <= 0
+            or _normalize_timestamp_to_seconds(p.get("opened_at")) < trusted_cohort_start_ts
+        ),
+        "trusted_cohort_closed": sum(
+            1 for p in eligible_positions
+            if trusted_cohort_start_ts > 0
+            and _normalize_timestamp_to_seconds(p.get("opened_at")) >= trusted_cohort_start_ts
+        ),
+        "trusted_cohort_start_at": trusted_cohort_start_at,
+        "trusted_cohort_rule_version": (overlap_manifest or {}).get("trusted_cohort_rule_version"),
         "explicit_clean": explicit_clean,
         "derived_clean": derived_clean,
         "exclusions": exclusions,

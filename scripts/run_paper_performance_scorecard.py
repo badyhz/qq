@@ -241,6 +241,12 @@ def main():
     # Use the same eligible count as the gate
     cumulative_closed = len(eligible_positions)
     scorecard_dict["cumulative_closed_clean"] = cumulative_closed
+    scorecard_dict["raw_canonical_closed"] = diag.get("raw_canonical_closed", 0)
+    scorecard_dict["excluded_overlap_closed"] = diag.get("excluded_overlap_closed", 0)
+    scorecard_dict["eligible_closed"] = len(eligible_positions)
+    scorecard_dict["trusted_cohort_closed"] = diag.get("trusted_cohort_closed", 0)
+    scorecard_dict["trusted_cohort_start_at"] = diag.get("trusted_cohort_start_at")
+    scorecard_dict["trusted_cohort_rule_version"] = diag.get("trusted_cohort_rule_version")
     scorecard_dict["diagnostics"] = diag
 
     os.makedirs(args.output_dir, exist_ok=True)

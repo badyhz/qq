@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from core.paper_trading.paper_position import (
     open_position, dict_to_position, PaperPosition, CLOSED_STATUSES,
+    exposure_identity, stable_signal_key,
 )
 from core.paper_trading.data_source import MarketBar
 
@@ -62,6 +63,7 @@ def simulate_intent_only(
     intents: list[dict[str, Any]],
     date_str: str,
     existing_positions: Optional[list[dict[str, Any]]] = None,
+    existing_signal_keys: Optional[set[str]] = None,
     paper_equity: float = 10000.0,
 ) -> SimulationResult:
     """Open paper positions from SHADOW_READY intents. No market data.
@@ -70,7 +72,10 @@ def simulate_intent_only(
     """
     existing = existing_positions or []
     existing_intent_ids = {p.get("intent_id") for p in existing}
-    overlap_keys = _build_overlap_keys(existing)
+    known_signal_keys = set(existing_signal_keys or ())
+    known_signal_keys.update(str(p.get("signal_key")) for p in existing if p.get("signal_key"))
+    open_exposures = _build_open_exposures(existing)
+    initial_open_exposure_count = len(open_exposures)
 
     positions: list[dict[str, Any]] = []
     new_count = 0
@@ -87,9 +92,15 @@ def simulate_intent_only(
             deduped += 1
             continue
 
-        # Overlap guard: skip if same strategy+symbol+tf+side OPEN exists
-        okey = _intent_overlap_key(intent)
-        if okey in overlap_keys:
+        try:
+            signal_key = stable_signal_key(intent)
+            okey = exposure_identity(intent)
+        except ValueError:
+            invalid_count += 1
+            continue
+        # Exposure guard: pyramiding is disabled for canonical OPEN positions.
+        if okey in open_exposures:
+            existing_open = open_exposures[okey]
             skipped_overlap += 1
             skipped_overlap_details.append({
                 "intent_id": intent_id,
@@ -97,8 +108,14 @@ def simulate_intent_only(
                 "symbol": intent.get("symbol", ""),
                 "timeframe": intent.get("timeframe", ""),
                 "side": intent.get("side", ""),
-                "reason": "existing_open_position_overlap",
+                "reason": "existing_open_exposure",
+                "existing_position_id": existing_open.get("position_id", ""),
+                "existing_opened_at": existing_open.get("opened_at", ""),
+                "signal_identity": signal_key,
             })
+            continue
+        if signal_key in known_signal_keys:
+            deduped += 1
             continue
 
         pos = open_position(intent, paper_equity)
@@ -107,6 +124,8 @@ def simulate_intent_only(
             continue
 
         positions.append(pos.to_dict())
+        open_exposures[okey] = positions[-1]
+        known_signal_keys.add(signal_key)
         new_count += 1
 
     # Combine existing + new
@@ -134,7 +153,7 @@ def simulate_intent_only(
             "positions_skipped_overlap_open": skipped_overlap,
             "skipped_overlap_intents": skipped_overlap_details,
             "overlap_guard_enabled": True,
-            "overlap_keys_count": len(overlap_keys),
+            "overlap_keys_count": initial_open_exposure_count,
             "future_only": True,
             "allow_update_newly_opened": False,
         },
@@ -152,6 +171,7 @@ def simulate_with_klines(
     future_only: bool = True,
     allow_update_newly_opened: bool = False,
     newly_opened_ids: Optional[set[str]] = None,
+    existing_signal_keys: Optional[set[str]] = None,
 ) -> SimulationResult:
     """Open positions and update with kline data to check TP/SL.
 
@@ -160,7 +180,10 @@ def simulate_with_klines(
     """
     existing = existing_positions or []
     existing_intent_ids = {p.get("intent_id") for p in existing}
-    overlap_keys = _build_overlap_keys(existing)
+    known_signal_keys = set(existing_signal_keys or ())
+    known_signal_keys.update(str(p.get("signal_key")) for p in existing if p.get("signal_key"))
+    open_exposures = _build_open_exposures(existing)
+    initial_open_exposure_count = len(open_exposures)
     newly_opened = newly_opened_ids or set()
 
     new_positions: list[dict[str, Any]] = []
@@ -176,9 +199,14 @@ def simulate_with_klines(
             deduped += 1
             continue
 
-        # Overlap guard: skip if same strategy+symbol+tf+side OPEN exists
-        okey = _intent_overlap_key(intent)
-        if okey in overlap_keys:
+        try:
+            signal_key = stable_signal_key(intent)
+            okey = exposure_identity(intent)
+        except ValueError:
+            invalid_count += 1
+            continue
+        if okey in open_exposures:
+            existing_open = open_exposures[okey]
             skipped_overlap += 1
             skipped_overlap_details.append({
                 "intent_id": intent_id,
@@ -186,8 +214,14 @@ def simulate_with_klines(
                 "symbol": intent.get("symbol", ""),
                 "timeframe": intent.get("timeframe", ""),
                 "side": intent.get("side", ""),
-                "reason": "existing_open_position_overlap",
+                "reason": "existing_open_exposure",
+                "existing_position_id": existing_open.get("position_id", ""),
+                "existing_opened_at": existing_open.get("opened_at", ""),
+                "signal_identity": signal_key,
             })
+            continue
+        if signal_key in known_signal_keys:
+            deduped += 1
             continue
 
         pos = open_position(intent, paper_equity)
@@ -196,6 +230,8 @@ def simulate_with_klines(
             continue
 
         new_positions.append(pos.to_dict())
+        open_exposures[okey] = new_positions[-1]
+        known_signal_keys.add(signal_key)
         newly_opened.add(pos.position_id)
 
     # Combine existing + new for update
@@ -277,7 +313,7 @@ def simulate_with_klines(
             "positions_skipped_overlap_open": skipped_overlap,
             "skipped_overlap_intents": skipped_overlap_details,
             "overlap_guard_enabled": True,
-            "overlap_keys_count": len(overlap_keys),
+            "overlap_keys_count": initial_open_exposure_count,
             "future_only": future_only,
             "allow_update_newly_opened": allow_update_newly_opened,
         },
@@ -568,16 +604,18 @@ POSITION_SAFETY_FLAGS = [
 ]
 
 
-def _build_overlap_keys(positions: list[dict[str, Any]]) -> set[str]:
-    """Build set of overlap keys from OPEN positions."""
-    keys = set()
+def _build_open_exposures(positions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Build exposure -> canonical OPEN metadata for the non-pyramiding guard."""
+    exposures: dict[str, dict[str, Any]] = {}
     for p in positions:
         if p.get("status", "OPEN") == "OPEN":
-            key = f"{p.get('strategy_id', '')}|{p.get('symbol', '')}|{p.get('timeframe', '')}|{p.get('side', '')}"
-            keys.add(key)
-    return keys
+            key = exposure_identity(p)
+            old = exposures.get(key)
+            if old is None or str(p.get("opened_at") or "") < str(old.get("opened_at") or ""):
+                exposures[key] = p
+    return exposures
 
 
 def _intent_overlap_key(intent: dict[str, Any]) -> str:
     """Build overlap key from an intent."""
-    return f"{intent.get('strategy_id', '')}|{intent.get('symbol', '')}|{intent.get('timeframe', '')}|{intent.get('side', '')}"
+    return exposure_identity(intent)

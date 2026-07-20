@@ -58,6 +58,7 @@ print(generate_run_id(), datetime.now(timezone.utc).isoformat(timespec="seconds"
             --allow-public-http \
             --date "$COLLECTION_DATE" \
             --run-id "$BATCH_RUN_ID" \
+            --defer-position-update \
             --defer-scorecard \
             --defer-registry
 
