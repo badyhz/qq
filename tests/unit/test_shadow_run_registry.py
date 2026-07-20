@@ -5,13 +5,15 @@ import json
 import os
 import py_compile
 import tempfile
+from datetime import datetime, timezone
 
 import pytest
 
 from core.paper_trading.shadow_run_registry import (
     ShadowRunRecord, ShadowSampleGateResult,
-    build_run_record, evaluate_gate, generate_run_id,
+    build_pipeline_context, build_run_record, evaluate_gate, generate_run_id,
     append_registry_record, read_registry, compute_sample_gate,
+    report_date_for_started_at, validate_report_date,
     GATE_BLOCKED_INSUFFICIENT, GATE_BLOCKED_LOW, GATE_READY_FOR_REVIEW,
 )
 
@@ -230,6 +232,55 @@ class TestComputeSampleGate:
             d = gate.to_dict()
             assert "testnet_gate_status" in d
             assert "safety_flags" in d
+
+    def test_explicit_report_date_conflict_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rec = build_run_record(_make_pipeline_result(), run_id="gate_test")
+            append_registry_record(rec, tmpdir)
+            with pytest.raises(ValueError, match="report_date conflict"):
+                compute_sample_gate(tmpdir, report_date="2026-06-17")
+
+
+class TestReportDateContract:
+    @pytest.mark.parametrize(
+        ("utc_started_at", "expected"),
+        [
+            (datetime(2026, 7, 20, 15, 59, 59, tzinfo=timezone.utc), "2026-07-20"),
+            (datetime(2026, 7, 20, 16, 0, 0, tzinfo=timezone.utc), "2026-07-21"),
+            (datetime(2026, 7, 20, 18, 10, 29, tzinfo=timezone.utc), "2026-07-21"),
+            (datetime(2026, 7, 20, 23, 59, 59, tzinfo=timezone.utc), "2026-07-21"),
+            (datetime(2026, 7, 21, 0, 0, 0, tzinfo=timezone.utc), "2026-07-21"),
+            (datetime(2026, 7, 21, 15, 59, 59, tzinfo=timezone.utc), "2026-07-21"),
+            (datetime(2026, 7, 21, 16, 0, 0, tzinfo=timezone.utc), "2026-07-22"),
+        ],
+    )
+    def test_asia_shanghai_boundaries(self, utc_started_at, expected):
+        assert report_date_for_started_at(utc_started_at) == expected
+
+    def test_split_day_utc_run_id_is_independent(self):
+        context = build_pipeline_context(
+            datetime(2026, 7, 20, 18, 10, 29, tzinfo=timezone.utc)
+        )
+        assert context == {
+            "run_id": "20260720T181029Z_shadow_lifecycle",
+            "started_at": "2026-07-20T18:10:29+00:00",
+            "report_date": "2026-07-21",
+        }
+
+    def test_repeated_runs_share_cst_date(self):
+        first = build_pipeline_context(
+            datetime(2026, 7, 20, 18, 10, 29, tzinfo=timezone.utc)
+        )
+        second = build_pipeline_context(
+            datetime(2026, 7, 21, 3, 10, 29, tzinfo=timezone.utc)
+        )
+        assert first["report_date"] == second["report_date"] == "2026-07-21"
+        assert first["started_at"] != second["started_at"]
+
+    @pytest.mark.parametrize("value", ["", "2026-7-21", "2026-02-30", None])
+    def test_malformed_report_dates_fail_closed(self, value):
+        with pytest.raises(ValueError, match="report_date"):
+            validate_report_date(value)
 
 
 class TestNoForbiddenPatterns:

@@ -28,6 +28,12 @@ def _write_registry(tmpdir: str, records: list[dict]):
             f.write(json.dumps(rec) + "\n")
 
 
+def _write_scorecard(tmpdir: str, report_date: str = "2026-06-18"):
+    path = os.path.join(tmpdir, f"{report_date}_paper_performance_scorecard.json")
+    with open(path, "w") as f:
+        json.dump({"date": report_date}, f)
+
+
 def _make_registry_record(**overrides):
     rec = {
         "run_id": "20260618T120000Z_shadow_lifecycle",
@@ -52,6 +58,7 @@ class TestScriptCompiles:
 class TestWithRegistry:
     def test_empty_registry(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            _write_scorecard(tmpdir)
             r = _run(["--registry-dir", tmpdir, "--output-dir", tmpdir, "--date", "2026-06-18"])
             assert r.returncode == 0
             assert "Registry records: 0" in r.stdout
@@ -65,6 +72,7 @@ class TestWithRegistry:
 
     def test_with_records(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            _write_scorecard(tmpdir)
             _write_registry(tmpdir, [
                 _make_registry_record(),
                 _make_registry_record(closed_clean_positions=5, run_id="run2"),
@@ -80,6 +88,7 @@ class TestWithRegistry:
 
     def test_markdown_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            _write_scorecard(tmpdir)
             _write_registry(tmpdir, [_make_registry_record()])
             r = _run(["--registry-dir", tmpdir, "--output-dir", tmpdir, "--date", "2026-06-18"])
             assert r.returncode == 0
@@ -90,6 +99,25 @@ class TestWithRegistry:
                 content = f.read()
             assert "BLOCKED_INSUFFICIENT_CLOSED_SAMPLE" in content
             assert "不允许 testnet/live" in content
+
+    def test_scorecard_date_conflict_fails_before_gate_publication(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_scorecard(tmpdir)
+            scorecard_path = os.path.join(
+                tmpdir, "2026-06-18_paper_performance_scorecard.json"
+            )
+            with open(scorecard_path, "w") as f:
+                json.dump({"date": "2026-06-17"}, f)
+            r = _run([
+                "--registry-dir", tmpdir,
+                "--output-dir", tmpdir,
+                "--date", "2026-06-18",
+            ])
+            assert r.returncode == 1
+            assert "report_date conflict" in r.stderr
+            assert not os.path.exists(
+                os.path.join(tmpdir, "2026-06-18_shadow_sample_gate.json")
+            )
 
 
 class TestNoForbiddenPatterns:

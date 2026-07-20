@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from core.paper_trading.paper_position import (
     load_canonical_positions, filter_canonical_closed_clean,
@@ -18,6 +20,8 @@ from core.paper_trading.paper_performance_metrics import _determine_sample_statu
 
 
 REGISTRY_FILENAME = "shadow_run_registry.jsonl"
+REPORT_TIMEZONE_NAME = "Asia/Shanghai"
+REPORT_TIMEZONE = ZoneInfo(REPORT_TIMEZONE_NAME)
 
 GATE_BLOCKED_INSUFFICIENT = "BLOCKED_INSUFFICIENT_CLOSED_SAMPLE"
 GATE_BLOCKED_LOW = "BLOCKED_LOW_SAMPLE_SIZE"
@@ -150,8 +154,42 @@ GATE_SAFETY_FLAGS = [
 ]
 
 
-def generate_run_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_shadow_lifecycle"
+def validate_report_date(value: object) -> str:
+    """Return a strict YYYY-MM-DD report date or fail closed."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError(f"report_date must be YYYY-MM-DD, got {value!r}")
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"report_date is not a valid calendar date: {value!r}") from exc
+    return value
+
+
+def report_date_for_started_at(started_at: datetime) -> str:
+    """Derive the business report date from an aware pipeline start time."""
+    if started_at.tzinfo is None or started_at.utcoffset() is None:
+        raise ValueError("pipeline started_at must be timezone-aware")
+    return started_at.astimezone(REPORT_TIMEZONE).date().isoformat()
+
+
+def generate_run_id(at: datetime | None = None) -> str:
+    instant = at or datetime.now(timezone.utc)
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError("run ID timestamp must be timezone-aware")
+    return instant.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_shadow_lifecycle"
+
+
+def build_pipeline_context(started_at: datetime | None = None) -> dict[str, str]:
+    """Build one batch identity from one authoritative pipeline start instant."""
+    instant = started_at or datetime.now(timezone.utc)
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError("pipeline started_at must be timezone-aware")
+    started_at_utc = instant.astimezone(timezone.utc)
+    return {
+        "run_id": generate_run_id(started_at_utc),
+        "started_at": started_at_utc.isoformat(timespec="seconds"),
+        "report_date": report_date_for_started_at(started_at_utc),
+    }
 
 
 def build_run_record(
@@ -291,13 +329,34 @@ def read_registry(registry_dir: str) -> list[dict[str, Any]]:
     return records
 
 
-def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
+def compute_sample_gate(
+    registry_dir: str,
+    report_date: str | None = None,
+) -> ShadowSampleGateResult:
     """Compute sample gate status from registry history and canonical ledger.
 
     Uses unified entry point. Blocks on fatal errors only (not business exclusions).
     """
     records = read_registry(registry_dir)
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    if report_date is not None:
+        effective_report_date = validate_report_date(report_date)
+    elif records:
+        # Compatibility for direct callers: the completed registry record is
+        # authoritative. Never infer a business date from its UTC run ID.
+        effective_report_date = validate_report_date(records[-1].get("date"))
+    else:
+        # An empty standalone registry has no source artifact; use the explicit
+        # business timezone rather than host-local or UTC calendar dates.
+        effective_report_date = report_date_for_started_at(datetime.now(timezone.utc))
+
+    if records:
+        latest_registry_date = validate_report_date(records[-1].get("date"))
+        if latest_registry_date != effective_report_date:
+            raise ValueError(
+                "report_date conflict: "
+                f"requested={effective_report_date}, "
+                f"latest_registry={latest_registry_date}"
+            )
 
     # Use unified entry point for consistent eligibility
     try:
@@ -307,7 +366,7 @@ def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
     except Exception as e:
         # Canonical load failed — block the gate
         return ShadowSampleGateResult(
-            date=today,
+            date=effective_report_date,
             total_runs=len(records),
             latest_run_id=records[-1].get("run_id", "") if records else "",
             closed_clean_positions=0,
@@ -322,7 +381,7 @@ def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
     # Block on fatal errors only (technical issues, not business exclusions)
     if fatal_errors:
         return ShadowSampleGateResult(
-            date=today,
+            date=effective_report_date,
             total_runs=len(records),
             latest_run_id=records[-1].get("run_id", "") if records else "",
             closed_clean_positions=0,
@@ -336,7 +395,7 @@ def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
 
     if not records:
         return ShadowSampleGateResult(
-            date=today,
+            date=effective_report_date,
             total_runs=0,
             latest_run_id="",
             closed_clean_positions=cumulative_closed,
@@ -355,7 +414,7 @@ def compute_sample_gate(registry_dir: str) -> ShadowSampleGateResult:
     gate_status, gate_reasons = evaluate_gate(closed, sample_status)
 
     return ShadowSampleGateResult(
-        date=today,
+        date=effective_report_date,
         total_runs=len(records),
         latest_run_id=latest.get("run_id", ""),
         closed_clean_positions=closed,

@@ -218,7 +218,10 @@ def _latest_step_finished_at(
     return max(parsed, key=lambda item: item[1])[1]
 
 
-def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
+def validate_inputs(
+    report_dir: str,
+    report_date: str | None = None,
+) -> tuple[dict, list[str]]:
     """Validate all required inputs exist and are consistent.
 
     Strict validation order:
@@ -238,8 +241,18 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
     errors: list[str] = []
     bundle: dict[str, Any] = {}
 
+    if report_date is not None and _parse_iso_date(report_date) is None:
+        errors.append(f"Authoritative report_date is invalid: {report_date!r}")
+        return bundle, errors
+
+    def source_path(suffix: str) -> str | None:
+        if report_date is None:
+            return _find_latest(report_dir, suffix)
+        exact = os.path.join(report_dir, f"{report_date}{suffix}")
+        return exact if os.path.isfile(exact) else None
+
     # --- 1. Read lifecycle ---
-    lc_path = _find_latest(report_dir, "_shadow_lifecycle_result.json")
+    lc_path = source_path("_shadow_lifecycle_result.json")
     if not lc_path:
         errors.append("Missing lifecycle result file")
         return bundle, errors
@@ -249,7 +262,7 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         return bundle, errors
 
     # --- 2. Read update ---
-    update_path = _find_latest(report_dir, "_shadow_position_update_result.json")
+    update_path = source_path("_shadow_position_update_result.json")
     if not update_path:
         errors.append("Missing update result file")
         return bundle, errors
@@ -259,7 +272,7 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         return bundle, errors
 
     # --- 3. Read scorecard ---
-    sc_path = _find_latest(report_dir, "_paper_performance_scorecard.json")
+    sc_path = source_path("_paper_performance_scorecard.json")
     if not sc_path:
         errors.append("Missing performance scorecard file")
         return bundle, errors
@@ -269,7 +282,7 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
         return bundle, errors
 
     # --- 4. Read gate ---
-    gate_path = _find_latest(report_dir, "_shadow_sample_gate.json")
+    gate_path = source_path("_shadow_sample_gate.json")
     if not gate_path:
         errors.append("Missing sample gate file")
         return bundle, errors
@@ -338,6 +351,11 @@ def validate_inputs(report_dir: str) -> tuple[dict, list[str]]:
 
     if len(set(dates.values())) > 1:
         errors.append(f"Date mismatch: {dates}")
+        return bundle, errors
+    if report_date is not None and any(value != report_date for value in dates.values()):
+        errors.append(
+            f"Date mismatch against authoritative report_date={report_date}: {dates}"
+        )
         return bundle, errors
     run_date = lc_data["date"]
     for label, value in dates.items():
@@ -1089,6 +1107,7 @@ def generate_console(
     report_dir: str,
     output_dir: str,
     server_commit: str = "",
+    report_date: str | None = None,
 ) -> dict[str, Any]:
     """Generate static console with versioned atomic release.
 
@@ -1109,7 +1128,7 @@ def generate_console(
     }
 
     # 1. Validate inputs
-    bundle, errors = validate_inputs(report_dir)
+    bundle, errors = validate_inputs(report_dir, report_date=report_date)
     if errors:
         result["errors"] = errors
         return result
@@ -1270,6 +1289,8 @@ def main():
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--server-commit", default="",
                         help="Git commit hash of the server (hex)")
+    parser.add_argument("--report-date", default=None,
+                        help="Authoritative Asia/Shanghai report date (YYYY-MM-DD)")
     args = parser.parse_args()
 
     # Validate server commit format if provided
@@ -1278,7 +1299,12 @@ def main():
             print(f"ERROR: Invalid server commit hash: {args.server_commit}")
             return 1
 
-    result = generate_console(args.report_dir, args.output_dir, args.server_commit)
+    result = generate_console(
+        args.report_dir,
+        args.output_dir,
+        args.server_commit,
+        report_date=args.report_date,
+    )
 
     if result["success"]:
         print(f"Console generated: version={result['version_id']}")

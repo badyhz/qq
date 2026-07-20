@@ -9,21 +9,33 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.paper_trading.shadow_run_registry import (
     compute_sample_gate, read_registry, ShadowSampleGateResult,
     GATE_BLOCKED_INSUFFICIENT, GATE_BLOCKED_LOW, GATE_READY_FOR_REVIEW,
+    validate_report_date,
 )
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "strategies")
 
 
-def _today_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d")
+def _validate_scorecard_date(report_dir: str, report_date: str) -> None:
+    """Require Gate's scorecard input to match the authoritative report date."""
+    path = os.path.join(report_dir, f"{report_date}_paper_performance_scorecard.json")
+    try:
+        with open(path) as f:
+            scorecard = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"scorecard for report_date={report_date} is unavailable: {exc}") from exc
+    scorecard_date = validate_report_date(scorecard.get("date"))
+    if scorecard_date != report_date:
+        raise ValueError(
+            "report_date conflict: "
+            f"requested={report_date}, scorecard={scorecard_date}"
+        )
 
 
 def render_markdown(gate: ShadowSampleGateResult, registry: list[dict]) -> str:
@@ -122,14 +134,19 @@ def main():
     parser.add_argument("--output-dir", type=str, default=REPORT_DIR)
     args = parser.parse_args()
 
-    date_str = args.date or _today_str()
     registry_dir = args.registry_dir
     output_dir = args.output_dir
 
     registry = read_registry(registry_dir)
     print(f"Registry records: {len(registry)}")
 
-    gate = compute_sample_gate(registry_dir)
+    try:
+        gate = compute_sample_gate(registry_dir, report_date=args.date)
+        date_str = gate.date
+        _validate_scorecard_date(registry_dir, date_str)
+    except ValueError as exc:
+        print(f"Gate FAILED: {exc}", file=sys.stderr)
+        return 1
     gate_dict = gate.to_dict()
 
     os.makedirs(output_dir, exist_ok=True)

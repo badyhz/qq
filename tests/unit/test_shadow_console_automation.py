@@ -678,6 +678,42 @@ class TestDateConsistency:
             _, errors = validate_inputs(rd)
             assert not any("Date mismatch" in e for e in errors)
 
+    def test_authoritative_date_selects_exact_artifacts(self):
+        from scripts.generate_static_console import validate_inputs
+        with tempfile.TemporaryDirectory() as rd:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            with open(os.path.join(rd, "2099-01-01_shadow_lifecycle_result.json"), "w") as f:
+                json.dump({"date": "2099-01-01", "pipeline_status": "FAIL"}, f)
+            bundle, errors = validate_inputs(rd, report_date=_DATE)
+            assert errors == []
+            assert bundle["run_date"] == _DATE
+
+    def test_authoritative_date_conflict_is_rejected(self):
+        from scripts.generate_static_console import validate_inputs
+        with tempfile.TemporaryDirectory() as rd:
+            _write_full_report(rd, _pos("PP_001", "TAKE_PROFIT_HIT"))
+            _, errors = validate_inputs(rd, report_date="2099-01-01")
+            assert errors
+            assert any("Missing lifecycle" in error for error in errors)
+
+    def test_utc_run_id_does_not_override_report_date(self):
+        from scripts.generate_static_console import generate_console, validate_inputs
+        with tempfile.TemporaryDirectory() as rd, tempfile.TemporaryDirectory() as od:
+            utc_run_id = "20260720T181030Z_shadow_lifecycle"
+            _write_full_report(
+                rd,
+                _pos("PP_001", "TAKE_PROFIT_HIT"),
+                run_id=utc_run_id,
+            )
+            result = generate_console(rd, od, report_date=_DATE)
+            assert result["success"] is True
+            bundle, errors = validate_inputs(rd, report_date=_DATE)
+            assert errors == []
+            assert bundle["run_id"] == utc_run_id
+            with open(os.path.join(od, "current", "console_data.json")) as f:
+                public = json.load(f)
+            assert public["run_date"] == _DATE
+
     def test_gate_date_mismatch(self):
         from scripts.generate_static_console import validate_inputs
         with tempfile.TemporaryDirectory() as rd:
@@ -958,7 +994,9 @@ class TestShellPipeline:
 
     def test_cloud_wrapper_uses_one_shared_batch_id_in_formal_order(self):
         content = open(str(REPO_ROOT / "scripts" / "run_cloud_shadow_collection_once.sh")).read()
-        assert content.count("print(generate_run_id()") == 1
+        assert content.count("build_pipeline_context()") == 1
+        assert content.count('--date "$REPORT_DATE"') == 5
+        assert '--report-date "$REPORT_DATE"' in content
         assert content.count('--run-id "$BATCH_RUN_ID"') == 3
         assert "--defer-registry" in content
         lifecycle = content.index('run_step "Lifecycle"')
@@ -997,7 +1035,7 @@ class TestShellPipeline:
             "#!/usr/bin/env bash\n"
             "printf '%s\\n' \"$*\" >> \"$CALL_LOG\"\n"
             "if [ \"${1:-}\" = '-c' ]; then\n"
-            "  echo 'RUN-123 2026-07-13T00:00:00+00:00'\n"
+            "  echo 'RUN-123 2026-07-13T00:00:00+00:00 2026-07-13'\n"
             "elif [[ \"$*\" == *run_shadow_position_update_only.py* ]]; then\n"
             "  exit 23\n"
             "fi\n"

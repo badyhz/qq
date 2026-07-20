@@ -33,21 +33,20 @@ main() {
 
         . "$PROJECT_DIR/.venv/bin/activate"
 
-        read -r BATCH_RUN_ID BATCH_STARTED_AT < <(
+        read -r BATCH_RUN_ID BATCH_STARTED_AT REPORT_DATE < <(
             python3 -c '
-from datetime import datetime, timezone
-from core.paper_trading.shadow_run_registry import generate_run_id
-print(generate_run_id(), datetime.now(timezone.utc).isoformat(timespec="seconds"))
+from core.paper_trading.shadow_run_registry import build_pipeline_context
+context = build_pipeline_context()
+print(context["run_id"], context["started_at"], context["report_date"])
 '
         )
-        if [ -z "$BATCH_RUN_ID" ] || [ -z "$BATCH_STARTED_AT" ]; then
+        if [ -z "$BATCH_RUN_ID" ] || [ -z "$BATCH_STARTED_AT" ] || [ -z "$REPORT_DATE" ]; then
             echo "Batch identity generation FAILED"
             exit 1
         fi
-        COLLECTION_DATE="$(date +%F)"
         echo "batch_run_id=$BATCH_RUN_ID"
         echo "batch_started_at=$BATCH_STARTED_AT"
-        echo "collection_date=$COLLECTION_DATE"
+        echo "report_date=$REPORT_DATE"
 
         echo
         echo "=== Pre Status ==="
@@ -56,7 +55,7 @@ print(generate_run_id(), datetime.now(timezone.utc).isoformat(timespec="seconds"
         echo
         run_step "Lifecycle" python3 scripts/run_shadow_trading_lifecycle.py \
             --allow-public-http \
-            --date "$COLLECTION_DATE" \
+            --date "$REPORT_DATE" \
             --run-id "$BATCH_RUN_ID" \
             --defer-position-update \
             --defer-scorecard \
@@ -65,7 +64,7 @@ print(generate_run_id(), datetime.now(timezone.utc).isoformat(timespec="seconds"
         echo
         run_step "Update-Only" python3 scripts/run_shadow_position_update_only.py \
             --allow-public-http \
-            --date "$COLLECTION_DATE" \
+            --date "$REPORT_DATE" \
             --run-id "$BATCH_RUN_ID" \
             --defer-scorecard \
             --defer-gate \
@@ -73,23 +72,25 @@ print(generate_run_id(), datetime.now(timezone.utc).isoformat(timespec="seconds"
 
         echo
         run_step "Scorecard" python3 scripts/run_paper_performance_scorecard.py \
-            --date "$COLLECTION_DATE"
+            --date "$REPORT_DATE"
 
         echo
         run_step "Final Registry" python3 scripts/run_shadow_trading_lifecycle.py \
             --finalize-registry \
-            --date "$COLLECTION_DATE" \
+            --date "$REPORT_DATE" \
             --run-id "$BATCH_RUN_ID" \
             --batch-started-at "$BATCH_STARTED_AT"
 
         echo
         run_step "Gate" python3 scripts/run_sample_collection_gate.py \
-            --date "$COLLECTION_DATE"
+            --date "$REPORT_DATE"
 
         echo
         echo "=== Static Console ==="
         SERVER_COMMIT="$(git rev-parse HEAD)"
-        if python3 scripts/generate_static_console.py --server-commit "$SERVER_COMMIT"; then
+        if python3 scripts/generate_static_console.py \
+            --server-commit "$SERVER_COMMIT" \
+            --report-date "$REPORT_DATE"; then
             CONSOLE_RC=0
         else
             CONSOLE_RC=$?
