@@ -8,7 +8,10 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 from urllib.parse import urlencode
 
-from core.paper_trading.data_source import DataSource, DataSourceConfig, MarketBar, MarketSnapshot
+from core.paper_trading.data_source import (
+    DataSource, DataSourceConfig, MarketBar, MarketSnapshot,
+    utc_datetime_from_epoch_ms,
+)
 
 DEFAULT_BASE_URL = "https://fapi.binance.com"
 DEFAULT_TIMEOUT = 10
@@ -32,13 +35,13 @@ def _validate_interval(interval: str) -> bool:
     return interval in VALID_INTERVALS
 
 
-def _parse_kline(raw: list) -> Optional[MarketBar]:
+def _parse_kline(raw: list, symbol: str = "", timeframe: str = "") -> Optional[MarketBar]:
     """Parse a single Binance kline array into MarketBar.
 
     Format: [open_time, open, high, low, close, volume, close_time, ...]
     """
     try:
-        if len(raw) < 6:
+        if len(raw) < 7:
             return None
         return MarketBar(
             timestamp=float(raw[0]) / 1000.0,  # Convert ms to seconds
@@ -47,6 +50,9 @@ def _parse_kline(raw: list) -> Optional[MarketBar]:
             low=float(raw[3]),
             close=float(raw[4]),
             volume=float(raw[5]),
+            symbol=symbol,
+            timeframe=timeframe,
+            close_time=utc_datetime_from_epoch_ms(raw[6]),
         )
     except (ValueError, TypeError, IndexError):
         return None
@@ -98,18 +104,8 @@ class BinancePublicKlineAdapter(DataSource):
 
         bars: List[MarketBar] = []
         for raw in data:
-            bar = _parse_kline(raw)
+            bar = _parse_kline(raw, symbol=symbol, timeframe=timeframe)
             if bar:
-                bar = MarketBar(
-                    timestamp=bar.timestamp,
-                    open=bar.open,
-                    high=bar.high,
-                    low=bar.low,
-                    close=bar.close,
-                    volume=bar.volume,
-                    symbol=symbol,
-                    timeframe=timeframe,
-                )
                 bars.append(bar)
         return bars
 

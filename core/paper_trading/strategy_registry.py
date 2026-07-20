@@ -5,7 +5,7 @@ No orders, no secrets, no network (except via data_api adapter).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from core.paper_trading.readonly_signal_analyzer import SignalResult, analyze_bars
@@ -39,6 +39,8 @@ class SignalCandidate:
     volume_state: str
     reasons: list[str]
     risk_notes: str
+    signal_bar_close_time: Optional[str] = None
+    signal_bar_contract_version: str = "legacy_missing"
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,8 @@ def analyze_for_strategy(
     strategy_id: str,
     strategy_type: str,
     bars: list[MarketBar],
+    signal_bar_close_time: Optional[str] = None,
+    signal_bar_contract_version: str = "legacy_missing",
 ) -> StrategyRunResult:
     """Run signal analysis and filter based on strategy type."""
     if not bars:
@@ -75,6 +79,12 @@ def analyze_for_strategy(
         )
 
     candidate = _strategy_filter(strategy_id, strategy_type, sig)
+    if candidate is not None:
+        candidate = replace(
+            candidate,
+            signal_bar_close_time=signal_bar_close_time,
+            signal_bar_contract_version=signal_bar_contract_version,
+        )
 
     return StrategyRunResult(
         strategy_id=strategy_id, strategy_type=strategy_type,

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from core.paper_trading.data_source import CLOSED_BAR_CONTRACT_VERSION, parse_aware_utc
+
 
 POSITION_SAFETY_FLAGS = [
     "PAPER_ONLY",
@@ -54,17 +56,18 @@ def exposure_identity(record: dict[str, Any]) -> str:
 def stable_signal_key(intent: dict[str, Any]) -> str:
     """Build a stable, non-secret identity for one observed strategy signal.
 
-    Newer producers may provide signal_bar_close_time.  The current legacy
-    producer does not, so its compatibility reference uses only deterministic
-    signal content (collection date and quoted levels), never process time,
+    P1-02 producers provide signal_bar_close_time. Legacy records retain the
+    prior deterministic-content reference; neither path uses process time,
     run id, file path, or a random UUID.
     """
     bar_time = intent.get("signal_bar_close_time")
     if bar_time is not None and str(bar_time).strip():
-        ts = _normalize_timestamp_to_seconds(bar_time)
-        if ts <= 0:
-            raise ValueError("invalid signal_bar_close_time")
-        signal_reference = datetime.fromtimestamp(ts, timezone.utc).isoformat()
+        try:
+            signal_reference = parse_aware_utc(
+                str(bar_time), "signal_bar_close_time"
+            ).isoformat(timespec="milliseconds")
+        except ValueError as exc:
+            raise ValueError("invalid signal_bar_close_time") from exc
         reference_type = "signal_bar_close_time"
     else:
         reference_type = "legacy_deterministic_signal_content"
@@ -131,6 +134,8 @@ class PaperPosition:
     last_checked_bar_time: Optional[int]
     safety_flags: list[str]
     created_at: str
+    signal_bar_close_time: Optional[str] = None
+    signal_bar_contract_version: str = "legacy_missing"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -169,6 +174,8 @@ class PaperPosition:
             "last_checked_bar_time": self.last_checked_bar_time,
             "safety_flags": list(self.safety_flags),
             "created_at": self.created_at,
+            "signal_bar_close_time": self.signal_bar_close_time,
+            "signal_bar_contract_version": self.signal_bar_contract_version,
         }
 
 
@@ -189,8 +196,22 @@ def open_position(intent: dict[str, Any], paper_equity: float = 10000.0) -> Opti
     if execution_mode != "shadow_only":
         return None
 
-    now = datetime.now(timezone.utc).isoformat()
-    now_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    now_ts = int(now_dt.timestamp() * 1000)
+    contract_version = str(
+        intent.get("signal_bar_contract_version") or "legacy_missing"
+    )
+    signal_bar_close_time = intent.get("signal_bar_close_time")
+    if contract_version == CLOSED_BAR_CONTRACT_VERSION:
+        try:
+            signal_close = parse_aware_utc(
+                str(signal_bar_close_time or ""), "signal_bar_close_time"
+            )
+        except ValueError:
+            return None
+        if signal_close > datetime.fromtimestamp(now_ts / 1000.0, timezone.utc):
+            return None
     entry = float(intent.get("entry_price") or 0)
     sl = float(intent.get("stop_loss") or 0)
     tp = float(intent.get("take_profit") or 0)
@@ -234,6 +255,8 @@ def open_position(intent: dict[str, Any], paper_equity: float = 10000.0) -> Opti
         last_checked_bar_time=None,
         safety_flags=list(POSITION_SAFETY_FLAGS),
         created_at=now,
+        signal_bar_close_time=(str(signal_bar_close_time) if signal_bar_close_time else None),
+        signal_bar_contract_version=contract_version,
     )
 
 
@@ -275,6 +298,10 @@ def dict_to_position(d: dict[str, Any]) -> PaperPosition:
         last_checked_bar_time=d.get("last_checked_bar_time"),
         safety_flags=d.get("safety_flags", list(POSITION_SAFETY_FLAGS)),
         created_at=d.get("created_at", ""),
+        signal_bar_close_time=d.get("signal_bar_close_time"),
+        signal_bar_contract_version=d.get(
+            "signal_bar_contract_version", "legacy_missing"
+        ),
     )
 
 
@@ -707,6 +734,15 @@ def load_overlap_exclusion_manifest(report_dir: str) -> dict[str, Any] | None:
         raise ValueError("overlap exclusion manifest has no exclusions list")
     if _normalize_timestamp_to_seconds(manifest.get("trusted_cohort_start_at")) <= 0:
         raise ValueError("overlap exclusion manifest has invalid trusted cohort start")
+    closed_bar_start = manifest.get("closed_bar_trusted_cohort_start_at")
+    closed_bar_version = manifest.get("closed_bar_trusted_cohort_rule_version")
+    if closed_bar_start is not None or closed_bar_version is not None:
+        if closed_bar_version != CLOSED_BAR_CONTRACT_VERSION:
+            raise ValueError("closed-bar cohort has unsupported rule version")
+        try:
+            parse_aware_utc(str(closed_bar_start), "closed_bar_trusted_cohort_start_at")
+        except ValueError as exc:
+            raise ValueError("closed-bar cohort has invalid trusted start") from exc
     ids = [str(item.get("position_id") or "") for item in manifest["exclusions"]]
     if any(not pid for pid in ids) or len(ids) != len(set(ids)):
         raise ValueError("overlap exclusion manifest has missing or duplicate position ids")
@@ -747,6 +783,12 @@ def load_canonical_closed_clean_positions(
     }
     trusted_cohort_start_at = (overlap_manifest or {}).get("trusted_cohort_start_at")
     trusted_cohort_start_ts = _normalize_timestamp_to_seconds(trusted_cohort_start_at)
+    closed_bar_cohort_start_at = (overlap_manifest or {}).get(
+        "closed_bar_trusted_cohort_start_at"
+    )
+    closed_bar_cohort_start_ts = _normalize_timestamp_to_seconds(
+        closed_bar_cohort_start_at
+    )
 
     # Evaluate eligibility for each position
     eligible_positions = []
@@ -870,6 +912,22 @@ def load_canonical_closed_clean_positions(
         ),
         "trusted_cohort_start_at": trusted_cohort_start_at,
         "trusted_cohort_rule_version": (overlap_manifest or {}).get("trusted_cohort_rule_version"),
+        "p1_02_trusted_cohort_closed": sum(
+            1 for p in eligible_positions
+            if closed_bar_cohort_start_ts > 0
+            and _normalize_timestamp_to_seconds(p.get("opened_at")) >= closed_bar_cohort_start_ts
+            and p.get("signal_bar_contract_version") == CLOSED_BAR_CONTRACT_VERSION
+            and _valid_closed_bar_position_contract(p)
+        ),
+        "p1_02_trusted_cohort_start_at": closed_bar_cohort_start_at,
+        "p1_02_trusted_cohort_rule_version": (overlap_manifest or {}).get(
+            "closed_bar_trusted_cohort_rule_version"
+        ),
+        "legacy_closed_without_closed_bar_contract": sum(
+            1 for p in eligible_positions
+            if p.get("signal_bar_contract_version") != CLOSED_BAR_CONTRACT_VERSION
+            or not _valid_closed_bar_position_contract(p)
+        ),
         "explicit_clean": explicit_clean,
         "derived_clean": derived_clean,
         "exclusions": exclusions,
@@ -885,6 +943,19 @@ def load_canonical_closed_clean_positions(
     }
 
     return eligible_positions, all_positions, diagnostics
+
+
+def _valid_closed_bar_position_contract(position: dict[str, Any]) -> bool:
+    """Validate P1-02 evidence without changing legacy/raw eligibility."""
+    try:
+        signal_close = parse_aware_utc(
+            str(position.get("signal_bar_close_time") or ""),
+            "signal_bar_close_time",
+        )
+        opened = parse_aware_utc(str(position.get("opened_at") or ""), "opened_at")
+    except ValueError:
+        return False
+    return signal_close <= opened
 
 
 def _load_lifecycle_metadata(report_dir: str) -> dict[str, Any]:

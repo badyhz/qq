@@ -57,6 +57,7 @@ print(context["run_id"], context["started_at"], context["report_date"])
             --allow-public-http \
             --date "$REPORT_DATE" \
             --run-id "$BATCH_RUN_ID" \
+            --decision-cutoff "$BATCH_STARTED_AT" \
             --defer-position-update \
             --defer-scorecard \
             --defer-registry

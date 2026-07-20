@@ -9,7 +9,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from core.paper_trading.paper_position import (
@@ -72,6 +72,9 @@ class ShadowRunRecord:
     testnet_gate_reasons: list[str]
 
     safety_flags: list[str]
+    closed_bar_contract_version: Optional[str] = None
+    decision_cutoff: Optional[str] = None
+    closed_bar_counts: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -108,6 +111,9 @@ class ShadowRunRecord:
             "testnet_gate_status": self.testnet_gate_status,
             "testnet_gate_reasons": list(self.testnet_gate_reasons),
             "safety_flags": list(self.safety_flags),
+            "closed_bar_contract_version": self.closed_bar_contract_version,
+            "decision_cutoff": self.decision_cutoff,
+            "closed_bar_counts": dict(self.closed_bar_counts),
         }
 
 
@@ -277,6 +283,9 @@ def build_run_record(
         testnet_gate_status=gate_status,
         testnet_gate_reasons=gate_reasons,
         safety_flags=list(pipeline_result.get("safety_flags", [])),
+        closed_bar_contract_version=summary.get("closed_bar_contract_version"),
+        decision_cutoff=summary.get("decision_cutoff"),
+        closed_bar_counts=dict(summary.get("closed_bar_counts", {})),
     )
 
 

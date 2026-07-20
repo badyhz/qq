@@ -9,7 +9,7 @@ import csv
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -54,6 +54,8 @@ def _candidate_to_plan(c: SignalCandidate) -> dict:
         "reward_distance_pct": c.reward_distance_pct,
         "plan_decision": "WATCH" if c.priority in ("HIGH", "MEDIUM") else "WAIT",
         "reason": f"{c.strategy_type}: {c.macd_state}, {c.watch_state}",
+        "signal_bar_close_time": c.signal_bar_close_time,
+        "signal_bar_contract_version": c.signal_bar_contract_version,
     }
 
 
@@ -88,6 +90,7 @@ def _write_reports(date_str: str, result: SwitchboardResult, library: StrategyLi
     }
 
     # JSON summary
+    audits = result.closed_bar_audits
     summary_data = {
         "date": date_str,
         "mode": result.mode,
@@ -101,6 +104,18 @@ def _write_reports(date_str: str, result: SwitchboardResult, library: StrategyLi
         "priority_counts": {"HIGH": high_count, "MEDIUM": medium_count, "LOW": low_count},
         "by_strategy": {k: len(v) for k, v in by_strategy.items()},
         "errors": result.errors,
+        "closed_bar_contract_version": (
+            audits[0].get("signal_bar_contract_version") if audits else None
+        ),
+        "decision_cutoff": audits[0].get("decision_cutoff") if audits else None,
+        "closed_bar_counts": {
+            "raw_candles": sum(a.get("raw_candles", 0) for a in audits),
+            "eligible_closed_candles": sum(a.get("eligible_closed_candles", 0) for a in audits),
+            "rejected_forming_or_future": sum(a.get("rejected_forming_or_future", 0) for a in audits),
+            "rejected_malformed": sum(a.get("rejected_malformed", 0) for a in audits),
+            "rejected_conflicting_duplicate": sum(a.get("rejected_conflicting_duplicate", 0) for a in audits),
+        },
+        "closed_bar_audits": audits,
         "safety_flags": SAFETY_FLAGS,
         "send_attempted": False,
         "actually_sent": False,
@@ -123,11 +138,13 @@ def _write_reports(date_str: str, result: SwitchboardResult, library: StrategyLi
         writer = csv.writer(f)
         writer.writerow(["strategy_id", "strategy_type", "symbol", "timeframe",
                          "watch_state", "direction", "priority", "last_close",
-                         "entry_observation", "invalidation_level", "rr_ratio"])
+                         "entry_observation", "invalidation_level", "rr_ratio",
+                         "signal_bar_close_time", "signal_bar_contract_version"])
         for c in result.candidates:
             writer.writerow([c.strategy_id, c.strategy_type, c.symbol, c.timeframe,
                              c.watch_state, c.direction, c.priority, c.last_close,
-                             c.entry_observation, c.invalidation_level, c.rr_ratio])
+                             c.entry_observation, c.invalidation_level, c.rr_ratio,
+                             c.signal_bar_close_time, c.signal_bar_contract_version])
     print(f"CSV: {csv_path}")
 
     # Markdown
@@ -205,7 +222,12 @@ def run_offline(config_path: str, date_str: str) -> int:
     return 0
 
 
-def run_real_http(config_path: str, date_str: str, limit: int = 120) -> int:
+def run_real_http(
+    config_path: str,
+    date_str: str,
+    limit: int = 120,
+    decision_cutoff: str = "",
+) -> int:
     """Run strategies with real public HTTP data."""
     print(f"=== Phase 10D Enabled Strategies Runner (real HTTP) ===\n")
     library = load_strategy_config(config_path)
@@ -217,7 +239,14 @@ def run_real_http(config_path: str, date_str: str, limit: int = 120) -> int:
     config = DataSourceConfig(mode="snapshot", network_enabled=True)
     adapter = BinancePublicKlineAdapter(config)
 
-    result = run_switchboard(library, adapter, date_str, mode="real_public_http", limit=limit)
+    result = run_switchboard(
+        library,
+        adapter,
+        date_str,
+        mode="real_public_http",
+        limit=limit,
+        decision_cutoff=decision_cutoff,
+    )
     _write_reports(date_str, result, library)
 
     print(f"\n=== Real HTTP Complete ===")
@@ -234,6 +263,7 @@ def main():
     parser.add_argument("--strategy", type=str, action="append", default=None)
     parser.add_argument("--date", type=str, default=None)
     parser.add_argument("--limit", type=int, default=120)
+    parser.add_argument("--decision-cutoff", type=str, default=None)
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
@@ -245,7 +275,8 @@ def main():
     if args.offline_sample:
         return run_offline(args.config, date_str)
     else:
-        return run_real_http(args.config, date_str, args.limit)
+        cutoff = args.decision_cutoff or datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        return run_real_http(args.config, date_str, args.limit, cutoff)
 
 
 if __name__ == "__main__":

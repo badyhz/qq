@@ -5,12 +5,15 @@ No orders, no secrets, no real Feishu send.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional, Union
 
 from core.paper_trading.strategy_config import StrategyLibrary, StrategyConfig, DataApiConfig
 from core.paper_trading.strategy_registry import analyze_for_strategy, SignalCandidate, StrategyRunResult
-from core.paper_trading.data_source import DataSourceConfig, MarketBar
+from core.paper_trading.data_source import (
+    DataSourceConfig, MarketBar, select_closed_bars,
+)
 from core.paper_trading.public_market_adapter import BinancePublicKlineAdapter
 from core.paper_trading.market_data_quality import validate_bars
 
@@ -39,6 +42,7 @@ class SwitchboardResult:
     enabled_strategies: list[str]
     disabled_strategies: list[str]
     errors: list[dict[str, str]]
+    closed_bar_audits: list[dict] = field(default_factory=list)
 
 
 def build_jobs(library: StrategyLibrary) -> list[StrategyJob]:
@@ -63,14 +67,18 @@ def run_switchboard(
     date_str: str,
     mode: str = "real_public_http",
     limit: int = 120,
+    decision_cutoff: Union[datetime, str] = "",
 ) -> SwitchboardResult:
-    """Run all enabled strategies and collect results."""
+    """Run strategies after one canonical closed-bar cutoff, before indicators."""
+    if not decision_cutoff:
+        raise ValueError("decision_cutoff is required")
     jobs = build_jobs(library)
     results: list[StrategyRunResult] = []
     candidates: list[SignalCandidate] = []
     errors: list[dict[str, str]] = []
     success_count = 0
     fail_count = 0
+    closed_bar_audits: list[dict] = []
 
     total = len(jobs)
     print(f"\nRunning {total} strategy jobs...")
@@ -102,7 +110,49 @@ def run_switchboard(
             print("EMPTY")
             continue
 
-        qr = validate_bars(bars)
+        try:
+            closed = select_closed_bars(bars, decision_cutoff)
+        except ValueError as e:
+            errors.append({"job": f"{job.strategy_id}/{job.symbol}/{job.timeframe}", "error": str(e)})
+            results.append(StrategyRunResult(
+                strategy_id=job.strategy_id, strategy_type=job.strategy_type,
+                symbol=job.symbol, timeframe=job.timeframe,
+                success=False, candidate=None, error="closed-bar contract fail",
+            ))
+            fail_count += 1
+            print("CLOSED_BAR_FAIL")
+            continue
+
+        audit = {
+            "strategy_id": job.strategy_id,
+            "symbol": job.symbol,
+            "timeframe": job.timeframe,
+            "decision_cutoff": closed.decision_cutoff,
+            "raw_candles": closed.raw_count,
+            "eligible_closed_candles": closed.eligible_count,
+            "rejected_forming_or_future": closed.rejected_forming_or_future,
+            "rejected_malformed": closed.rejected_malformed,
+            "rejected_conflicting_duplicate": closed.rejected_conflicting_duplicate,
+            "signal_bar_close_time": closed.signal_bar_close_time,
+            "signal_bar_contract_version": closed.contract_version,
+            "signal_emitted": False,
+        }
+        closed_bar_audits.append(audit)
+        if not closed.bars:
+            errors.append({
+                "job": f"{job.strategy_id}/{job.symbol}/{job.timeframe}",
+                "error": "no eligible closed bars",
+            })
+            results.append(StrategyRunResult(
+                strategy_id=job.strategy_id, strategy_type=job.strategy_type,
+                symbol=job.symbol, timeframe=job.timeframe,
+                success=False, candidate=None, error="no eligible closed bars",
+            ))
+            fail_count += 1
+            print("NO_CLOSED_BARS")
+            continue
+
+        qr = validate_bars(closed.bars)
         if not qr.ok:
             errors.append({"job": f"{job.strategy_id}/{job.symbol}/{job.timeframe}", "error": f"quality: {qr.issues[:3]}"})
             results.append(StrategyRunResult(
@@ -114,8 +164,15 @@ def run_switchboard(
             print("QUALITY_FAIL")
             continue
 
-        run_result = analyze_for_strategy(job.strategy_id, job.strategy_type, bars)
+        run_result = analyze_for_strategy(
+            job.strategy_id,
+            job.strategy_type,
+            closed.bars,
+            signal_bar_close_time=closed.signal_bar_close_time,
+            signal_bar_contract_version=closed.contract_version,
+        )
         results.append(run_result)
+        audit["signal_emitted"] = run_result.candidate is not None
 
         if run_result.success:
             success_count += 1
@@ -145,6 +202,7 @@ def run_switchboard(
         enabled_strategies=enabled_ids,
         disabled_strategies=disabled_ids,
         errors=errors,
+        closed_bar_audits=closed_bar_audits,
     )
 
 

@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timezone
+from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.paper_trading.shadow_run_registry import (
@@ -102,6 +103,9 @@ def _extract_summary(date_str: str, output_dir: str) -> tuple[dict, list[str]]:
         with open(sr_path) as f:
             sr = json.load(f)
         summary["strategy_candidates_count"] = sr.get("candidate_count", 0)
+        summary["closed_bar_contract_version"] = sr.get("closed_bar_contract_version")
+        summary["decision_cutoff"] = sr.get("decision_cutoff")
+        summary["closed_bar_counts"] = sr.get("closed_bar_counts", {})
     else:
         missing.append("strategy_run_summary")
 
@@ -163,6 +167,7 @@ def _build_steps(
     offline_sample: bool,
     defer_scorecard: bool = False,
     defer_position_update: bool = False,
+    decision_cutoff: Optional[str] = None,
 ) -> list[dict]:
     py = sys.executable
 
@@ -173,6 +178,8 @@ def _build_steps(
     ]
     if allow_public_http:
         cmd1.append("--allow-public-http")
+        if decision_cutoff:
+            cmd1.extend(["--decision-cutoff", decision_cutoff])
     if offline_sample:
         cmd1.append("--offline-sample")
 
@@ -454,6 +461,7 @@ def main():
     parser.add_argument("--defer-position-update", action="store_true", default=False)
     parser.add_argument("--finalize-registry", action="store_true", default=False)
     parser.add_argument("--batch-started-at", type=str, default=None)
+    parser.add_argument("--decision-cutoff", type=str, default=None)
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
@@ -475,6 +483,7 @@ def main():
 
     mode = "real_public_readonly" if args.allow_public_http else "offline_sample"
     pipeline_started_at = _ts()
+    decision_cutoff = args.decision_cutoff or pipeline_started_at
     run_id = args.run_id or generate_run_id()
     print(f"Shadow Trading Lifecycle Pipeline")
     print(f"Date: {date_str}")
@@ -489,6 +498,7 @@ def main():
         args.offline_sample,
         defer_scorecard=args.defer_scorecard,
         defer_position_update=args.defer_position_update,
+        decision_cutoff=decision_cutoff,
     )
     step_results = []
     pipeline_status = "PASS"

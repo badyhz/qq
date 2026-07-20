@@ -909,6 +909,8 @@ def build_public_json(
             "stop_loss": p.get("stop_loss"),
             "take_profit": p.get("take_profit"),
             "strategy_id": _truncate_field(str(p.get("strategy_id", "")), "strategy_id"),
+            "signal_bar_close_time": p.get("signal_bar_close_time"),
+            "signal_bar_contract_version": p.get("signal_bar_contract_version"),
         })
 
     # Recent closed (allowlisted fields only, last 20, no position_id)
@@ -926,6 +928,8 @@ def build_public_json(
             "exit_reason": _truncate_field(str(p.get("exit_reason", "")), "exit_reason"),
             "r_multiple": round(p.get("r_multiple", 0), 4),
             "closed_at": p.get("closed_at"),
+            "signal_bar_close_time": p.get("signal_bar_close_time"),
+            "signal_bar_contract_version": p.get("signal_bar_contract_version"),
         })
 
     # Freshness (based on real completion time)
@@ -960,6 +964,15 @@ def build_public_json(
         "slippage_adjusted": False,
         "testnet_enabled": False,
         "live_enabled": False,
+        "p1_02_trusted_cohort_closed": sc.get("diagnostics", {}).get(
+            "p1_02_trusted_cohort_closed", 0
+        ),
+        "p1_02_trusted_cohort_start_at": sc.get("diagnostics", {}).get(
+            "p1_02_trusted_cohort_start_at"
+        ),
+        "p1_02_trusted_cohort_rule_version": sc.get("diagnostics", {}).get(
+            "p1_02_trusted_cohort_rule_version"
+        ),
         "strategies": strategies,
         "recent_closed": recent_closed,
         "current_positions": current_positions,

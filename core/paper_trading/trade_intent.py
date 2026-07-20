@@ -66,6 +66,8 @@ class TradeIntent:
     risk_gate_reasons: list[str]
     safety_flags: list[str]
     created_at: str
+    signal_bar_close_time: Optional[str] = None
+    signal_bar_contract_version: str = "legacy_missing"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -97,6 +99,8 @@ class TradeIntent:
             "risk_gate_reasons": list(self.risk_gate_reasons),
             "safety_flags": list(self.safety_flags),
             "created_at": self.created_at,
+            "signal_bar_close_time": self.signal_bar_close_time,
+            "signal_bar_contract_version": self.signal_bar_contract_version,
         }
 
 
@@ -157,6 +161,13 @@ def build_trade_intent(
         risk_gate_reasons=risk_reasons,
         safety_flags=list(TRADE_INTENT_SAFETY_FLAGS),
         created_at=datetime.now(timezone.utc).isoformat(),
+        signal_bar_close_time=(
+            str(plan.get("signal_bar_close_time"))
+            if plan.get("signal_bar_close_time") else None
+        ),
+        signal_bar_contract_version=str(
+            plan.get("signal_bar_contract_version") or "legacy_missing"
+        ),
     )
 
 
