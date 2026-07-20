@@ -8,6 +8,8 @@ import json
 import os
 import uuid
 import hashlib
+import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -34,6 +36,30 @@ SIGNAL_IDENTITY_SCHEMA_VERSION = "shadow_signal_v1"
 EXPOSURE_IDENTITY_SCHEMA_VERSION = "shadow_exposure_v1"
 OVERLAP_AUDIT_RULE_VERSION = "cross_day_exposure_v1"
 OVERLAP_MANIFEST_FILENAME = "paper_position_overlap_exclusions.json"
+CLOSED_BAR_COHORT_ACTIVATION_FIELDS = (
+    "closed_bar_trusted_cohort_start_at",
+    "closed_bar_trusted_cohort_rule_version",
+    "closed_bar_trusted_cohort_start_run_id",
+    "closed_bar_trusted_cohort_start_commit",
+)
+
+
+@dataclass(frozen=True)
+class CohortActivationResult:
+    """Machine-readable result for the one-time trusted-cohort activation."""
+
+    status: str
+    manifest_path: str
+    metadata: dict[str, str]
+    error: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "manifest_path": self.manifest_path,
+            "metadata": self.metadata,
+            "error": self.error,
+        }
 
 
 def exposure_identity(record: dict[str, Any]) -> str:
@@ -721,6 +747,55 @@ def build_overlap_exclusion_manifest(
     }
 
 
+def _validate_overlap_exclusion_manifest(manifest: dict[str, Any]) -> None:
+    """Validate the legacy exclusions and optional all-or-none activation."""
+    if not isinstance(manifest, dict):
+        raise ValueError("overlap exclusion manifest must be an object")
+    if manifest.get("audit_rule_version") != OVERLAP_AUDIT_RULE_VERSION:
+        raise ValueError("unsupported overlap exclusion audit rule")
+    if not isinstance(manifest.get("exclusions"), list):
+        raise ValueError("overlap exclusion manifest has no exclusions list")
+    if _normalize_timestamp_to_seconds(manifest.get("trusted_cohort_start_at")) <= 0:
+        raise ValueError("overlap exclusion manifest has invalid trusted cohort start")
+
+    present_activation_fields = [
+        field for field in CLOSED_BAR_COHORT_ACTIVATION_FIELDS
+        if manifest.get(field) is not None
+    ]
+    if present_activation_fields:
+        if len(present_activation_fields) != len(CLOSED_BAR_COHORT_ACTIVATION_FIELDS):
+            raise ValueError("closed-bar cohort activation metadata is incomplete")
+        if manifest["closed_bar_trusted_cohort_rule_version"] != CLOSED_BAR_CONTRACT_VERSION:
+            raise ValueError("closed-bar cohort has unsupported rule version")
+        try:
+            raw_closed_bar_start = str(
+                manifest["closed_bar_trusted_cohort_start_at"]
+            )
+            parsed_source = datetime.fromisoformat(
+                raw_closed_bar_start.replace("Z", "+00:00")
+            )
+        except ValueError as exc:
+            raise ValueError("closed-bar cohort has invalid trusted start") from exc
+        if (
+            parsed_source.tzinfo is None
+            or parsed_source.utcoffset() is None
+            or parsed_source.utcoffset().total_seconds() != 0
+        ):
+            raise ValueError("closed-bar cohort start is not UTC")
+        if not str(manifest["closed_bar_trusted_cohort_start_run_id"]).strip():
+            raise ValueError("closed-bar cohort has invalid start run id")
+        if not re.fullmatch(
+            r"[0-9a-fA-F]{40}",
+            str(manifest["closed_bar_trusted_cohort_start_commit"]),
+        ):
+            raise ValueError("closed-bar cohort has invalid start commit")
+    if any(not isinstance(item, dict) for item in manifest["exclusions"]):
+        raise ValueError("overlap exclusion manifest has invalid exclusion entries")
+    ids = [str(item.get("position_id") or "") for item in manifest["exclusions"]]
+    if any(not pid for pid in ids) or len(ids) != len(set(ids)):
+        raise ValueError("overlap exclusion manifest has missing or duplicate position ids")
+
+
 def load_overlap_exclusion_manifest(report_dir: str) -> dict[str, Any] | None:
     """Load and validate the fixed legacy overlap exclusion manifest."""
     path = os.path.join(report_dir, OVERLAP_MANIFEST_FILENAME)
@@ -728,25 +803,138 @@ def load_overlap_exclusion_manifest(report_dir: str) -> dict[str, Any] | None:
         return None
     with open(path) as f:
         manifest = json.load(f)
-    if manifest.get("audit_rule_version") != OVERLAP_AUDIT_RULE_VERSION:
-        raise ValueError("unsupported overlap exclusion audit rule")
-    if not isinstance(manifest.get("exclusions"), list):
-        raise ValueError("overlap exclusion manifest has no exclusions list")
-    if _normalize_timestamp_to_seconds(manifest.get("trusted_cohort_start_at")) <= 0:
-        raise ValueError("overlap exclusion manifest has invalid trusted cohort start")
-    closed_bar_start = manifest.get("closed_bar_trusted_cohort_start_at")
-    closed_bar_version = manifest.get("closed_bar_trusted_cohort_rule_version")
-    if closed_bar_start is not None or closed_bar_version is not None:
-        if closed_bar_version != CLOSED_BAR_CONTRACT_VERSION:
-            raise ValueError("closed-bar cohort has unsupported rule version")
-        try:
-            parse_aware_utc(str(closed_bar_start), "closed_bar_trusted_cohort_start_at")
-        except ValueError as exc:
-            raise ValueError("closed-bar cohort has invalid trusted start") from exc
-    ids = [str(item.get("position_id") or "") for item in manifest["exclusions"]]
-    if any(not pid for pid in ids) or len(ids) != len(set(ids)):
-        raise ValueError("overlap exclusion manifest has missing or duplicate position ids")
+    _validate_overlap_exclusion_manifest(manifest)
     return manifest
+
+
+def _closed_bar_activation_metadata(
+    *,
+    start_at: str,
+    start_run_id: str,
+    start_commit: str,
+    rule_version: str,
+) -> dict[str, str]:
+    """Validate and canonicalize activation metadata without touching disk."""
+    if rule_version != CLOSED_BAR_CONTRACT_VERSION:
+        raise ValueError("rule_version must be closed_bar_v1")
+    raw_start = str(start_at or "").strip()
+    try:
+        parsed_source = datetime.fromisoformat(raw_start.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("start_at must be a valid RFC3339 timestamp") from exc
+    if parsed_source.tzinfo is None or parsed_source.utcoffset() is None:
+        raise ValueError("start_at must be timezone-aware UTC")
+    if parsed_source.utcoffset().total_seconds() != 0:
+        raise ValueError("start_at must use UTC (Z or +00:00)")
+    run_id = str(start_run_id or "").strip()
+    if not run_id:
+        raise ValueError("start_run_id must be non-empty")
+    commit = str(start_commit or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("start_commit must be a full 40-character Git hash")
+    return {
+        "closed_bar_trusted_cohort_start_at": parsed_source.astimezone(
+            timezone.utc
+        ).isoformat(timespec="seconds"),
+        "closed_bar_trusted_cohort_rule_version": rule_version,
+        "closed_bar_trusted_cohort_start_run_id": run_id,
+        "closed_bar_trusted_cohort_start_commit": commit,
+    }
+
+
+def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
+    """Write JSON in-place safely, retaining the old file until replace."""
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, temp_path = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}.", suffix=".tmp", dir=directory,
+    )
+    try:
+        os.fchmod(fd, os.stat(path).st_mode & 0o777)
+        with os.fdopen(fd, "w") as handle:
+            json.dump(payload, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        try:
+            dir_fd = os.open(directory, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            # The atomic replace already committed a complete file. A directory
+            # fsync is a durability enhancement and must not report a false
+            # activation failure after the manifest has changed.
+            pass
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def activate_closed_bar_trusted_cohort(
+    manifest_path: str,
+    *,
+    start_at: str,
+    start_run_id: str,
+    start_commit: str,
+    rule_version: str = CLOSED_BAR_CONTRACT_VERSION,
+) -> CohortActivationResult:
+    """Atomically activate one immutable closed-bar trusted cohort.
+
+    The legacy overlap exclusions and every unrelated manifest field are read
+    and preserved verbatim at the data-model level. Exact retries do no write;
+    any different activation metadata fails closed.
+    """
+    try:
+        metadata = _closed_bar_activation_metadata(
+            start_at=start_at,
+            start_run_id=start_run_id,
+            start_commit=start_commit,
+            rule_version=rule_version,
+        )
+    except ValueError as exc:
+        return CohortActivationResult(
+            "INVALID_METADATA", manifest_path, {}, str(exc),
+        )
+
+    try:
+        with open(manifest_path) as handle:
+            manifest = json.load(handle)
+        _validate_overlap_exclusion_manifest(manifest)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        return CohortActivationResult(
+            "MANIFEST_INVALID", manifest_path, metadata, str(exc),
+        )
+
+    existing = {
+        field: manifest.get(field) for field in CLOSED_BAR_COHORT_ACTIVATION_FIELDS
+    }
+    if any(value is not None for value in existing.values()):
+        if existing == metadata:
+            return CohortActivationResult(
+                "ALREADY_ACTIVE_SAME_METADATA", manifest_path, metadata,
+            )
+        return CohortActivationResult(
+            "CONFLICTING_ACTIVATION",
+            manifest_path,
+            existing,
+            "closed-bar trusted cohort is already active with different metadata",
+        )
+
+    updated = dict(manifest)
+    updated.update(metadata)
+    try:
+        _validate_overlap_exclusion_manifest(updated)
+        _atomic_write_json(manifest_path, updated)
+    except (OSError, ValueError) as exc:
+        return CohortActivationResult(
+            "ATOMIC_WRITE_FAILED", manifest_path, metadata, str(exc),
+        )
+    return CohortActivationResult("ACTIVATED", manifest_path, metadata)
 
 
 def load_canonical_closed_clean_positions(
@@ -922,6 +1110,22 @@ def load_canonical_closed_clean_positions(
         "p1_02_trusted_cohort_start_at": closed_bar_cohort_start_at,
         "p1_02_trusted_cohort_rule_version": (overlap_manifest or {}).get(
             "closed_bar_trusted_cohort_rule_version"
+        ),
+        "p1_02_trusted_cohort_start_run_id": (overlap_manifest or {}).get(
+            "closed_bar_trusted_cohort_start_run_id"
+        ),
+        "p1_02_trusted_cohort_start_commit": (overlap_manifest or {}).get(
+            "closed_bar_trusted_cohort_start_commit"
+        ),
+        "closed_bar_trusted_cohort_start_at": closed_bar_cohort_start_at,
+        "closed_bar_trusted_cohort_rule_version": (overlap_manifest or {}).get(
+            "closed_bar_trusted_cohort_rule_version"
+        ),
+        "closed_bar_trusted_cohort_start_run_id": (overlap_manifest or {}).get(
+            "closed_bar_trusted_cohort_start_run_id"
+        ),
+        "closed_bar_trusted_cohort_start_commit": (overlap_manifest or {}).get(
+            "closed_bar_trusted_cohort_start_commit"
         ),
         "legacy_closed_without_closed_bar_contract": sum(
             1 for p in eligible_positions

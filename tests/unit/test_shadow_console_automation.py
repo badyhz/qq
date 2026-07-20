@@ -995,7 +995,9 @@ class TestShellPipeline:
     def test_cloud_wrapper_uses_one_shared_batch_id_in_formal_order(self):
         content = open(str(REPO_ROOT / "scripts" / "run_cloud_shadow_collection_once.sh")).read()
         assert content.count("build_pipeline_context()") == 1
-        assert content.count('--date "$REPORT_DATE"') == 5
+        # Lifecycle, Update, Scorecard, Registry, Gate, and the optional
+        # post-activation Scorecard all consume the same authoritative date.
+        assert content.count('--date "$REPORT_DATE"') == 6
         assert '--report-date "$REPORT_DATE"' in content
         assert content.count('--run-id "$BATCH_RUN_ID"') == 3
         assert "--defer-registry" in content
@@ -1042,7 +1044,10 @@ class TestShellPipeline:
         )
         fake_python.chmod(0o755)
         fake_git = fakebin / "git"
-        fake_git.write_text("#!/usr/bin/env bash\necho d7d9adf\n")
+        fake_git.write_text(
+            "#!/usr/bin/env bash\n"
+            "echo 8164e8f1a4352f4d0884378869881d6c76cebda1\n"
+        )
         fake_git.chmod(0o755)
 
         env = os.environ.copy()

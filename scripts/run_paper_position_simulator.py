@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.paper_trading.paper_position import (
     CLOSED_STATUSES,
     OVERLAP_MANIFEST_FILENAME,
+    activate_closed_bar_trusted_cohort,
     build_overlap_exclusion_manifest,
     exposure_identity,
     load_canonical_positions,
@@ -320,7 +321,36 @@ def main():
     parser.add_argument("--allow-update-newly-opened", action="store_true", default=False)
     parser.add_argument("--update-existing-only", action="store_true", default=False)
     parser.add_argument("--entry-only", action="store_true", default=False)
+    parser.add_argument("--activate-closed-bar-cohort", action="store_true")
+    parser.add_argument("--cohort-start-at", type=str)
+    parser.add_argument("--cohort-start-run-id", type=str)
+    parser.add_argument("--cohort-start-commit", type=str)
     args = parser.parse_args()
+
+    if args.activate_closed_bar_cohort:
+        manifest_path = os.path.join(args.output_dir, OVERLAP_MANIFEST_FILENAME)
+        result = activate_closed_bar_trusted_cohort(
+            manifest_path,
+            start_at=args.cohort_start_at or "",
+            start_run_id=args.cohort_start_run_id or "",
+            start_commit=args.cohort_start_commit or "",
+        )
+        print(
+            "CLOSED_BAR_COHORT_ACTIVATION_RESULT="
+            + json.dumps(result.to_dict(), sort_keys=True)
+        )
+        return 0 if result.status in {
+            "ACTIVATED", "ALREADY_ACTIVE_SAME_METADATA",
+        } else 1
+
+    activation_metadata_args = (
+        args.cohort_start_at,
+        args.cohort_start_run_id,
+        args.cohort_start_commit,
+    )
+    if any(value is not None for value in activation_metadata_args):
+        print("ERROR: cohort metadata requires --activate-closed-bar-cohort")
+        return 1
 
     date_str = args.date or _today_str()
     input_path = args.input_file or _default_input_path(date_str)

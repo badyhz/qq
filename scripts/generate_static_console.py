@@ -973,6 +973,24 @@ def build_public_json(
         "p1_02_trusted_cohort_rule_version": sc.get("diagnostics", {}).get(
             "p1_02_trusted_cohort_rule_version"
         ),
+        "p1_02_trusted_cohort_start_run_id": sc.get("diagnostics", {}).get(
+            "p1_02_trusted_cohort_start_run_id"
+        ),
+        "p1_02_trusted_cohort_start_commit": sc.get("diagnostics", {}).get(
+            "p1_02_trusted_cohort_start_commit"
+        ),
+        "closed_bar_trusted_cohort_start_at": sc.get("diagnostics", {}).get(
+            "closed_bar_trusted_cohort_start_at"
+        ),
+        "closed_bar_trusted_cohort_rule_version": sc.get("diagnostics", {}).get(
+            "closed_bar_trusted_cohort_rule_version"
+        ),
+        "closed_bar_trusted_cohort_start_run_id": sc.get("diagnostics", {}).get(
+            "closed_bar_trusted_cohort_start_run_id"
+        ),
+        "closed_bar_trusted_cohort_start_commit": sc.get("diagnostics", {}).get(
+            "closed_bar_trusted_cohort_start_commit"
+        ),
         "strategies": strategies,
         "recent_closed": recent_closed,
         "current_positions": current_positions,

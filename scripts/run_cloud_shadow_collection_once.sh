@@ -20,6 +20,16 @@ run_step() {
 }
 
 main() {
+    local activate_closed_bar_cohort=0
+    if [ "${1:-}" = "--activate-closed-bar-cohort" ]; then
+        activate_closed_bar_cohort=1
+        shift
+    fi
+    if [ "$#" -ne 0 ]; then
+        echo "Usage: $0 [--activate-closed-bar-cohort]" >&2
+        return 2
+    fi
+
     mkdir -p "$LOG_DIR"
     cd "$PROJECT_DIR"
 
@@ -29,9 +39,15 @@ main() {
         echo "project=$PROJECT_DIR"
         echo "user=$(whoami)"
         echo "pwd=$(pwd)"
-        echo "git_head=$(git rev-parse HEAD)"
 
         . "$PROJECT_DIR/.venv/bin/activate"
+
+        RUN_COMMIT="$(git rev-parse HEAD)"
+        if ! [[ "$RUN_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "Executed Git commit is not a full hash"
+            exit 1
+        fi
+        echo "git_head=$RUN_COMMIT"
 
         read -r BATCH_RUN_ID BATCH_STARTED_AT REPORT_DATE < <(
             python3 -c '
@@ -86,11 +102,34 @@ print(context["run_id"], context["started_at"], context["report_date"])
         run_step "Gate" python3 scripts/run_sample_collection_gate.py \
             --date "$REPORT_DATE"
 
+        if [ "$activate_closed_bar_cohort" -eq 1 ]; then
+            ACTIVATION_TIMESTAMP="$(python3 -c '
+from datetime import datetime, timezone
+print(datetime.now(timezone.utc).isoformat(timespec="seconds"))
+')"
+            if [ -z "$ACTIVATION_TIMESTAMP" ]; then
+                echo "Cohort activation timestamp generation FAILED"
+                exit 1
+            fi
+            echo
+            run_step "Closed-Bar Cohort Activation" \
+                python3 scripts/run_paper_position_simulator.py \
+                --output-dir "$PROJECT_DIR/reports/strategies" \
+                --activate-closed-bar-cohort \
+                --cohort-start-at "$ACTIVATION_TIMESTAMP" \
+                --cohort-start-run-id "$BATCH_RUN_ID" \
+                --cohort-start-commit "$RUN_COMMIT"
+
+            echo
+            run_step "Post-Activation Scorecard" \
+                python3 scripts/run_paper_performance_scorecard.py \
+                --date "$REPORT_DATE"
+        fi
+
         echo
         echo "=== Static Console ==="
-        SERVER_COMMIT="$(git rev-parse HEAD)"
         if python3 scripts/generate_static_console.py \
-            --server-commit "$SERVER_COMMIT" \
+            --server-commit "$RUN_COMMIT" \
             --report-date "$REPORT_DATE"; then
             CONSOLE_RC=0
         else
