@@ -21,6 +21,16 @@ from core.paper_trading.paper_position import (
     load_canonical_positions, filter_canonical_closed_clean,
     classify_quarantine_status, classify_source_eligibility,
     load_canonical_closed_clean_positions, evaluate_canonical_eligibility,
+    load_overlap_exclusion_manifest,
+)
+from core.paper_trading.net_friction import (
+    FRICTION_MODEL_VERSION,
+    aggregate_net_metrics,
+    assess_position_friction,
+    assumptions_hash,
+    is_p1_03_trusted,
+    load_assumptions,
+    validate_assumptions,
 )
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -42,7 +52,10 @@ def _default_quarantine_path(date_str: str) -> str:
     return os.path.join(REPORT_DIR, f"{date_str}_paper_positions_quarantine.json")
 
 
-def render_markdown(scorecard: PerformanceScorecard) -> str:
+def render_markdown(
+    scorecard: PerformanceScorecard,
+    net_friction: dict | None = None,
+) -> str:
     gm = scorecard.global_metrics
     lines = [
         "# Paper Performance Scorecard",
@@ -107,6 +120,25 @@ def render_markdown(scorecard: PerformanceScorecard) -> str:
         f"- sample_status: {gm.sample_status}",
         "",
     ])
+
+    if net_friction is not None:
+        complete = net_friction.get("complete_metrics", {})
+        trusted = net_friction.get("trusted_metrics", {})
+        lines.extend([
+            "## Gross / Net Friction Accounting",
+            "",
+            f"- friction_model_version: {net_friction.get('friction_model_version')}",
+            f"- model_configuration_status: {net_friction.get('model_configuration_status')}",
+            f"- assumptions_hash: {net_friction.get('friction_assumptions_hash')}",
+            f"- gross_profit_factor: {net_friction.get('gross_profit_factor')}",
+            f"- net_profit_factor: {complete.get('net_profit_factor')}",
+            f"- gross_expectancy_r: {net_friction.get('gross_expectancy_r')}",
+            f"- net_expectancy_r: {complete.get('net_expectancy_r')}",
+            f"- mean_friction_r: {complete.get('mean_friction_r')}",
+            f"- median_friction_r: {complete.get('median_friction_r')}",
+            f"- p1_03_trusted_closed: {trusted.get('net_complete_closed_count', 0)}",
+            "",
+        ])
 
     # Strategy Scorecard
     sc_list = scorecard.strategy_scorecards
@@ -195,6 +227,7 @@ def main():
     parser.add_argument("--date", type=str, default=None)
     parser.add_argument("--input-file", type=str, default=None)
     parser.add_argument("--output-dir", type=str, default=REPORT_DIR)
+    parser.add_argument("--friction-config", type=str, default=None)
     args = parser.parse_args()
 
     date_str = args.date or _today_str()
@@ -249,6 +282,84 @@ def main():
     scorecard_dict["trusted_cohort_rule_version"] = diag.get("trusted_cohort_rule_version")
     scorecard_dict["diagnostics"] = diag
 
+    friction_config = None
+    config_errors: list[str] = []
+    if args.friction_config:
+        try:
+            friction_config = load_assumptions(args.friction_config)
+            config_errors = validate_assumptions(friction_config)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            config_errors = [str(exc)]
+    manifest = None
+    try:
+        manifest = load_overlap_exclusion_manifest(args.output_dir)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        config_errors.append(f"activation manifest: {exc}")
+    assessments = (
+        [assess_position_friction(position, friction_config) for position in eligible_positions]
+        if friction_config is not None else []
+    )
+    # Preserve distinct historical interpretations in the existing derived
+    # Scorecard artifact.  Same identity is a no-op; changed assumptions append
+    # a new identity instead of silently replacing the prior assessment.
+    scorecard_json_path = os.path.join(
+        args.output_dir, f"{date_str}_paper_performance_scorecard.json",
+    )
+    prior_assessments: list[dict] = []
+    try:
+        with open(scorecard_json_path) as handle:
+            previous_scorecard = json.load(handle)
+        candidate_prior = previous_scorecard.get("net_friction", {}).get("assessments", [])
+        if isinstance(candidate_prior, list):
+            prior_assessments = [row for row in candidate_prior if isinstance(row, dict)]
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+    assessment_versions = {
+        row.get("assessment_id"): row
+        for row in prior_assessments + assessments if row.get("assessment_id")
+    }
+    all_assessments = [assessment_versions[key] for key in sorted(assessment_versions)]
+    trusted_assessments = [
+        assessment for position, assessment in zip(eligible_positions, assessments)
+        if is_p1_03_trusted(position, assessment, manifest)
+    ]
+    complete_metrics = aggregate_net_metrics(assessments)
+    trusted_metrics = aggregate_net_metrics(trusted_assessments)
+    net_friction = {
+        "friction_model_version": FRICTION_MODEL_VERSION,
+        "model_configuration_status": (
+            "UNCONFIGURED" if friction_config is None and not config_errors
+            else "INVALID" if config_errors else "CONFIGURED"
+        ),
+        "configuration_errors": config_errors,
+        "friction_assumptions_hash": (
+            assumptions_hash(friction_config) if friction_config is not None else None
+        ),
+        "friction_assumptions": friction_config,
+        "gross_closed_count": scorecard.global_metrics.closed_positions,
+        "gross_profit_factor": scorecard.global_metrics.profit_factor,
+        "gross_expectancy_r": scorecard.global_metrics.expectancy_r,
+        "gross_average_r": scorecard.global_metrics.avg_r_multiple,
+        "complete_metrics": complete_metrics,
+        "trusted_metrics": trusted_metrics,
+        "p1_03_activation": {
+            key: (manifest or {}).get(key) for key in (
+                "net_friction_trusted_cohort_start_at",
+                "net_friction_trusted_cohort_rule_version",
+                "net_friction_trusted_cohort_start_run_id",
+                "net_friction_trusted_cohort_start_commit",
+                "net_friction_model_version",
+                "net_friction_assumptions_hash",
+            )
+        },
+        "assessment_identity": "position_id+friction_model_version+friction_assumptions_hash",
+        "current_assessment_ids": sorted(
+            row["assessment_id"] for row in assessments if row.get("assessment_id")
+        ),
+        "assessments": all_assessments,
+    }
+    scorecard_dict["net_friction"] = net_friction
+
     os.makedirs(args.output_dir, exist_ok=True)
 
     # JSON
@@ -260,7 +371,7 @@ def main():
     # Markdown
     md_path = os.path.join(args.output_dir, f"{date_str}_paper_performance_scorecard.md")
     with open(md_path, "w") as f:
-        f.write(render_markdown(scorecard))
+        f.write(render_markdown(scorecard, net_friction))
     print(f"Scorecard Markdown: {md_path}")
 
     # CSV
@@ -288,6 +399,9 @@ def main():
     print(f"Win rate: {round(gm.win_rate * 100, 1)}%")
     print(f"Profit factor: {round(gm.profit_factor, 4)}")
     print(f"Expectancy R: {round(gm.expectancy_r, 4)}")
+    print(f"Net friction config: {net_friction['model_configuration_status']}")
+    print(f"Net complete closed: {complete_metrics['net_complete_closed_count']}")
+    print(f"P1-03 trusted closed: {trusted_metrics['net_complete_closed_count']}")
     print(f"Sample status: {gm.sample_status}")
     print(f"Strategies: {len(scorecard.strategy_scorecards)}")
     for sc in scorecard.strategy_scorecards:

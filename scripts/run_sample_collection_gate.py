@@ -22,7 +22,7 @@ REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "strategies")
 
 
-def _validate_scorecard_date(report_dir: str, report_date: str) -> None:
+def _validate_scorecard_date(report_dir: str, report_date: str) -> dict:
     """Require Gate's scorecard input to match the authoritative report date."""
     path = os.path.join(report_dir, f"{report_date}_paper_performance_scorecard.json")
     try:
@@ -36,9 +36,40 @@ def _validate_scorecard_date(report_dir: str, report_date: str) -> None:
             "report_date conflict: "
             f"requested={report_date}, scorecard={scorecard_date}"
         )
+    return scorecard
 
 
-def render_markdown(gate: ShadowSampleGateResult, registry: list[dict]) -> str:
+def _net_friction_gate(scorecard: dict) -> dict:
+    """Return additive fail-closed Net evidence; never promote testnet/live."""
+    net = scorecard.get("net_friction")
+    blockers: list[str] = []
+    if not isinstance(net, dict) or net.get("model_configuration_status") != "CONFIGURED":
+        blockers.append("NET_FRICTION_MODEL_UNCONFIGURED")
+        net = net if isinstance(net, dict) else {}
+    activation = net.get("p1_03_activation") or {}
+    configured_hash = net.get("friction_assumptions_hash")
+    activated_hash = activation.get("net_friction_assumptions_hash")
+    if configured_hash and activated_hash and configured_hash != activated_hash:
+        blockers.append("NET_FRICTION_ASSUMPTIONS_MISMATCH")
+    trusted = net.get("trusted_metrics") or {}
+    if trusted.get("net_complete_closed_count", 0) == 0:
+        blockers.append("NET_FRICTION_SAMPLE_EMPTY")
+    if trusted.get("net_incomplete_closed_count", 0) > 0:
+        blockers.append("NET_FRICTION_SAMPLE_INCOMPLETE")
+    return {
+        "net_friction_gate_status": "BLOCKED" if blockers else "EVIDENCE_AVAILABLE_REVIEW_REQUIRED",
+        "net_friction_gate_blockers": blockers,
+        "testnet_ready": False,
+        "live_ready": False,
+        "automatic_promotion": False,
+    }
+
+
+def render_markdown(
+    gate: ShadowSampleGateResult,
+    registry: list[dict],
+    net_gate: dict | None = None,
+) -> str:
     lines = [
         "# Shadow Sample Collection Gate",
         "",
@@ -59,6 +90,18 @@ def render_markdown(gate: ShadowSampleGateResult, registry: list[dict]) -> str:
         lines.extend(["## Gate Reasons", ""])
         for r in gate.testnet_gate_reasons:
             lines.append(f"- {r}")
+        lines.append("")
+
+    if net_gate is not None:
+        lines.extend([
+            "## Net Friction Evidence",
+            "",
+            f"- status: {net_gate.get('net_friction_gate_status')}",
+            "- testnet_ready: NO",
+            "- live_ready: NO",
+        ])
+        for blocker in net_gate.get("net_friction_gate_blockers", []):
+            lines.append(f"- blocker: {blocker}")
         lines.append("")
 
     if gate.testnet_gate_status == GATE_BLOCKED_INSUFFICIENT:
@@ -143,11 +186,12 @@ def main():
     try:
         gate = compute_sample_gate(registry_dir, report_date=args.date)
         date_str = gate.date
-        _validate_scorecard_date(registry_dir, date_str)
+        scorecard = _validate_scorecard_date(registry_dir, date_str)
     except ValueError as exc:
         print(f"Gate FAILED: {exc}", file=sys.stderr)
         return 1
     gate_dict = gate.to_dict()
+    gate_dict.update(_net_friction_gate(scorecard))
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -160,7 +204,7 @@ def main():
     # Markdown
     md_path = os.path.join(output_dir, f"{date_str}_shadow_sample_gate.md")
     with open(md_path, "w") as f:
-        f.write(render_markdown(gate, registry))
+        f.write(render_markdown(gate, registry, gate_dict))
     print(f"Gate Markdown: {md_path}")
 
     print(f"\n=== Sample Gate ===")

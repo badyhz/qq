@@ -25,6 +25,7 @@ from core.paper_trading.paper_position import (
     position_state_fingerprint,
     select_canonical_position_state,
 )
+from core.paper_trading.net_friction import activate_net_friction_trusted_cohort
 from core.paper_trading.paper_position_simulator import (
     simulate_intent_only, simulate_with_klines,
     simulate_existing_positions_update_only,
@@ -325,6 +326,11 @@ def main():
     parser.add_argument("--cohort-start-at", type=str)
     parser.add_argument("--cohort-start-run-id", type=str)
     parser.add_argument("--cohort-start-commit", type=str)
+    parser.add_argument("--activate-net-friction-cohort", action="store_true")
+    parser.add_argument("--net-friction-start-at", type=str)
+    parser.add_argument("--net-friction-start-run-id", type=str)
+    parser.add_argument("--net-friction-start-commit", type=str)
+    parser.add_argument("--net-friction-assumptions-hash", type=str)
     args = parser.parse_args()
 
     if args.activate_closed_bar_cohort:
@@ -343,6 +349,23 @@ def main():
             "ACTIVATED", "ALREADY_ACTIVE_SAME_METADATA",
         } else 1
 
+    if args.activate_net_friction_cohort:
+        manifest_path = os.path.join(args.output_dir, OVERLAP_MANIFEST_FILENAME)
+        result = activate_net_friction_trusted_cohort(
+            manifest_path,
+            start_at=args.net_friction_start_at or "",
+            run_id=args.net_friction_start_run_id or "",
+            commit=args.net_friction_start_commit or "",
+            assumptions_hash_value=args.net_friction_assumptions_hash or "",
+        )
+        print(
+            "NET_FRICTION_COHORT_ACTIVATION_RESULT="
+            + json.dumps(result.to_dict(), sort_keys=True)
+        )
+        return 0 if result.status in {
+            "ACTIVATED", "ALREADY_ACTIVE_SAME_METADATA",
+        } else 1
+
     activation_metadata_args = (
         args.cohort_start_at,
         args.cohort_start_run_id,
@@ -350,6 +373,15 @@ def main():
     )
     if any(value is not None for value in activation_metadata_args):
         print("ERROR: cohort metadata requires --activate-closed-bar-cohort")
+        return 1
+    net_activation_metadata_args = (
+        args.net_friction_start_at,
+        args.net_friction_start_run_id,
+        args.net_friction_start_commit,
+        args.net_friction_assumptions_hash,
+    )
+    if any(value is not None for value in net_activation_metadata_args):
+        print("ERROR: net friction metadata requires --activate-net-friction-cohort")
         return 1
 
     date_str = args.date or _today_str()

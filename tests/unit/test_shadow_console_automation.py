@@ -997,7 +997,8 @@ class TestShellPipeline:
         assert content.count("build_pipeline_context()") == 1
         # Lifecycle, Update, Scorecard, Registry, Gate, and the optional
         # post-activation Scorecard all consume the same authoritative date.
-        assert content.count('--date "$REPORT_DATE"') == 6
+        # The optional P1-03 post-activation Scorecard is a seventh consumer.
+        assert content.count('--date "$REPORT_DATE"') == 7
         assert '--report-date "$REPORT_DATE"' in content
         assert content.count('--run-id "$BATCH_RUN_ID"') == 3
         assert "--defer-registry" in content

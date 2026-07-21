@@ -25,6 +25,9 @@ def assumptions(**overrides):
         "quote_currency": "USDT",
         "entry_fee_bps": "4",
         "exit_fee_bps": "4",
+        "entry_fee_liquidity": "TAKER",
+        "exit_fee_liquidity": "TAKER",
+        "fee_rate_source": "configured_fixture",
         "entry_spread_bps": "1",
         "exit_spread_bps": "1",
         "entry_slippage_bps": "2",
@@ -47,15 +50,17 @@ def position(**overrides):
         "timeframe": "5m",
         "side": "LONG",
         "status": "TAKE_PROFIT_HIT",
-        "entry_price": "100",
-        "exit_price": "110",
-        "stop_loss": "95",
-        "position_size_preview": "2",
+        "entry_price": 100.0,
+        "exit_price": 110.0,
+        "stop_loss": 95.0,
+        "position_size_preview": 2.0,
         "opened_at": "2026-07-21T00:00:00+00:00",
         "closed_at": "2026-07-21T09:00:00+00:00",
         "exit_reason": "take_profit triggered",
-        "realized_pnl": "20",
-        "r_multiple": "2",
+        "take_profit": 110.0,
+        "lifecycle_mode": "future_only",
+        "realized_pnl": 20.0,
+        "r_multiple": 2.0,
         "signal_bar_contract_version": "closed_bar_v1",
     }
     value.update(overrides)
@@ -313,6 +318,16 @@ def test_post_activation_complete_position_is_trusted(tmp_path):
     assert is_p1_03_trusted(p, assess_position_friction(p, config), m)
 
 
+def test_overlap_excluded_position_cannot_enter_p1_03(tmp_path):
+    m, config = activated_manifest(tmp_path)
+    p = position(
+        position_id="old-1",
+        opened_at="2026-07-21T10:00:00+00:00",
+        closed_at="2026-07-21T11:00:00+00:00",
+    )
+    assert not is_p1_03_trusted(p, assess_position_friction(p, config), m)
+
+
 @pytest.mark.parametrize("mutation", ["closed_bar", "model", "hash", "partial"])
 def test_incomplete_contracts_are_not_trusted(tmp_path, mutation):
     m, config = activated_manifest(tmp_path)
@@ -337,11 +352,176 @@ def test_gross_input_is_never_mutated():
     before = deepcopy(p)
     assess_position_friction(p, assumptions())
     assert p == before
-    assert p["realized_pnl"] == "20"
-    assert p["r_multiple"] == "2"
+    assert p["realized_pnl"] == 20.0
+    assert p["r_multiple"] == 2.0
 
 
 def test_calculation_anchor_is_deterministic_closed_at():
     result = assess_position_friction(position(), assumptions())
     assert result["friction_calculated_at"] == position()["closed_at"]
     assert result["friction_model_version"] == FRICTION_MODEL_VERSION
+
+
+def test_scorecard_keeps_gross_and_adds_net_payload(tmp_path, monkeypatch):
+    from scripts import run_paper_performance_scorecard as runner
+
+    report = tmp_path / "reports"
+    report.mkdir()
+    p = position(
+        date="2026-07-21", source="real_public_readonly",
+        quarantine_status="CLEAN",
+    )
+    (report / "2026-07-21_paper_position_ledger.jsonl").write_text(json.dumps(p) + "\n")
+    config_path = tmp_path / "friction.json"
+    config_path.write_text(json.dumps(assumptions()))
+    monkeypatch.setattr(runner, "REPORT_DIR", str(report))
+    monkeypatch.setattr(
+        "sys.argv",
+        ["scorecard", "--date", "2026-07-21", "--output-dir", str(report),
+         "--friction-config", str(config_path)],
+    )
+    assert runner.main() == 0
+    payload = json.loads((report / "2026-07-21_paper_performance_scorecard.json").read_text())
+    assert payload["global_metrics"]["profit_factor"] == "inf" or payload["global_metrics"]["profit_factor"] == float("inf")
+    assert payload["global_metrics"]["expectancy_r"] == 2.0
+    assert payload["net_friction"]["gross_expectancy_r"] == 2.0
+    assert payload["net_friction"]["complete_metrics"]["net_complete_closed_count"] == 1
+    assert len(payload["net_friction"]["assessments"]) == 1
+
+
+def test_unconfigured_scorecard_is_explicit_not_zero_cost(tmp_path, monkeypatch):
+    from scripts import run_paper_performance_scorecard as runner
+
+    report = tmp_path / "reports"
+    report.mkdir()
+    p = position(date="2026-07-21", source="real_public_readonly", quarantine_status="CLEAN")
+    (report / "2026-07-21_paper_position_ledger.jsonl").write_text(json.dumps(p) + "\n")
+    monkeypatch.setattr("sys.argv", ["scorecard", "--date", "2026-07-21", "--output-dir", str(report)])
+    assert runner.main() == 0
+    payload = json.loads((report / "2026-07-21_paper_performance_scorecard.json").read_text())
+    assert payload["net_friction"]["model_configuration_status"] == "UNCONFIGURED"
+    assert payload["net_friction"]["complete_metrics"]["net_sample_status"] == "NO_SAMPLE"
+    assert payload["net_friction"]["complete_metrics"]["net_profit_factor"] is None
+
+
+def test_scorecard_preserves_distinct_assumption_versions_without_duplicates(tmp_path, monkeypatch):
+    from scripts import run_paper_performance_scorecard as runner
+
+    report = tmp_path / "reports"
+    report.mkdir()
+    p = position(date="2026-07-21", source="real_public_readonly", quarantine_status="CLEAN")
+    (report / "2026-07-21_paper_position_ledger.jsonl").write_text(json.dumps(p) + "\n")
+    first_config = tmp_path / "first.json"
+    second_config = tmp_path / "second.json"
+    first_config.write_text(json.dumps(assumptions(entry_fee_bps="4")))
+    second_config.write_text(json.dumps(assumptions(entry_fee_bps="5")))
+
+    def run(path):
+        monkeypatch.setattr(
+            "sys.argv",
+            ["scorecard", "--date", "2026-07-21", "--output-dir", str(report),
+             "--friction-config", str(path)],
+        )
+        assert runner.main() == 0
+        return json.loads((report / "2026-07-21_paper_performance_scorecard.json").read_text())
+
+    first = run(first_config)
+    second = run(second_config)
+    repeat = run(second_config)
+    assert len(first["net_friction"]["assessments"]) == 1
+    assert len(second["net_friction"]["assessments"]) == 2
+    assert len(repeat["net_friction"]["assessments"]) == 2
+    assert len(repeat["net_friction"]["current_assessment_ids"]) == 1
+    assert repeat["global_metrics"] == first["global_metrics"]
+
+
+def test_gate_net_evidence_never_promotes():
+    from scripts.run_sample_collection_gate import _net_friction_gate
+
+    blocked = _net_friction_gate({"net_friction": {"model_configuration_status": "UNCONFIGURED"}})
+    assert "NET_FRICTION_MODEL_UNCONFIGURED" in blocked["net_friction_gate_blockers"]
+    assert blocked["testnet_ready"] is False
+    assert blocked["live_ready"] is False
+    configured = _net_friction_gate({"net_friction": {
+        "model_configuration_status": "CONFIGURED",
+        "friction_assumptions_hash": "a" * 64,
+        "p1_03_activation": {"net_friction_assumptions_hash": "a" * 64},
+        "trusted_metrics": {"net_complete_closed_count": 1, "net_incomplete_closed_count": 0},
+    }})
+    assert configured["net_friction_gate_status"] == "EVIDENCE_AVAILABLE_REVIEW_REQUIRED"
+    assert configured["automatic_promotion"] is False
+
+
+def test_console_public_payload_exposes_gross_net_without_assessments():
+    from scripts.generate_static_console import build_public_json
+
+    bundle = {
+        "scorecard": {
+            "global_metrics": {"profit_factor": 2.0, "expectancy_r": 1.0},
+            "strategy_scorecards": [],
+            "net_friction": {
+                "friction_model_version": "net_friction_v1",
+                "model_configuration_status": "CONFIGURED",
+                "friction_assumptions_hash": "a" * 64,
+                "gross_profit_factor": 2.0,
+                "gross_expectancy_r": 1.0,
+                "complete_metrics": {
+                    "net_complete_closed_count": 1,
+                    "net_profit_factor": "1.5",
+                    "net_profit_factor_status": "FINITE",
+                    "net_expectancy_r": "0.8",
+                    "mean_friction_r": "-0.2",
+                    "median_friction_r": "-0.2",
+                    "fee_effect_r": "-0.1", "spread_effect_r": "-0.03",
+                    "slippage_effect_r": "-0.05", "funding_effect_r": "-0.01",
+                    "gap_effect_r": "-0.01",
+                },
+                "trusted_metrics": {"net_complete_closed_count": 1},
+                "p1_03_activation": {"net_friction_model_version": "net_friction_v1"},
+                "assessments": [{"position_id": "MUST_NOT_LEAK"}],
+            },
+        },
+        "gate": {"sample_status": "EVALUABLE", "testnet_gate_status": "BLOCKED"},
+        "counts": {"canonical": 1}, "all_canonical": [], "completion_time": "",
+    }
+    payload = build_public_json(bundle, "a" * 40)
+    assert payload["gross_profit_factor"] == 2.0
+    assert payload["net_profit_factor"] == "1.5"
+    assert payload["p1_03_trusted_closed"] == 1
+    assert "assessments" not in payload
+    assert "MUST_NOT_LEAK" not in json.dumps(payload)
+
+
+def test_wrapper_activation_is_explicit_after_gate_and_ordinary_run_does_not_activate():
+    content = open("scripts/run_cloud_shadow_collection_once.sh").read()
+    gate = content.index('run_step "Gate"')
+    activation = content.index('run_step "Net-Friction Cohort Activation"')
+    console = content.index('echo "=== Static Console ==="')
+    assert gate < activation < console
+    assert 'if [ "$activate_net_friction_cohort" -eq 1 ]' in content
+    assert "--activate-net-friction-cohort" in content
+    assert "NET_FRICTION_CONFIG" in content
+
+
+def test_net_activation_cli_and_metadata_without_flag(tmp_path, monkeypatch, capsys):
+    from scripts import run_paper_position_simulator as runner
+
+    path = manifest(tmp_path)
+    h = assumptions_hash(assumptions())
+    monkeypatch.setattr("sys.argv", [
+        "sim", "--output-dir", str(tmp_path), "--activate-net-friction-cohort",
+        "--net-friction-start-at", "2026-07-21T10:00:00+00:00",
+        "--net-friction-start-run-id", "run-1",
+        "--net-friction-start-commit", "a" * 40,
+        "--net-friction-assumptions-hash", h,
+    ])
+    assert runner.main() == 0
+    assert "ACTIVATED" in capsys.readouterr().out
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert runner.main() == 0
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    monkeypatch.setattr("sys.argv", [
+        "sim", "--output-dir", str(tmp_path), "--net-friction-start-at",
+        "2026-07-21T10:00:00+00:00",
+    ])
+    assert runner.main() == 1

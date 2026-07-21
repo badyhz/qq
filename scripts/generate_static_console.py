@@ -593,6 +593,18 @@ _HTML_TEMPLATE = """\
 </div>
 
 <div class="card">
+<h2>{net_title}</h2>
+<table>
+<tr><th>Gross PF</th><td>{gross_pf}</td><th>Net PF</th><td>{net_pf}</td></tr>
+<tr><th>Gross Expectancy R</th><td>{gross_expectancy}</td><th>Net Expectancy R</th><td>{net_expectancy}</td></tr>
+<tr><th>Mean Friction R</th><td>{mean_friction}</td><th>Median Friction R</th><td>{median_friction}</td></tr>
+<tr><th>Model</th><td>{net_model}</td><th>Status</th><td>{net_status}</td></tr>
+<tr><th>Assumptions Hash</th><td colspan="3">{net_hash}</td></tr>
+<tr><th>P1-03 Trusted Closed</th><td colspan="3">{net_trusted_closed}</td></tr>
+</table>
+</div>
+
+<div class="card">
 <h2>{strategies_title}</h2>
 <table>
 <tr>
@@ -661,6 +673,17 @@ def render_readonly_html(
             freshness_status = "fresh" if age <= 90 else ("stale" if age <= 180 else "expired")
 
     global_metrics = sc.get("global_metrics", {})
+    net = sc.get("net_friction") if isinstance(sc.get("net_friction"), dict) else {}
+    net_complete = net.get("complete_metrics") or {}
+    net_trusted = net.get("trusted_metrics") or {}
+    _, _, gross_pf_display = _public_profit_factor(
+        net.get("gross_profit_factor", global_metrics.get("profit_factor"))
+    )
+    net_pf_display = net_complete.get("net_profit_factor")
+    if net_complete.get("net_profit_factor_status") == "INFINITE":
+        net_pf_display = "∞"
+    if net_pf_display is None:
+        net_pf_display = "—"
     sample_status = gate.get("sample_status", "UNKNOWN")
     gate_status = gate.get("testnet_gate_status", "UNKNOWN")
 
@@ -819,6 +842,17 @@ def render_readonly_html(
         sl_count=_html(global_metrics.get("stop_loss_hit", 0)),
         timeout_label=labels["timeout_label"],
         timeout_count=_html(global_metrics.get("timeout_exit", 0)),
+        net_title="净摩擦核算" if lang == "zh" else "Net Friction Accounting",
+        gross_pf=_html(gross_pf_display),
+        net_pf=_html(net_pf_display),
+        gross_expectancy=_html(net.get("gross_expectancy_r", global_metrics.get("expectancy_r"))),
+        net_expectancy=_html(net_complete.get("net_expectancy_r") or "—"),
+        mean_friction=_html(net_complete.get("mean_friction_r") or "—"),
+        median_friction=_html(net_complete.get("median_friction_r") or "—"),
+        net_model=_html(net.get("friction_model_version") or "net_friction_v1"),
+        net_status=_html(net.get("model_configuration_status") or "UNCONFIGURED"),
+        net_hash=_html(net.get("friction_assumptions_hash") or "—"),
+        net_trusted_closed=_html(net_trusted.get("net_complete_closed_count", 0)),
         strategies_title=labels["strategies_title"],
         strat_id_label=labels["strat_id_label"],
         closed_label=labels["closed_label"],
@@ -944,6 +978,12 @@ def build_public_json(
             freshness_status = "fresh" if age <= 90 else ("stale" if age <= 180 else "expired")
 
     global_metrics = sc.get("global_metrics", {})
+    net = sc.get("net_friction") if isinstance(sc.get("net_friction"), dict) else {}
+    net_complete = net.get("complete_metrics") or {}
+    net_trusted = net.get("trusted_metrics") or {}
+    public_gross_pf, public_gross_pf_status, _ = _public_profit_factor(
+        net.get("gross_profit_factor", global_metrics.get("profit_factor"))
+    )
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -960,8 +1000,27 @@ def build_public_json(
         "stop_loss_count": global_metrics.get("stop_loss_hit", 0),
         "timeout_count": global_metrics.get("timeout_exit", 0),
         "count_check": counts,
-        "fee_adjusted": False,
-        "slippage_adjusted": False,
+        "fee_adjusted": net_complete.get("net_complete_closed_count", 0) > 0,
+        "slippage_adjusted": net_complete.get("net_complete_closed_count", 0) > 0,
+        "gross_profit_factor": public_gross_pf,
+        "gross_profit_factor_status": public_gross_pf_status,
+        "net_profit_factor": net_complete.get("net_profit_factor"),
+        "net_profit_factor_status": net_complete.get("net_profit_factor_status", "NO_SAMPLE"),
+        "gross_expectancy_r": net.get("gross_expectancy_r", global_metrics.get("expectancy_r")),
+        "net_expectancy_r": net_complete.get("net_expectancy_r"),
+        "mean_friction_r": net_complete.get("mean_friction_r"),
+        "median_friction_r": net_complete.get("median_friction_r"),
+        "friction_component_totals_r": {
+            key: net_complete.get(key) for key in (
+                "fee_effect_r", "spread_effect_r", "slippage_effect_r",
+                "funding_effect_r", "gap_effect_r",
+            )
+        },
+        "friction_model_version": net.get("friction_model_version", "net_friction_v1"),
+        "friction_model_status": net.get("model_configuration_status", "UNCONFIGURED"),
+        "friction_assumptions_hash": net.get("friction_assumptions_hash"),
+        "p1_03_activation": net.get("p1_03_activation", {}),
+        "p1_03_trusted_closed": net_trusted.get("net_complete_closed_count", 0),
         "testnet_enabled": False,
         "live_enabled": False,
         "p1_02_trusted_cohort_closed": sc.get("diagnostics", {}).get(

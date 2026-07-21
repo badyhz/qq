@@ -21,12 +21,34 @@ run_step() {
 
 main() {
     local activate_closed_bar_cohort=0
-    if [ "${1:-}" = "--activate-closed-bar-cohort" ]; then
-        activate_closed_bar_cohort=1
-        shift
-    fi
-    if [ "$#" -ne 0 ]; then
-        echo "Usage: $0 [--activate-closed-bar-cohort]" >&2
+    local activate_net_friction_cohort=0
+    local friction_config="${NET_FRICTION_CONFIG:-}"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --activate-closed-bar-cohort)
+                activate_closed_bar_cohort=1
+                shift
+                ;;
+            --activate-net-friction-cohort)
+                activate_net_friction_cohort=1
+                shift
+                ;;
+            --net-friction-config)
+                if [ "$#" -lt 2 ]; then
+                    echo "--net-friction-config requires a path" >&2
+                    return 2
+                fi
+                friction_config="$2"
+                shift 2
+                ;;
+            *)
+                echo "Usage: $0 [--activate-closed-bar-cohort] [--activate-net-friction-cohort --net-friction-config PATH]" >&2
+                return 2
+                ;;
+        esac
+    done
+    if [ "$activate_net_friction_cohort" -eq 1 ] && [ -z "$friction_config" ]; then
+        echo "Net-friction activation requires explicit approved assumptions" >&2
         return 2
     fi
 
@@ -64,6 +86,33 @@ print(context["run_id"], context["started_at"], context["report_date"])
         echo "batch_started_at=$BATCH_STARTED_AT"
         echo "report_date=$REPORT_DATE"
 
+        FRICTION_SCORECARD_ARGS=()
+        FRICTION_ASSUMPTIONS_HASH=""
+        if [ -n "$friction_config" ]; then
+            if [ ! -f "$friction_config" ]; then
+                echo "Net-friction assumptions file is unavailable: $friction_config"
+                exit 1
+            fi
+            FRICTION_ASSUMPTIONS_HASH="$(python3 - "$friction_config" <<'PY'
+import sys
+from core.paper_trading.net_friction import assumptions_hash, load_assumptions, validate_assumptions
+config = load_assumptions(sys.argv[1])
+errors = validate_assumptions(config)
+if errors:
+    raise SystemExit("; ".join(errors))
+print(assumptions_hash(config))
+PY
+)"
+            if ! [[ "$FRICTION_ASSUMPTIONS_HASH" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "Net-friction assumptions validation FAILED"
+                exit 1
+            fi
+            FRICTION_SCORECARD_ARGS=(--friction-config "$friction_config")
+            echo "net_friction_assumptions_hash=$FRICTION_ASSUMPTIONS_HASH"
+        else
+            echo "net_friction_assumptions=UNCONFIGURED"
+        fi
+
         echo
         echo "=== Pre Status ==="
         python3 scripts/print_shadow_operator_status.py
@@ -89,7 +138,8 @@ print(context["run_id"], context["started_at"], context["report_date"])
 
         echo
         run_step "Scorecard" python3 scripts/run_paper_performance_scorecard.py \
-            --date "$REPORT_DATE"
+            --date "$REPORT_DATE" \
+            "${FRICTION_SCORECARD_ARGS[@]}"
 
         echo
         run_step "Final Registry" python3 scripts/run_shadow_trading_lifecycle.py \
@@ -123,7 +173,30 @@ print(datetime.now(timezone.utc).isoformat(timespec="seconds"))
             echo
             run_step "Post-Activation Scorecard" \
                 python3 scripts/run_paper_performance_scorecard.py \
-                --date "$REPORT_DATE"
+                --date "$REPORT_DATE" \
+                "${FRICTION_SCORECARD_ARGS[@]}"
+        fi
+
+        if [ "$activate_net_friction_cohort" -eq 1 ]; then
+            NET_FRICTION_ACTIVATION_TIMESTAMP="$(python3 -c '
+from datetime import datetime, timezone
+print(datetime.now(timezone.utc).isoformat(timespec="seconds"))
+')"
+            echo
+            run_step "Net-Friction Cohort Activation" \
+                python3 scripts/run_paper_position_simulator.py \
+                --output-dir "$PROJECT_DIR/reports/strategies" \
+                --activate-net-friction-cohort \
+                --net-friction-start-at "$NET_FRICTION_ACTIVATION_TIMESTAMP" \
+                --net-friction-start-run-id "$BATCH_RUN_ID" \
+                --net-friction-start-commit "$RUN_COMMIT" \
+                --net-friction-assumptions-hash "$FRICTION_ASSUMPTIONS_HASH"
+
+            echo
+            run_step "Post-Net-Friction Scorecard" \
+                python3 scripts/run_paper_performance_scorecard.py \
+                --date "$REPORT_DATE" \
+                "${FRICTION_SCORECARD_ARGS[@]}"
         fi
 
         echo

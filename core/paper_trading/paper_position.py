@@ -15,6 +15,10 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from core.paper_trading.data_source import CLOSED_BAR_CONTRACT_VERSION, parse_aware_utc
+from core.paper_trading.net_friction import (
+    FRICTION_MODEL_VERSION,
+    NET_FRICTION_ACTIVATION_FIELDS,
+)
 
 
 POSITION_SAFETY_FLAGS = [
@@ -789,6 +793,39 @@ def _validate_overlap_exclusion_manifest(manifest: dict[str, Any]) -> None:
             str(manifest["closed_bar_trusted_cohort_start_commit"]),
         ):
             raise ValueError("closed-bar cohort has invalid start commit")
+    present_net_fields = [
+        field for field in NET_FRICTION_ACTIVATION_FIELDS
+        if manifest.get(field) is not None
+    ]
+    if present_net_fields:
+        if len(present_net_fields) != len(NET_FRICTION_ACTIVATION_FIELDS):
+            raise ValueError("net-friction cohort activation metadata is incomplete")
+        if manifest["net_friction_trusted_cohort_rule_version"] != FRICTION_MODEL_VERSION:
+            raise ValueError("net-friction cohort has unsupported rule version")
+        if manifest["net_friction_model_version"] != FRICTION_MODEL_VERSION:
+            raise ValueError("net-friction cohort has unsupported model version")
+        try:
+            parsed_net_start = datetime.fromisoformat(
+                str(manifest["net_friction_trusted_cohort_start_at"]).replace("Z", "+00:00")
+            )
+        except ValueError as exc:
+            raise ValueError("net-friction cohort has invalid trusted start") from exc
+        if (
+            parsed_net_start.tzinfo is None
+            or parsed_net_start.utcoffset() is None
+            or parsed_net_start.utcoffset().total_seconds() != 0
+        ):
+            raise ValueError("net-friction cohort start is not UTC")
+        if not str(manifest["net_friction_trusted_cohort_start_run_id"]).strip():
+            raise ValueError("net-friction cohort has invalid start run id")
+        if not re.fullmatch(
+            r"[0-9a-fA-F]{40}", str(manifest["net_friction_trusted_cohort_start_commit"]),
+        ):
+            raise ValueError("net-friction cohort has invalid start commit")
+        if not re.fullmatch(
+            r"[0-9a-f]{64}", str(manifest["net_friction_assumptions_hash"]),
+        ):
+            raise ValueError("net-friction cohort has invalid assumptions hash")
     if any(not isinstance(item, dict) for item in manifest["exclusions"]):
         raise ValueError("overlap exclusion manifest has invalid exclusion entries")
     ids = [str(item.get("position_id") or "") for item in manifest["exclusions"]]

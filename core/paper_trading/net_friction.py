@@ -131,6 +131,11 @@ def validate_assumptions(assumptions: dict[str, Any]) -> list[str]:
     for field in ("venue", "quote_currency"):
         if not isinstance(assumptions.get(field), str) or not assumptions[field].strip():
             errors.append(f"{field} must be a non-empty string")
+    for field in ("entry_fee_liquidity", "exit_fee_liquidity"):
+        if assumptions.get(field) not in {"MAKER", "TAKER", "OTHER_EXPLICIT"}:
+            errors.append(f"{field} must be MAKER, TAKER or OTHER_EXPLICIT")
+    if not isinstance(assumptions.get("fee_rate_source"), str) or not assumptions["fee_rate_source"].strip():
+        errors.append("fee_rate_source must be a non-empty string")
     for field in (
         "entry_fee_bps", "exit_fee_bps", "entry_spread_bps",
         "exit_spread_bps", "entry_slippage_bps", "exit_slippage_bps",
@@ -252,8 +257,14 @@ def assess_position_friction(
         component_quote[name] = -(price * quantity * bps / _BPS)
         provenance[name] = {"source": source, "input_field": field, "unit": "bps"}
 
-    adverse_bps("entry_fee_effect", entry, "entry_fee_bps", "configured_fee_rate")
-    adverse_bps("exit_fee_effect", exit_price, "exit_fee_bps", "configured_fee_rate")
+    adverse_bps(
+        "entry_fee_effect", entry, "entry_fee_bps",
+        f"{assumptions['fee_rate_source']}:{assumptions['entry_fee_liquidity']}",
+    )
+    adverse_bps(
+        "exit_fee_effect", exit_price, "exit_fee_bps",
+        f"{assumptions['fee_rate_source']}:{assumptions['exit_fee_liquidity']}",
+    )
     adverse_bps("entry_spread_effect", entry, "entry_spread_bps", "configured_one_leg_adverse_spread")
     adverse_bps("exit_spread_effect", exit_price, "exit_spread_bps", "configured_one_leg_adverse_spread")
     adverse_bps("entry_slippage_effect", entry, "entry_slippage_bps", assumptions["slippage_source"])
@@ -356,12 +367,10 @@ def assess_position_friction(
         result["net_pnl_quote"] = None
         result["net_r"] = None
     else:
-        fully_observed = (
-            assumptions["slippage_source"] == "OBSERVED_FILL"
-            and funding_mode in {"NOT_APPLICABLE", "OBSERVED_EVENTS"}
-            and (not is_stop or provenance["gap_execution_effect"]["source"] == "observed_first_executable_price")
-        )
-        result["friction_model_status"] = "COMPLETE_OBSERVED" if fully_observed else "COMPLETE_ESTIMATED"
+        # v1 fee and spread rates are configured assumptions, so even when
+        # funding/gap/fills are observed the combined assessment is estimated.
+        # COMPLETE_OBSERVED is reserved for a future all-observed input contract.
+        result["friction_model_status"] = "COMPLETE_ESTIMATED"
     return result
 
 
@@ -418,10 +427,19 @@ def is_p1_03_trusted(
     try:
         opened = _utc(position.get("opened_at"), "opened_at")
         activated = _utc(manifest["net_friction_trusted_cohort_start_at"], "activation")
+        closed_bar_activated = _utc(
+            manifest.get("closed_bar_trusted_cohort_start_at"), "closed-bar activation",
+        )
     except ValueError:
         return False
+    excluded_ids = {
+        str(item.get("position_id") or "")
+        for item in manifest.get("exclusions", []) if isinstance(item, dict)
+    }
     return bool(
         opened >= activated
+        and opened >= closed_bar_activated
+        and str(position.get("position_id") or "") not in excluded_ids
         and position.get("signal_bar_contract_version") == "closed_bar_v1"
         and assessment.get("friction_model_version") == FRICTION_MODEL_VERSION
         and assessment.get("friction_model_status") in COMPLETE_STATUSES
