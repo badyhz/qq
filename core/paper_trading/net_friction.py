@@ -127,6 +127,9 @@ def validate_assumptions(assumptions: dict[str, Any]) -> list[str]:
         errors.append(f"friction_model_version must be {FRICTION_MODEL_VERSION}")
     mappings = assumptions.get("active_symbol_mapping")
     profiles = assumptions.get("profiles")
+    quote_currency = assumptions.get("quote_currency")
+    if not isinstance(quote_currency, str) or not quote_currency.strip():
+        errors.append("quote_currency must be a non-empty string")
     if not isinstance(mappings, dict) or not mappings:
         errors.append("active_symbol_mapping must be a non-empty object")
         return errors
@@ -148,6 +151,8 @@ def validate_assumptions(assumptions: dict[str, Any]) -> list[str]:
             errors.append(f"profile {profile_name} must be an object")
             continue
         errors.extend(_validate_profile(str(profile_name), profile))
+        if isinstance(profile, dict) and profile.get("maximum_supported_notional_currency") != quote_currency:
+            errors.append(f"profile {profile_name}: notional currency must match quote_currency")
     return errors
 
 
@@ -211,7 +216,10 @@ def _validate_profile(name: str, assumptions: dict[str, Any]) -> list[str]:
         limit = _decimal(assumptions.get("maximum_supported_notional_quote"), "maximum_supported_notional_quote")
         if limit <= 0:
             raise ValueError
-        if not isinstance(assumptions.get("maximum_supported_notional_currency"), str):
+        if (
+            not isinstance(assumptions.get("maximum_supported_notional_currency"), str)
+            or not assumptions["maximum_supported_notional_currency"].strip()
+        ):
             raise ValueError
         if assumptions.get("notional_measurement_version") != "entry_exit_max_v1":
             raise ValueError
@@ -282,6 +290,7 @@ def _base_result(position: dict[str, Any], assumptions: dict[str, Any] | None) -
         "exit_reference_price": position.get("exit_price"),
         "stop_reference_price": position.get("stop_loss"),
         "close_reason": position.get("exit_reason"),
+        "lifecycle_status": position.get("status"),
         "gross_pnl_quote": position.get("realized_pnl"),
         "gross_r": position.get("r_multiple"),
         "friction_model_version": FRICTION_MODEL_VERSION,
@@ -312,6 +321,8 @@ def assess_position_friction(
     try:
         profile, mapping_metadata = _resolve_profile(position, assumptions)
         result.update(mapping_metadata)
+        if mapping_metadata["instrument_type"] == "linear_perpetual":
+            result["funding_trusted"] = False
         unavailable = any("UNAVAILABLE" in str(profile.get(k)) for k in (
             "funding_mode", "gap_execution_mode",
         ))
@@ -360,6 +371,8 @@ def assess_position_friction(
         if profile["funding_mode"] == "OBSERVED_EVENTS" and isinstance(position.get("funding_events"), list):
             seen_events: dict[str, tuple[Decimal, Decimal, str]] = {}
             for event in position["funding_events"]:
+                if not isinstance(event, dict):
+                    raise ValueError("FUNDING_EVENT_MUST_BE_OBJECT")
                 if event.get("symbol") != position.get("symbol"):
                     raise ValueError("FUNDING_EVENT_SYMBOL_MISMATCH")
                 event_at = _utc(event.get("funding_timestamp"), "funding_timestamp").isoformat()
@@ -480,12 +493,20 @@ def assess_position_friction(
         try:
             if position.get("gap_execution_evidence_version") != "stop_trigger_bar_open_v1":
                 raise ValueError("unsupported gap execution evidence version")
+            trigger_open = _decimal(position.get("exit_trigger_bar_open"), "exit_trigger_bar_open")
+            _utc(position.get("exit_trigger_bar_close_time"), "exit_trigger_bar_close_time")
+            nominal_stop = _decimal(position.get("nominal_stop_price"), "nominal_stop_price")
+            if nominal_stop != stop:
+                raise ValueError("nominal stop evidence mismatch")
             executable = _decimal(
                 position.get("gap_execution_reference_price"),
                 "gap_execution_reference_price",
             )
             if executable <= 0:
                 raise ValueError("gap_execution_reference_price must be positive")
+            expected_executable = min(trigger_open, stop) if side == "LONG" else max(trigger_open, stop)
+            if executable != expected_executable:
+                raise ValueError("gap execution reference does not match trigger bar evidence")
             if side == "LONG" and executable < exit_price:
                 gap = (executable - exit_price) * quantity
             elif side == "SHORT" and executable > exit_price:
@@ -575,7 +596,7 @@ def aggregate_net_metrics(assessments: Iterable[dict[str, Any]]) -> dict[str, An
     if not rows:
         metrics_status = "NO_SAMPLE"
     elif len(complete) != len(rows):
-        metrics_status = "OUTCOME_SELECTION_BIAS" if outcome_bias else "INCOMPLETE_COVERAGE"
+        metrics_status = "INCOMPLETE_COVERAGE"
     else:
         metrics_status = "COMPLETE_ESTIMATED"
     result: dict[str, Any] = {
@@ -583,6 +604,10 @@ def aggregate_net_metrics(assessments: Iterable[dict[str, Any]]) -> dict[str, An
         "eligible_closed_count": len(rows),
         "net_complete_closed_count": len(complete),
         "net_incomplete_closed_count": len(incomplete),
+        "complete_assessment_count": len(complete),
+        "partial_assessment_count": status_counts["partial"],
+        "unavailable_assessment_count": status_counts["unavailable"],
+        "invalid_assessment_count": status_counts["invalid"],
         "net_coverage_ratio": _decimal_text(coverage),
         "net_metrics_status": metrics_status,
         "net_sample_status": "NO_SAMPLE" if not complete else "COMPLETE_SAMPLE",
@@ -592,6 +617,7 @@ def aggregate_net_metrics(assessments: Iterable[dict[str, Any]]) -> dict[str, An
         "excluded_by_status_reason": excluded_status_reasons,
         "coverage_by_close_reason": coverage_by_reason,
         "outcome_selection_bias": outcome_bias,
+        "selection_bias_warning": "OUTCOME_SELECTION_BIAS_DETECTED" if outcome_bias else None,
     }
     if not complete:
         result.update({
@@ -621,9 +647,15 @@ def aggregate_net_metrics(assessments: Iterable[dict[str, Any]]) -> dict[str, An
         "net_average_r": _decimal_text(sum(net_r, _ZERO) / len(net_r)) if trusted_complete_population else None,
         "diagnostic_complete_subset_count": len(complete),
         "diagnostic_complete_subset_net_profit_factor": pf,
+        "diagnostic_complete_subset_net_pf": pf,
         "diagnostic_complete_subset_net_expectancy_r": _decimal_text(sum(net_r, _ZERO) / len(net_r)),
+        "diagnostic_complete_subset_net_expectancy": _decimal_text(sum(net_r, _ZERO) / len(net_r)),
         "matched_subset_gross_profit_factor": gross_pf,
+        "matched_subset_gross_pf": gross_pf,
         "matched_subset_gross_expectancy_r": _decimal_text(sum(gross_r, _ZERO) / len(gross_r)),
+        "matched_subset_gross_expectancy": _decimal_text(sum(gross_r, _ZERO) / len(gross_r)),
+        "matched_subset_net_pf": pf,
+        "matched_subset_net_expectancy": _decimal_text(sum(net_r, _ZERO) / len(net_r)),
         "mean_friction_r": _decimal_text(sum(friction_r, _ZERO) / len(friction_r)),
         "median_friction_r": _decimal_text(Decimal(str(median(friction_r)))),
         "total_friction_r": _decimal_text(sum(friction_r, _ZERO)),

@@ -52,10 +52,21 @@ def _net_friction_gate(scorecard: dict) -> dict:
     if configured_hash and activated_hash and configured_hash != activated_hash:
         blockers.append("NET_FRICTION_ASSUMPTIONS_MISMATCH")
     trusted = net.get("trusted_metrics") or {}
+    integrity = net.get("integrity") or {}
+    if integrity.get("symbol_mapping_invalid_count", 0) > 0:
+        blockers.append("NET_FRICTION_SYMBOL_MAPPING_INVALID")
+    if integrity.get("notional_boundary_exceeded_count", 0) > 0:
+        blockers.append("NET_FRICTION_NOTIONAL_BOUNDARY_EXCEEDED")
+    if integrity.get("funding_not_trusted_count", 0) > 0:
+        blockers.append("NET_FRICTION_FUNDING_NOT_TRUSTED")
+    if integrity.get("gap_evidence_incomplete_count", 0) > 0:
+        blockers.append("NET_FRICTION_GAP_EVIDENCE_INCOMPLETE")
     if trusted.get("net_complete_closed_count", 0) == 0:
         blockers.append("NET_FRICTION_SAMPLE_EMPTY")
-    if trusted.get("net_incomplete_closed_count", 0) > 0:
-        blockers.append("NET_FRICTION_SAMPLE_INCOMPLETE")
+    if trusted.get("net_metrics_status") == "INCOMPLETE_COVERAGE":
+        blockers.append("NET_FRICTION_INCOMPLETE_COVERAGE")
+    if trusted.get("outcome_selection_bias") is True:
+        blockers.append("NET_FRICTION_OUTCOME_SELECTION_BIAS")
     return {
         "net_friction_gate_status": "BLOCKED" if blockers else "EVIDENCE_AVAILABLE_REVIEW_REQUIRED",
         "net_friction_gate_blockers": blockers,

@@ -199,6 +199,24 @@ def test_no_stop_gap_is_zero(side, executable):
     assert D(assess_position_friction(p, assumptions()), "gap_execution_effect_quote") == 0
 
 
+def test_gap_evidence_must_be_timezone_aware_and_formula_bound():
+    base = dict(
+        status="STOP_LOSS_HIT", exit_price="95", stop_loss="95",
+        realized_pnl="-10", r_multiple="-1", gap_execution_reference_price="90",
+        exit_trigger_bar_open="90", nominal_stop_price="95",
+        gap_execution_evidence_version="stop_trigger_bar_open_v1",
+    )
+    naive = assess_position_friction(
+        position(**base, exit_trigger_bar_close_time="2026-07-21T09:00:00"), assumptions(),
+    )
+    mismatch = assess_position_friction(position(**{
+        **base, "exit_trigger_bar_open": "96",
+        "exit_trigger_bar_close_time": "2026-07-21T09:00:00+00:00",
+    }), assumptions())
+    assert naive["friction_model_status"] == "PARTIAL"
+    assert mismatch["friction_model_status"] == "PARTIAL"
+
+
 @pytest.mark.parametrize("status", ["TAKE_PROFIT_HIT", "TIMEOUT_EXIT"])
 def test_non_stop_close_has_no_invented_gap(status):
     result = assess_position_friction(position(status=status), assumptions())
@@ -300,6 +318,26 @@ def test_unknown_symbol_fails_closed_with_mapping_diagnostics():
     assert result["errors"] == ["SYMBOL_MAPPING_NOT_FOUND"]
 
 
+def test_unknown_profile_and_symbol_case_fail_configuration_or_mapping():
+    config = assumptions()
+    config["active_symbol_mapping"]["BTCUSDT"]["profile"] = "MISSING"
+    assert assess_position_friction(position(), config)["friction_model_status"] == "PARTIAL"
+    assert assess_position_friction(position(symbol="btcusdt"), assumptions())["errors"] == [
+        "SYMBOL_MAPPING_NOT_FOUND"
+    ]
+
+
+@pytest.mark.parametrize(
+    "field,value,error",
+    [("venue", "wrong", "POSITION_VENUE_MISMATCH"),
+     ("instrument_type", "linear_perpetual", "POSITION_INSTRUMENT_TYPE_MISMATCH")],
+)
+def test_position_mapping_metadata_mismatch_is_invalid(field, value, error):
+    result = assess_position_friction(position(**{field: value}), assumptions())
+    assert result["friction_model_status"] == "INVALID"
+    assert result["errors"] == [error]
+
+
 def test_exact_symbol_mapping_and_notional_are_auditable():
     result = assess_position_friction(position(), assumptions())
     assert result["mapping_result"] == "EXACT_MATCH"
@@ -324,6 +362,19 @@ def test_notional_boundary_is_inclusive():
     )
     assert result["friction_model_status"] == "COMPLETE_ESTIMATED"
     assert result["assessed_notional_quote"] == "1000"
+
+
+def test_descriptive_notional_limit_is_rejected():
+    result = assess_position_friction(
+        position(), assumptions(maximum_supported_notional_quote="about 1000"),
+    )
+    assert result["friction_model_status"] == "PARTIAL"
+
+
+def test_unsupported_quote_currency_is_rejected():
+    result = assess_position_friction(position(), assumptions(quote_currency="USD"))
+    assert result["friction_model_status"] == "PARTIAL"
+    assert "notional currency must match" in " ".join(result["errors"])
 
 
 def test_global_scalar_funding_is_diagnostic_only_and_activation_rejected():
@@ -367,6 +418,16 @@ def test_observed_funding_rejects_wrong_symbol():
     assert result["errors"] == ["FUNDING_EVENT_SYMBOL_MISMATCH"]
 
 
+def test_malformed_observed_funding_event_fails_closed_without_exception():
+    config = assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS")
+    result = assess_position_friction(position(
+        funding_events=["malformed"], funding_events_verified_complete=True,
+    ), config)
+    assert result["friction_model_status"] == "INVALID"
+    assert result["funding_trusted"] is False
+    assert result["errors"] == ["FUNDING_EVENT_MUST_BE_OBJECT"]
+
+
 def test_observed_funding_deduplicates_identical_timestamp():
     config = assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS")
     event = _observed_event()
@@ -400,6 +461,23 @@ def test_symbol_funding_configuration_must_cover_position_symbol():
     assert result["errors"] == ["SYMBOL_FUNDING_RATE_NOT_CONFIGURED"]
 
 
+@pytest.mark.parametrize(
+    "side,rate,sign",
+    [("LONG", "0.001", -1), ("SHORT", "0.001", 1),
+     ("LONG", "-0.001", 1), ("SHORT", "-0.001", -1)],
+)
+def test_symbol_configured_funding_direction(side, rate, sign):
+    config = assumptions(
+        instrument_type="linear_perpetual", funding_mode="CONFIGURED_RATE_BY_SYMBOL",
+        funding_rate_by_symbol={"BTCUSDT": {
+            "rate_per_interval": rate, "interval_seconds": 14400,
+            "first_event_at": "2026-07-21T00:00:00+00:00", "source": "fixture",
+        }},
+    )
+    result = assess_position_friction(position(side=side), config)
+    assert D(result, "funding_effect_quote").compare(Decimal("0")) == Decimal(sign)
+
+
 def test_outcome_selection_bias_suppresses_trusted_net_result():
     winner = assess_position_friction(position(position_id="win"), assumptions())
     stop = assess_position_friction(position(
@@ -407,7 +485,8 @@ def test_outcome_selection_bias_suppresses_trusted_net_result():
         exit_price="95", realized_pnl="-10", r_multiple="-1",
     ), assumptions())
     metrics = aggregate_net_metrics([winner, stop])
-    assert metrics["net_metrics_status"] == "OUTCOME_SELECTION_BIAS"
+    assert metrics["net_metrics_status"] == "INCOMPLETE_COVERAGE"
+    assert metrics["selection_bias_warning"] == "OUTCOME_SELECTION_BIAS_DETECTED"
     assert metrics["net_profit_factor"] is None
     assert metrics["net_expectancy_r"] is None
     assert metrics["excluded_by_close_reason"] == {"stop_loss triggered": 1}
@@ -420,6 +499,24 @@ def test_full_coverage_allows_trusted_net_result():
     assert metrics["net_metrics_status"] == "COMPLETE_ESTIMATED"
     assert metrics["net_coverage_ratio"] == "1"
     assert metrics["net_expectancy_r"] is not None
+
+
+def test_reproduced_679_denominator_blocks_survivor_only_headline():
+    complete = assess_position_friction(position(), assumptions())
+    partial_stop = assess_position_friction(position(
+        status="STOP_LOSS_HIT", exit_reason="stop_loss triggered", exit_price="95",
+        realized_pnl="-10", r_multiple="-1",
+    ), assumptions())
+    metrics = aggregate_net_metrics([deepcopy(complete) for _ in range(327)] + [
+        deepcopy(partial_stop) for _ in range(352)
+    ])
+    assert metrics["eligible_closed_count"] == 679
+    assert metrics["complete_assessment_count"] == 327
+    assert metrics["partial_assessment_count"] == 352
+    assert metrics["net_profit_factor"] is None
+    assert metrics["net_expectancy_r"] is None
+    assert metrics["net_metrics_status"] == "INCOMPLETE_COVERAGE"
+    assert metrics["selection_bias_warning"] == "OUTCOME_SELECTION_BIAS_DETECTED"
 
 
 def test_empty_net_sample_is_explicit():
@@ -605,6 +702,34 @@ def test_gate_net_evidence_never_promotes():
     assert configured["automatic_promotion"] is False
 
 
+def test_gate_emits_all_integrity_blockers():
+    from scripts.run_sample_collection_gate import _net_friction_gate
+
+    result = _net_friction_gate({"net_friction": {
+        "model_configuration_status": "CONFIGURED",
+        "integrity": {
+            "symbol_mapping_invalid_count": 1,
+            "notional_boundary_exceeded_count": 1,
+            "funding_not_trusted_count": 1,
+            "gap_evidence_incomplete_count": 1,
+        },
+        "trusted_metrics": {
+            "net_complete_closed_count": 327,
+            "net_metrics_status": "INCOMPLETE_COVERAGE",
+            "outcome_selection_bias": True,
+        },
+    }})
+    assert set(result["net_friction_gate_blockers"]) >= {
+        "NET_FRICTION_SYMBOL_MAPPING_INVALID",
+        "NET_FRICTION_NOTIONAL_BOUNDARY_EXCEEDED",
+        "NET_FRICTION_FUNDING_NOT_TRUSTED",
+        "NET_FRICTION_INCOMPLETE_COVERAGE",
+        "NET_FRICTION_OUTCOME_SELECTION_BIAS",
+        "NET_FRICTION_GAP_EVIDENCE_INCOMPLETE",
+    }
+    assert result["testnet_ready"] is result["live_ready"] is False
+
+
 def test_console_public_payload_exposes_gross_net_without_assessments():
     from scripts.generate_static_console import build_public_json
 
@@ -619,6 +744,15 @@ def test_console_public_payload_exposes_gross_net_without_assessments():
                 "gross_profit_factor": 2.0,
                 "gross_expectancy_r": 1.0,
                 "complete_metrics": {
+                    "eligible_closed_count": 2, "complete_assessment_count": 1,
+                    "partial_assessment_count": 1, "invalid_assessment_count": 0,
+                    "unavailable_assessment_count": 0, "net_coverage_ratio": "0.5",
+                    "net_metrics_status": "INCOMPLETE_COVERAGE",
+                    "matched_subset_gross_pf": "2", "diagnostic_complete_subset_net_pf": "1.5",
+                    "matched_subset_gross_expectancy": "1",
+                    "diagnostic_complete_subset_net_expectancy": "0.8",
+                    "excluded_by_close_reason": {"stop_loss triggered": 1},
+                    "selection_bias_warning": "OUTCOME_SELECTION_BIAS_DETECTED",
                     "net_complete_closed_count": 1,
                     "net_profit_factor": "1.5",
                     "net_profit_factor_status": "FINITE",
@@ -639,8 +773,12 @@ def test_console_public_payload_exposes_gross_net_without_assessments():
     }
     payload = build_public_json(bundle, "a" * 40)
     assert payload["gross_profit_factor"] == 2.0
-    assert payload["net_profit_factor"] == "1.5"
+    assert payload["net_profit_factor"] is None
     assert payload["p1_03_trusted_closed"] == 1
+    assert payload["eligible_net_population"] == 2
+    assert payload["net_coverage_ratio"] == "0.5"
+    assert payload["net_metrics_status"] == "INCOMPLETE_COVERAGE"
+    assert payload["selection_bias_warning"] == "OUTCOME_SELECTION_BIAS_DETECTED"
     assert "assessments" not in payload
     assert "MUST_NOT_LEAK" not in json.dumps(payload)
 
@@ -654,6 +792,7 @@ def test_wrapper_activation_is_explicit_after_gate_and_ordinary_run_does_not_act
     assert 'if [ "$activate_net_friction_cohort" -eq 1 ]' in content
     assert "--activate-net-friction-cohort" in content
     assert "NET_FRICTION_CONFIG" in content
+    assert "validate_assumptions_for_activation" in content
 
 
 def test_net_activation_cli_and_metadata_without_flag(tmp_path, monkeypatch, capsys):

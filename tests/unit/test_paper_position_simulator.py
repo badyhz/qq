@@ -159,7 +159,12 @@ class TestFutureOnly:
 
     @pytest.mark.parametrize(
         "intent,bar_open,expected",
-        [(_make_intent(), 1.20, 1.20), (_make_long_intent(), 58000.0, 58000.0)],
+        [
+            (_make_intent(), 1.20, 1.20),
+            (_make_intent(), 1.15, 1.18),
+            (_make_long_intent(), 58000.0, 58000.0),
+            (_make_long_intent(), 60000.0, 59000.0),
+        ],
     )
     def test_stop_persists_trigger_bar_gap_evidence(self, intent, bar_open, expected):
         pos = open_position(intent)

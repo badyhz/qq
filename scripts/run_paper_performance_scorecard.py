@@ -28,6 +28,7 @@ from core.paper_trading.net_friction import (
     aggregate_net_metrics,
     assess_position_friction,
     assumptions_hash,
+    is_p1_03_population_member,
     is_p1_03_trusted,
     load_assumptions,
     validate_assumptions,
@@ -319,12 +320,34 @@ def main():
         for row in prior_assessments + assessments if row.get("assessment_id")
     }
     all_assessments = [assessment_versions[key] for key in sorted(assessment_versions)]
-    trusted_assessments = [
+    trusted_population_assessments = [
         assessment for position, assessment in zip(eligible_positions, assessments)
-        if is_p1_03_trusted(position, assessment, manifest)
+        if is_p1_03_population_member(position, assessment, manifest)
     ]
+    trusted_complete_count = sum(
+        is_p1_03_trusted(position, assessment, manifest)
+        for position, assessment in zip(eligible_positions, assessments)
+    )
     complete_metrics = aggregate_net_metrics(assessments)
-    trusted_metrics = aggregate_net_metrics(trusted_assessments)
+    trusted_metrics = aggregate_net_metrics(trusted_population_assessments)
+    trusted_metrics["trusted_complete_assessment_count"] = trusted_complete_count
+    integrity_rows = trusted_population_assessments
+    integrity = {
+        "symbol_mapping_invalid_count": sum(
+            any("MAPPING" in error for error in row.get("errors", [])) for row in integrity_rows
+        ),
+        "notional_boundary_exceeded_count": sum(
+            row.get("notional_boundary_result") == "EXCEEDED" for row in integrity_rows
+        ),
+        "funding_not_trusted_count": sum(
+            row.get("funding_trusted") is False for row in integrity_rows
+        ),
+        "gap_evidence_incomplete_count": sum(
+            row.get("lifecycle_status") == "STOP_LOSS_HIT"
+            and row.get("friction_model_status") not in {"COMPLETE_ESTIMATED", "COMPLETE_OBSERVED"}
+            for row in integrity_rows
+        ),
+    }
     net_friction = {
         "friction_model_version": FRICTION_MODEL_VERSION,
         "model_configuration_status": (
@@ -342,6 +365,7 @@ def main():
         "gross_average_r": scorecard.global_metrics.avg_r_multiple,
         "complete_metrics": complete_metrics,
         "trusted_metrics": trusted_metrics,
+        "integrity": integrity,
         "p1_03_activation": {
             key: (manifest or {}).get(key) for key in (
                 "net_friction_trusted_cohort_start_at",

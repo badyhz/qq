@@ -601,6 +601,9 @@ _HTML_TEMPLATE = """\
 <tr><th>Model</th><td>{net_model}</td><th>Status</th><td>{net_status}</td></tr>
 <tr><th>Assumptions Hash</th><td colspan="3">{net_hash}</td></tr>
 <tr><th>P1-03 Trusted Closed</th><td colspan="3">{net_trusted_closed}</td></tr>
+<tr><th>Eligible / Complete</th><td>{net_eligible} / {net_complete_count}</td><th>Coverage</th><td>{net_coverage}</td></tr>
+<tr><th>Partial / Invalid+Unavailable</th><td>{net_partial} / {net_invalid_unavailable}</td><th>Trusted Status</th><td>{net_metrics_status}</td></tr>
+<tr><th>Matched Gross / Net PF</th><td>{matched_gross_pf} / {diagnostic_net_pf}</td><th>Selection Bias</th><td>{selection_bias_warning}</td></tr>
 </table>
 </div>
 
@@ -676,11 +679,15 @@ def render_readonly_html(
     net = sc.get("net_friction") if isinstance(sc.get("net_friction"), dict) else {}
     net_complete = net.get("complete_metrics") or {}
     net_trusted = net.get("trusted_metrics") or {}
+    net_metrics = (
+        net_trusted if net_trusted.get("eligible_closed_count", 0) > 0 else net_complete
+    )
     _, _, gross_pf_display = _public_profit_factor(
         net.get("gross_profit_factor", global_metrics.get("profit_factor"))
     )
-    net_pf_display = net_complete.get("net_profit_factor")
-    if net_complete.get("net_profit_factor_status") == "INFINITE":
+    net_headline_allowed = str(net_metrics.get("net_metrics_status", "")).startswith("COMPLETE_")
+    net_pf_display = net_metrics.get("net_profit_factor") if net_headline_allowed else None
+    if net_metrics.get("net_profit_factor_status") == "INFINITE":
         net_pf_display = "∞"
     if net_pf_display is None:
         net_pf_display = "—"
@@ -846,13 +853,27 @@ def render_readonly_html(
         gross_pf=_html(gross_pf_display),
         net_pf=_html(net_pf_display),
         gross_expectancy=_html(net.get("gross_expectancy_r", global_metrics.get("expectancy_r"))),
-        net_expectancy=_html(net_complete.get("net_expectancy_r") or "—"),
-        mean_friction=_html(net_complete.get("mean_friction_r") or "—"),
-        median_friction=_html(net_complete.get("median_friction_r") or "—"),
+        net_expectancy=_html(
+            (net_metrics.get("net_expectancy_r") if net_headline_allowed else None) or "—"
+        ),
+        mean_friction=_html(net_metrics.get("mean_friction_r") or "—"),
+        median_friction=_html(net_metrics.get("median_friction_r") or "—"),
         net_model=_html(net.get("friction_model_version") or "net_friction_v1"),
         net_status=_html(net.get("model_configuration_status") or "UNCONFIGURED"),
         net_hash=_html(net.get("friction_assumptions_hash") or "—"),
         net_trusted_closed=_html(net_trusted.get("net_complete_closed_count", 0)),
+        net_eligible=_html(net_metrics.get("eligible_closed_count", 0)),
+        net_complete_count=_html(net_metrics.get("complete_assessment_count", 0)),
+        net_coverage=_html(net_metrics.get("net_coverage_ratio", "0")),
+        net_partial=_html(net_metrics.get("partial_assessment_count", 0)),
+        net_invalid_unavailable=_html(
+            net_metrics.get("invalid_assessment_count", 0)
+            + net_metrics.get("unavailable_assessment_count", 0)
+        ),
+        net_metrics_status=_html(net_metrics.get("net_metrics_status", "NO_SAMPLE")),
+        matched_gross_pf=_html(net_metrics.get("matched_subset_gross_pf") or "—"),
+        diagnostic_net_pf=_html(net_metrics.get("diagnostic_complete_subset_net_pf") or "—"),
+        selection_bias_warning=_html(net_metrics.get("selection_bias_warning") or "NO"),
         strategies_title=labels["strategies_title"],
         strat_id_label=labels["strat_id_label"],
         closed_label=labels["closed_label"],
@@ -981,6 +1002,9 @@ def build_public_json(
     net = sc.get("net_friction") if isinstance(sc.get("net_friction"), dict) else {}
     net_complete = net.get("complete_metrics") or {}
     net_trusted = net.get("trusted_metrics") or {}
+    net_metrics = (
+        net_trusted if net_trusted.get("eligible_closed_count", 0) > 0 else net_complete
+    )
     public_gross_pf, public_gross_pf_status, _ = _public_profit_factor(
         net.get("gross_profit_factor", global_metrics.get("profit_factor"))
     )
@@ -1004,14 +1028,36 @@ def build_public_json(
         "slippage_adjusted": net_complete.get("net_complete_closed_count", 0) > 0,
         "gross_profit_factor": public_gross_pf,
         "gross_profit_factor_status": public_gross_pf_status,
-        "net_profit_factor": net_complete.get("net_profit_factor"),
-        "net_profit_factor_status": net_complete.get("net_profit_factor_status", "NO_SAMPLE"),
+        "net_profit_factor": (
+            net_metrics.get("net_profit_factor")
+            if str(net_metrics.get("net_metrics_status", "")).startswith("COMPLETE_") else None
+        ),
+        "net_profit_factor_status": (
+            net_metrics.get("net_profit_factor_status", "NO_SAMPLE")
+            if str(net_metrics.get("net_metrics_status", "")).startswith("COMPLETE_") else "NO_RESULT"
+        ),
         "gross_expectancy_r": net.get("gross_expectancy_r", global_metrics.get("expectancy_r")),
-        "net_expectancy_r": net_complete.get("net_expectancy_r"),
-        "mean_friction_r": net_complete.get("mean_friction_r"),
-        "median_friction_r": net_complete.get("median_friction_r"),
+        "net_expectancy_r": (
+            net_metrics.get("net_expectancy_r")
+            if str(net_metrics.get("net_metrics_status", "")).startswith("COMPLETE_") else None
+        ),
+        "eligible_net_population": net_metrics.get("eligible_closed_count", 0),
+        "net_complete_count": net_metrics.get("complete_assessment_count", 0),
+        "net_partial_count": net_metrics.get("partial_assessment_count", 0),
+        "net_invalid_count": net_metrics.get("invalid_assessment_count", 0),
+        "net_unavailable_count": net_metrics.get("unavailable_assessment_count", 0),
+        "net_coverage_ratio": net_metrics.get("net_coverage_ratio", "0"),
+        "net_metrics_status": net_metrics.get("net_metrics_status", "NO_SAMPLE"),
+        "diagnostic_matched_subset_gross_pf": net_metrics.get("matched_subset_gross_pf"),
+        "diagnostic_matched_subset_net_pf": net_metrics.get("diagnostic_complete_subset_net_pf"),
+        "diagnostic_matched_subset_gross_expectancy": net_metrics.get("matched_subset_gross_expectancy"),
+        "diagnostic_matched_subset_net_expectancy": net_metrics.get("diagnostic_complete_subset_net_expectancy"),
+        "excluded_by_close_reason": net_metrics.get("excluded_by_close_reason", {}),
+        "selection_bias_warning": net_metrics.get("selection_bias_warning"),
+        "mean_friction_r": net_metrics.get("mean_friction_r"),
+        "median_friction_r": net_metrics.get("median_friction_r"),
         "friction_component_totals_r": {
-            key: net_complete.get(key) for key in (
+            key: net_metrics.get(key) for key in (
                 "fee_effect_r", "spread_effect_r", "slippage_effect_r",
                 "funding_effect_r", "gap_effect_r",
             )

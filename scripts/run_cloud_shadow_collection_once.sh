@@ -178,6 +178,13 @@ print(datetime.now(timezone.utc).isoformat(timespec="seconds"))
         fi
 
         if [ "$activate_net_friction_cohort" -eq 1 ]; then
+            python3 - "$friction_config" <<'PY'
+import sys
+from core.paper_trading.net_friction import load_assumptions, validate_assumptions_for_activation
+errors = validate_assumptions_for_activation(load_assumptions(sys.argv[1]))
+if errors:
+    raise SystemExit("Net-friction activation contract rejected: " + "; ".join(errors))
+PY
             NET_FRICTION_ACTIVATION_TIMESTAMP="$(python3 -c '
 from datetime import datetime, timezone
 print(datetime.now(timezone.utc).isoformat(timespec="seconds"))
