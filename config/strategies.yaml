@@ -10,6 +10,30 @@ version: 1
 default_mode: paper
 default_alert: feishu_payload_only
 
+# Governed public-read-only evidence collection. Disabled until a separate
+# deployment approval; these are diagnostic maturity targets, not friction
+# assumptions and not a P1-03 activation package.
+friction_evidence:
+  enabled: false
+  evidence_version: friction_evidence_v1
+  venue: binance
+  market_type: linear_perpetual
+  public_adapter: binance_usdm_public
+  depth_limit: 20
+  diagnostic_notional_bands:
+    - 1000
+    - 5000
+    - 10000
+  staleness_threshold_seconds: 120
+  storage_filename: friction_evidence.jsonl
+  funding_synchronization_lookback_seconds: 86400
+  readiness_targets:
+    minimum_calendar_days: 14
+    minimum_snapshots_per_symbol: 250
+    minimum_success_ratio: "0.95"
+    minimum_prospective_stops: 30
+    funding_continuity_required: true
+
 data_apis:
   binance_usdm_klines:
     type: binance_public_klines

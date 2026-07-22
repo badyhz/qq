@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import List, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -121,6 +122,79 @@ class BinancePublicKlineAdapter(DataSource):
             timestamp=bar.timestamp,
             source="binance_public",
         )
+
+    def _get_public_json(self, endpoint: str, params: dict) -> object:
+        """GET one allowlisted unauthenticated USD-M public endpoint."""
+        if not self._network_enabled or endpoint not in {
+            "/fapi/v1/ticker/bookTicker", "/fapi/v1/depth", "/fapi/v1/fundingRate",
+        }:
+            raise ValueError("public evidence endpoint is disabled or unsupported")
+        url = f"{self._base_url}{endpoint}?{urlencode(params)}"
+        try:
+            with urlopen(Request(url, method="GET"), timeout=self._timeout) as resp:
+                return json.loads(resp.read().decode())
+        except (URLError, HTTPError, json.JSONDecodeError, OSError) as exc:
+            raise ValueError("public evidence source error") from exc
+
+    @staticmethod
+    def _event_at(epoch_ms: object) -> str:
+        return datetime.fromtimestamp(float(epoch_ms) / 1000, timezone.utc).isoformat(timespec="milliseconds")
+
+    def get_top_of_book(self, symbol: str) -> dict:
+        if not _validate_symbol(symbol):
+            raise ValueError("invalid symbol")
+        raw = self._get_public_json("/fapi/v1/ticker/bookTicker", {"symbol": symbol})
+        if not isinstance(raw, dict):
+            raise ValueError("malformed top-of-book response")
+        return {
+            "symbol": raw.get("symbol"),
+            "best_bid_price": raw.get("bidPrice"),
+            "best_bid_quantity": raw.get("bidQty"),
+            "best_ask_price": raw.get("askPrice"),
+            "best_ask_quantity": raw.get("askQty"),
+            "exchange_event_at": self._event_at(raw.get("time")),
+            "source": "binance_usdm_public",
+        }
+
+    def get_depth(self, symbol: str, limit: int = 20) -> dict:
+        if not _validate_symbol(symbol) or limit <= 0 or limit > 1000:
+            raise ValueError("invalid depth request")
+        raw = self._get_public_json("/fapi/v1/depth", {"symbol": symbol, "limit": limit})
+        if not isinstance(raw, dict):
+            raise ValueError("malformed depth response")
+        return {
+            "symbol": symbol,
+            "bids": raw.get("bids"),
+            "asks": raw.get("asks"),
+            "exchange_event_at": self._event_at(raw.get("E") or raw.get("T")),
+            "source": "binance_usdm_public",
+        }
+
+    def get_funding_events(self, symbol: str, lookback_seconds: int) -> list[dict]:
+        if not _validate_symbol(symbol) or lookback_seconds <= 0:
+            raise ValueError("invalid funding request")
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        raw = self._get_public_json("/fapi/v1/fundingRate", {
+            "symbol": symbol,
+            "startTime": now_ms - lookback_seconds * 1000,
+            "endTime": now_ms,
+            "limit": 1000,
+        })
+        if not isinstance(raw, list):
+            raise ValueError("malformed funding response")
+        ordered = sorted((item for item in raw if isinstance(item, dict)), key=lambda item: int(item.get("fundingTime", 0)))
+        times = [int(item.get("fundingTime", 0)) for item in ordered]
+        intervals = [later - earlier for earlier, later in zip(times, times[1:]) if later > earlier]
+        interval_seconds = min(intervals) // 1000 if intervals else 0
+        return [{
+            "symbol": item.get("symbol"),
+            "funding_event_at": self._event_at(item.get("fundingTime")),
+            "signed_funding_rate": item.get("fundingRate"),
+            "mark_price": item.get("markPrice"),
+            "funding_interval_seconds": interval_seconds,
+            "source": "binance_usdm_public",
+            "source_event_identity": f"{item.get('symbol')}:{item.get('fundingTime')}",
+        } for item in ordered]
 
     def is_available(self) -> bool:
         """Check if adapter is configured."""
