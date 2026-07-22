@@ -10,11 +10,11 @@ version: 1
 default_mode: paper
 default_alert: feishu_payload_only
 
-# Governed public-read-only evidence collection. Disabled until a separate
-# deployment approval; these are diagnostic maturity targets, not friction
-# assumptions and not a P1-03 activation package.
+# Governed public-read-only evidence collection. The tracked enabled value is
+# the sole runtime master switch; these are diagnostic maturity targets, not
+# friction assumptions and not a P1-03 activation package.
 friction_evidence:
-  enabled: false
+  enabled: true
   evidence_version: friction_evidence_v1
   venue: binance
   market_type: linear_perpetual

@@ -91,6 +91,29 @@ print(context["run_id"], context["started_at"], context["report_date"])
         echo "batch_started_at=$BATCH_STARTED_AT"
         echo "report_date=$REPORT_DATE"
 
+        FRICTION_EVIDENCE_CONFIG_ENABLED=0
+        FRICTION_EVIDENCE_CONFIG_RC=0
+        if python3 -m core.paper_trading.friction_evidence \
+            --strategy-config "$PROJECT_DIR/config/strategies.yaml" \
+            --check-config-enabled >/dev/null; then
+            FRICTION_EVIDENCE_CONFIG_ENABLED=1
+        else
+            FRICTION_EVIDENCE_CONFIG_RC=$?
+            if [ "$FRICTION_EVIDENCE_CONFIG_RC" -ne 3 ]; then
+                echo "FRICTION_EVIDENCE_CONFIG_ENABLED:NO"
+                echo "FRICTION_EVIDENCE_CLI_REQUESTED:$([ "$collect_friction_evidence" -eq 1 ] && echo YES || echo NO)"
+                echo "FRICTION_EVIDENCE_EXECUTION_REQUESTED:NO"
+                echo "FRICTION_EVIDENCE_ENABLEMENT_SOURCE:DISABLED_BY_TRACKED_CONFIG"
+                echo "FRICTION_EVIDENCE_RESULT:FAIL"
+                echo "Friction evidence tracked configuration validation FAILED"
+                exit "$FRICTION_EVIDENCE_CONFIG_RC"
+            fi
+        fi
+        echo "FRICTION_EVIDENCE_CONFIG_ENABLED:$([ "$FRICTION_EVIDENCE_CONFIG_ENABLED" -eq 1 ] && echo YES || echo NO)"
+        echo "FRICTION_EVIDENCE_CLI_REQUESTED:$([ "$collect_friction_evidence" -eq 1 ] && echo YES || echo NO)"
+        echo "FRICTION_EVIDENCE_EXECUTION_REQUESTED:$([ "$FRICTION_EVIDENCE_CONFIG_ENABLED" -eq 1 ] && echo YES || echo NO)"
+        echo "FRICTION_EVIDENCE_ENABLEMENT_SOURCE:$([ "$FRICTION_EVIDENCE_CONFIG_ENABLED" -eq 1 ] && echo TRACKED_CONFIG || echo DISABLED_BY_TRACKED_CONFIG)"
+
         FRICTION_SCORECARD_ARGS=()
         FRICTION_ASSUMPTIONS_HASH=""
         if [ -n "$friction_config" ]; then
@@ -141,18 +164,33 @@ PY
             --defer-gate \
             --defer-registry
 
-        if [ "$collect_friction_evidence" -eq 1 ]; then
+        if [ "$FRICTION_EVIDENCE_CONFIG_ENABLED" -eq 1 ]; then
             echo
             echo "=== Public Friction Evidence (observation only) ==="
-            if ! python3 -m core.paper_trading.friction_evidence \
+            FRICTION_EVIDENCE_OUTPUT=""
+            if FRICTION_EVIDENCE_OUTPUT="$(python3 -m core.paper_trading.friction_evidence \
                 --strategy-config "$PROJECT_DIR/config/strategies.yaml" \
                 --output-dir "$PROJECT_DIR/reports/strategies" \
                 --pipeline-run-id "$BATCH_RUN_ID" \
                 --pipeline-commit "$RUN_COMMIT" \
                 --report-date "$REPORT_DATE" \
                 --collected-at "$BATCH_STARTED_AT" \
-                --allow-public-http; then
+                --allow-public-http)"; then
+                echo "$FRICTION_EVIDENCE_OUTPUT"
+                if [[ "$FRICTION_EVIDENCE_OUTPUT" == *'"status": "PASS_WITH_SOURCE_ERRORS"'* ]]; then
+                    echo "FRICTION_EVIDENCE_RESULT:PARTIAL"
+                else
+                    echo "FRICTION_EVIDENCE_RESULT:COLLECTED"
+                fi
+            else
+                echo "$FRICTION_EVIDENCE_OUTPUT"
+                echo "FRICTION_EVIDENCE_RESULT:FAIL"
                 echo "Public friction evidence incomplete; Shadow lifecycle continues"
+            fi
+        else
+            echo "FRICTION_EVIDENCE_RESULT:DISABLED"
+            if [ "$collect_friction_evidence" -eq 1 ]; then
+                echo "friction_evidence_decision=DISABLED_BY_TRACKED_CONFIG"
             fi
         fi
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 from copy import deepcopy
 from decimal import Decimal
 
@@ -930,7 +932,7 @@ def build_funding(raw=None, **kwargs):
 def test_evidence_config_and_active_universe_are_governed():
     config = evidence_config()
     universe = evidence_universe()
-    assert config["enabled"] is False
+    assert config["enabled"] is True
     assert config["evidence_version"] == EVIDENCE_VERSION
     assert config["diagnostic_notional_bands"] == [1000, 5000, 10000]
     assert universe["symbols"] == [
@@ -1362,6 +1364,95 @@ def test_readiness_report_is_machine_readable_and_explicit(tmp_path):
 def test_wrapper_evidence_path_is_explicit_observation_only():
     content = open("scripts/run_cloud_shadow_collection_once.sh").read()
     assert "--collect-friction-evidence" in content
+    assert "--check-config-enabled" in content
+    assert 'if [ "$FRICTION_EVIDENCE_CONFIG_ENABLED" -eq 1 ]' in content
+    collector_block = content[content.index('if [ "$FRICTION_EVIDENCE_CONFIG_ENABLED" -eq 1 ]'):]
+    assert "python3 -m core.paper_trading.friction_evidence" in collector_block
+    assert "FRICTION_EVIDENCE_ENABLEMENT_SOURCE:" in content
     assert "Public friction evidence incomplete; Shadow lifecycle continues" in content
     assert "core.paper_trading.friction_evidence" in content
     assert "activate-net-friction-cohort" in content  # remains a separate explicit path
+
+
+def _governed_wrapper_fixture(tmp_path, *, config_enabled):
+    project = tmp_path / "project"
+    fakebin = project / "fakebin"
+    (project / ".venv" / "bin").mkdir(parents=True)
+    (project / "logs" / "cloud_shadow").mkdir(parents=True)
+    fakebin.mkdir()
+    call_log = tmp_path / "calls.log"
+    (project / ".venv" / "bin" / "activate").write_text(
+        f'export PATH="{fakebin}:$PATH"\n'
+    )
+    fake_python = fakebin / "python3"
+    fake_python.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$CALL_LOG\"\n"
+        "if [[ \"$*\" == *--check-config-enabled* ]]; then\n"
+        "  if [ \"$CONFIG_ENABLED\" = 1 ]; then echo ENABLED; exit 0; fi\n"
+        "  echo DISABLED; exit 3\n"
+        "elif [[ \"$*\" == *build_pipeline_context* ]]; then\n"
+        "  echo 'RUN-GOVERNED 2026-07-22T01:00:30+00:00 2026-07-22'\n"
+        "elif [[ \"$*\" == *core.paper_trading.friction_evidence* ]]; then\n"
+        "  echo '{\"status\": \"PASS\", \"active_symbol_count\": 8, \"appended\": 32, \"duplicate_symbol_requests\": 0, \"authenticated_calls\": 0, \"orders\": 0}'\n"
+        "fi\n"
+    )
+    fake_python.chmod(0o755)
+    fake_git = fakebin / "git"
+    fake_git.write_text("#!/usr/bin/env bash\necho " + "a" * 40 + "\n")
+    fake_git.chmod(0o755)
+    env = os.environ.copy()
+    env.update({
+        "PROJECT_DIR": str(project), "CALL_LOG": str(call_log),
+        "CONFIG_ENABLED": "1" if config_enabled else "0",
+        "PATH": f"{fakebin}:{env['PATH']}",
+    })
+    return call_log, env
+
+
+@pytest.mark.parametrize(
+    ("config_enabled", "cli_requested", "expected_result", "expected_source", "cycles"),
+    [
+        (False, False, "DISABLED", "DISABLED_BY_TRACKED_CONFIG", 0),
+        (False, True, "DISABLED", "DISABLED_BY_TRACKED_CONFIG", 0),
+        (True, False, "COLLECTED", "TRACKED_CONFIG", 1),
+        (True, True, "COLLECTED", "TRACKED_CONFIG", 1),
+    ],
+)
+def test_wrapper_tracked_config_is_single_master_switch(
+    tmp_path, config_enabled, cli_requested, expected_result, expected_source, cycles,
+):
+    call_log, env = _governed_wrapper_fixture(tmp_path, config_enabled=config_enabled)
+    command = ["bash", "scripts/run_cloud_shadow_collection_once.sh"]
+    if cli_requested:
+        command.append("--collect-friction-evidence")
+    result = subprocess.run(command, cwd=".", env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    output = result.stdout
+    assert f"FRICTION_EVIDENCE_CONFIG_ENABLED:{'YES' if config_enabled else 'NO'}" in output
+    assert f"FRICTION_EVIDENCE_CLI_REQUESTED:{'YES' if cli_requested else 'NO'}" in output
+    assert f"FRICTION_EVIDENCE_EXECUTION_REQUESTED:{'YES' if config_enabled else 'NO'}" in output
+    assert f"FRICTION_EVIDENCE_ENABLEMENT_SOURCE:{expected_source}" in output
+    assert f"FRICTION_EVIDENCE_RESULT:{expected_result}" in output
+    calls = call_log.read_text().splitlines()
+    collection_calls = [
+        line for line in calls
+        if "core.paper_trading.friction_evidence" in line and "--allow-public-http" in line
+    ]
+    assert len(collection_calls) == cycles
+    assert not any("--activate-net-friction-cohort" in line for line in calls)
+    assert not any("--net-friction-config" in line for line in calls)
+    assert "cc9bc6bbb9fd4a7b81f438391e35ae91f7d64e2767d1e8b732451dab923befc3" not in output
+    assert "48edb9dcacbb032d69bdc16ffffd91b786b399c8ce8a88199ccbe676d4653a91" not in output
+    if not config_enabled and cli_requested:
+        assert "friction_evidence_decision=DISABLED_BY_TRACKED_CONFIG" in output
+
+
+@pytest.mark.parametrize("bad_enabled", ["true", 1, None])
+def test_evidence_config_enabled_must_be_boolean(tmp_path, bad_enabled):
+    raw = yaml.safe_load(open(STRATEGY_CONFIG))
+    raw["friction_evidence"]["enabled"] = bad_enabled
+    path = tmp_path / "strategies.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match="enabled must be boolean"):
+        load_evidence_config(str(path))

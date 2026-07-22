@@ -219,6 +219,8 @@ def load_evidence_config(strategy_config_path: str) -> dict[str, Any]:
     }
     if required - config.keys():
         raise ValueError(f"missing friction evidence config: {sorted(required - config.keys())}")
+    if not isinstance(config["enabled"], bool):
+        raise ValueError("friction evidence enabled must be boolean")
     if config["evidence_version"] != EVIDENCE_VERSION:
         raise ValueError("unsupported evidence version")
     if config["venue"] != "binance" or config["market_type"] != "linear_perpetual":
@@ -792,6 +794,17 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     from core.paper_trading.data_source import DataSourceConfig
     from core.paper_trading.public_market_adapter import BinancePublicKlineAdapter
+
+    probe = argparse.ArgumentParser(add_help=False)
+    probe.add_argument("--strategy-config")
+    probe.add_argument("--check-config-enabled", action="store_true")
+    probe_args, _ = probe.parse_known_args(argv)
+    if probe_args.check_config_enabled:
+        if not probe_args.strategy_config:
+            probe.error("--check-config-enabled requires --strategy-config")
+        config = load_evidence_config(probe_args.strategy_config)
+        print("ENABLED" if config["enabled"] else "DISABLED")
+        return 0 if config["enabled"] else 3
 
     parser = argparse.ArgumentParser(description="Collect public friction evidence (no orders)")
     parser.add_argument("--strategy-config", required=True)
