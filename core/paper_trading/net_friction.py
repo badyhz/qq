@@ -125,17 +125,40 @@ def validate_assumptions(assumptions: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if assumptions.get("friction_model_version") != FRICTION_MODEL_VERSION:
         errors.append(f"friction_model_version must be {FRICTION_MODEL_VERSION}")
-    instrument = assumptions.get("instrument_type")
-    if instrument not in SUPPORTED_INSTRUMENT_TYPES:
-        errors.append("instrument_type must be linear_spot or linear_perpetual")
-    for field in ("venue", "quote_currency"):
-        if not isinstance(assumptions.get(field), str) or not assumptions[field].strip():
-            errors.append(f"{field} must be a non-empty string")
+    mappings = assumptions.get("active_symbol_mapping")
+    profiles = assumptions.get("profiles")
+    if not isinstance(mappings, dict) or not mappings:
+        errors.append("active_symbol_mapping must be a non-empty object")
+        return errors
+    if not isinstance(profiles, dict) or not profiles:
+        errors.append("profiles must be a non-empty object")
+        return errors
+    for symbol, mapping in mappings.items():
+        if symbol != str(symbol).upper() or not symbol:
+            errors.append("active symbol keys must be non-empty uppercase symbols")
+        if not isinstance(mapping, dict) or mapping.get("profile") not in profiles:
+            errors.append(f"{symbol} must reference a configured profile")
+            continue
+        if mapping.get("instrument_type") not in SUPPORTED_INSTRUMENT_TYPES:
+            errors.append(f"{symbol} instrument_type must be linear_spot or linear_perpetual")
+        if not isinstance(mapping.get("venue"), str) or not mapping["venue"].strip():
+            errors.append(f"{symbol} venue must be a non-empty string")
+    for profile_name, profile in profiles.items():
+        if not isinstance(profile, dict):
+            errors.append(f"profile {profile_name} must be an object")
+            continue
+        errors.extend(_validate_profile(str(profile_name), profile))
+    return errors
+
+
+def _validate_profile(name: str, assumptions: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    prefix = f"profile {name}: "
     for field in ("entry_fee_liquidity", "exit_fee_liquidity"):
         if assumptions.get(field) not in {"MAKER", "TAKER", "OTHER_EXPLICIT"}:
-            errors.append(f"{field} must be MAKER, TAKER or OTHER_EXPLICIT")
+            errors.append(prefix + f"{field} must be MAKER, TAKER or OTHER_EXPLICIT")
     if not isinstance(assumptions.get("fee_rate_source"), str) or not assumptions["fee_rate_source"].strip():
-        errors.append("fee_rate_source must be a non-empty string")
+        errors.append(prefix + "fee_rate_source must be a non-empty string")
     for field in (
         "entry_fee_bps", "exit_fee_bps", "entry_spread_bps",
         "exit_spread_bps", "entry_slippage_bps", "exit_slippage_bps",
@@ -143,18 +166,17 @@ def validate_assumptions(assumptions: dict[str, Any]) -> list[str]:
         try:
             _decimal(assumptions.get(field), field, nonnegative=True)
         except ValueError as exc:
-            errors.append(str(exc))
+            errors.append(prefix + str(exc))
     if assumptions.get("spread_input_semantics") != "ONE_LEG_ADVERSE_BPS":
-        errors.append("spread_input_semantics must be ONE_LEG_ADVERSE_BPS")
+        errors.append(prefix + "spread_input_semantics must be ONE_LEG_ADVERSE_BPS")
     if assumptions.get("slippage_source") not in {"CONFIGURED_ESTIMATE", "OBSERVED_FILL"}:
-        errors.append("slippage_source must be CONFIGURED_ESTIMATE or OBSERVED_FILL")
+        errors.append(prefix + "slippage_source must be CONFIGURED_ESTIMATE or OBSERVED_FILL")
     funding_mode = assumptions.get("funding_mode")
-    if instrument == "linear_spot" and funding_mode != "NOT_APPLICABLE":
-        errors.append("linear_spot funding_mode must be NOT_APPLICABLE")
-    if instrument == "linear_perpetual" and funding_mode not in {
-        "OBSERVED_EVENTS", "CONFIGURED_RATE_PER_INTERVAL", "UNAVAILABLE",
+    if funding_mode not in {
+        "NOT_APPLICABLE", "OBSERVED_EVENTS", "CONFIGURED_RATE_BY_SYMBOL",
+        "CONFIGURED_RATE_PER_INTERVAL", "UNAVAILABLE",
     }:
-        errors.append("linear_perpetual funding_mode is invalid")
+        errors.append(prefix + "funding_mode is invalid")
     if funding_mode == "CONFIGURED_RATE_PER_INTERVAL":
         try:
             _decimal(assumptions.get("funding_rate_per_interval"), "funding_rate_per_interval")
@@ -163,12 +185,79 @@ def validate_assumptions(assumptions: dict[str, Any]) -> list[str]:
                 raise ValueError
             _utc(assumptions.get("funding_first_event_at"), "funding_first_event_at")
         except (ValueError, TypeError):
-            errors.append("configured funding requires rate, positive interval and first event time")
+            errors.append(prefix + "configured funding requires rate, positive interval and first event time")
+    if funding_mode == "CONFIGURED_RATE_BY_SYMBOL":
+        rates = assumptions.get("funding_rate_by_symbol")
+        if not isinstance(rates, dict) or not rates:
+            errors.append(prefix + "funding_rate_by_symbol must be a non-empty object")
+        else:
+            for symbol, config in rates.items():
+                try:
+                    if symbol != str(symbol).upper() or not isinstance(config, dict):
+                        raise ValueError
+                    _decimal(config.get("rate_per_interval"), "rate_per_interval")
+                    if int(config.get("interval_seconds")) <= 0:
+                        raise ValueError
+                    _utc(config.get("first_event_at"), "first_event_at")
+                    if not isinstance(config.get("source"), str) or not config["source"].strip():
+                        raise ValueError
+                except (ValueError, TypeError):
+                    errors.append(prefix + f"invalid symbol funding configuration for {symbol}")
     if assumptions.get("gap_execution_mode") not in {
         "OBSERVED_FIRST_EXECUTABLE", "UNAVAILABLE",
     }:
-        errors.append("gap_execution_mode must be OBSERVED_FIRST_EXECUTABLE or UNAVAILABLE")
+        errors.append(prefix + "gap_execution_mode must be OBSERVED_FIRST_EXECUTABLE or UNAVAILABLE")
+    try:
+        limit = _decimal(assumptions.get("maximum_supported_notional_quote"), "maximum_supported_notional_quote")
+        if limit <= 0:
+            raise ValueError
+        if not isinstance(assumptions.get("maximum_supported_notional_currency"), str):
+            raise ValueError
+        if assumptions.get("notional_measurement_version") != "entry_exit_max_v1":
+            raise ValueError
+    except ValueError:
+        errors.append(prefix + "valid positive notional boundary and entry_exit_max_v1 are required")
     return errors
+
+
+def validate_assumptions_for_activation(assumptions: dict[str, Any]) -> list[str]:
+    """Reject diagnostic-only inputs before trusted-cohort activation."""
+    errors = validate_assumptions(assumptions)
+    for name, profile in (assumptions.get("profiles") or {}).items():
+        mode = profile.get("funding_mode") if isinstance(profile, dict) else None
+        if mode in {"CONFIGURED_RATE_PER_INTERVAL", "UNAVAILABLE"}:
+            errors.append(f"profile {name}: funding mode {mode} is not trusted for activation")
+        if isinstance(profile, dict) and profile.get("gap_execution_mode") == "UNAVAILABLE":
+            errors.append(f"profile {name}: gap execution evidence is not trusted for activation")
+    return errors
+
+
+def _resolve_profile(position: dict[str, Any], assumptions: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    observed = str(position.get("symbol") or "")
+    mapping = (assumptions.get("active_symbol_mapping") or {}).get(observed)
+    if mapping is None:
+        raise ValueError("SYMBOL_MAPPING_NOT_FOUND")
+    profile_name = mapping["profile"]
+    profile = assumptions["profiles"][profile_name]
+    for field in ("venue", "instrument_type"):
+        supplied = position.get(field)
+        if supplied is not None and supplied != mapping[field]:
+            raise ValueError(f"POSITION_{field.upper()}_MISMATCH")
+    instrument = mapping["instrument_type"]
+    funding_mode = profile["funding_mode"]
+    if instrument == "linear_spot" and funding_mode != "NOT_APPLICABLE":
+        raise ValueError("SPOT_FUNDING_MUST_BE_NOT_APPLICABLE")
+    if instrument == "linear_perpetual" and funding_mode == "NOT_APPLICABLE":
+        raise ValueError("PERPETUAL_FUNDING_CANNOT_BE_NOT_APPLICABLE")
+    metadata = {
+        "configured_symbol": observed,
+        "observed_symbol": observed,
+        "mapping_result": "EXACT_MATCH",
+        "profile": profile_name,
+        "venue": mapping["venue"],
+        "instrument_type": instrument,
+    }
+    return profile, metadata
 
 
 def _base_result(position: dict[str, Any], assumptions: dict[str, Any] | None) -> dict[str, Any]:
@@ -215,15 +304,17 @@ def assess_position_friction(
         return result
 
     assumption_errors = validate_assumptions(assumptions)
-    unavailable = any("UNAVAILABLE" in str(assumptions.get(k)) for k in (
-        "funding_mode", "gap_execution_mode",
-    ))
     if assumption_errors:
         result["friction_model_status"] = "PARTIAL"
         result["errors"] = assumption_errors
         return result
 
     try:
+        profile, mapping_metadata = _resolve_profile(position, assumptions)
+        result.update(mapping_metadata)
+        unavailable = any("UNAVAILABLE" in str(profile.get(k)) for k in (
+            "funding_mode", "gap_execution_mode",
+        ))
         if position.get("status") not in _CLOSED:
             raise ValueError("position must be a supported closed lifecycle state")
         side = str(position.get("side") or "").upper()
@@ -244,6 +335,45 @@ def assess_position_friction(
         closed = _utc(position.get("closed_at"), "closed_at")
         if closed < opened:
             raise ValueError("closed_at must not precede opened_at")
+        entry_notional = abs(entry * quantity)
+        exit_notional = abs(exit_price * quantity)
+        assessed_notional = max(entry_notional, exit_notional)
+        maximum_notional = _decimal(
+            profile["maximum_supported_notional_quote"],
+            "maximum_supported_notional_quote",
+        )
+        result.update({
+            "entry_notional_quote": _decimal_text(entry_notional),
+            "exit_notional_quote": _decimal_text(exit_notional),
+            "assessed_notional_quote": _decimal_text(assessed_notional),
+            "maximum_supported_notional_quote": _decimal_text(maximum_notional),
+            "maximum_supported_notional_currency": profile["maximum_supported_notional_currency"],
+            "notional_measurement_version": profile["notional_measurement_version"],
+            "notional_boundary_result": "WITHIN_BOUNDARY",
+        })
+        if assessed_notional > maximum_notional:
+            result["notional_boundary_result"] = "EXCEEDED"
+            raise ValueError("NOTIONAL_EXCEEDS_APPROVED_BOUNDARY")
+        if profile["funding_mode"] == "CONFIGURED_RATE_BY_SYMBOL":
+            if position.get("symbol") not in (profile.get("funding_rate_by_symbol") or {}):
+                raise ValueError("SYMBOL_FUNDING_RATE_NOT_CONFIGURED")
+        if profile["funding_mode"] == "OBSERVED_EVENTS" and isinstance(position.get("funding_events"), list):
+            seen_events: dict[str, tuple[Decimal, Decimal, str]] = {}
+            for event in position["funding_events"]:
+                if event.get("symbol") != position.get("symbol"):
+                    raise ValueError("FUNDING_EVENT_SYMBOL_MISMATCH")
+                event_at = _utc(event.get("funding_timestamp"), "funding_timestamp").isoformat()
+                source = event.get("source")
+                if not isinstance(source, str) or not source.strip():
+                    raise ValueError("FUNDING_EVENT_SOURCE_MISSING")
+                identity = (
+                    _decimal(event.get("signed_funding_rate"), "signed_funding_rate"),
+                    _decimal(event.get("mark_price"), "funding event mark_price"),
+                    source,
+                )
+                if event_at in seen_events and seen_events[event_at] != identity:
+                    raise ValueError("CONFLICTING_DUPLICATE_FUNDING_EVENT")
+                seen_events[event_at] = identity
     except ValueError as exc:
         result["friction_model_status"] = "INVALID"
         result["errors"] = [str(exc)]
@@ -253,49 +383,68 @@ def assess_position_friction(
     provenance: dict[str, dict[str, Any]] = {}
 
     def adverse_bps(name: str, price: Decimal, field: str, source: str) -> None:
-        bps = _decimal(assumptions[field], field, nonnegative=True)
+        bps = _decimal(profile[field], field, nonnegative=True)
         component_quote[name] = -(price * quantity * bps / _BPS)
         provenance[name] = {"source": source, "input_field": field, "unit": "bps"}
 
     adverse_bps(
         "entry_fee_effect", entry, "entry_fee_bps",
-        f"{assumptions['fee_rate_source']}:{assumptions['entry_fee_liquidity']}",
+        f"{profile['fee_rate_source']}:{profile['entry_fee_liquidity']}",
     )
     adverse_bps(
         "exit_fee_effect", exit_price, "exit_fee_bps",
-        f"{assumptions['fee_rate_source']}:{assumptions['exit_fee_liquidity']}",
+        f"{profile['fee_rate_source']}:{profile['exit_fee_liquidity']}",
     )
     adverse_bps("entry_spread_effect", entry, "entry_spread_bps", "configured_one_leg_adverse_spread")
     adverse_bps("exit_spread_effect", exit_price, "exit_spread_bps", "configured_one_leg_adverse_spread")
-    adverse_bps("entry_slippage_effect", entry, "entry_slippage_bps", assumptions["slippage_source"])
-    adverse_bps("exit_slippage_effect", exit_price, "exit_slippage_bps", assumptions["slippage_source"])
+    adverse_bps("entry_slippage_effect", entry, "entry_slippage_bps", profile["slippage_source"])
+    adverse_bps("exit_slippage_effect", exit_price, "exit_slippage_bps", profile["slippage_source"])
 
-    funding_mode = assumptions["funding_mode"]
+    funding_mode = profile["funding_mode"]
     funding = _ZERO
+    funding_trusted = True
     if funding_mode == "NOT_APPLICABLE":
         provenance["funding_effect"] = {"source": "not_applicable", "boundary": "entry < event <= exit"}
     elif funding_mode == "UNAVAILABLE":
         unavailable = True
+        funding_trusted = False
         provenance["funding_effect"] = {"source": "unavailable", "boundary": "entry < event <= exit"}
     elif funding_mode == "OBSERVED_EVENTS":
         events = position.get("funding_events")
-        if not isinstance(events, list):
+        if not isinstance(events, list) or position.get("funding_events_verified_complete") is not True:
             unavailable = True
-            provenance["funding_effect"] = {"source": "missing_observed_events", "boundary": "entry < event <= exit"}
+            funding_trusted = False
+            provenance["funding_effect"] = {"source": "unverified_or_missing_observed_events", "boundary": "entry < event <= exit"}
         else:
+            deduped: dict[str, tuple[Decimal, Decimal, str]] = {}
             for event in events:
-                event_at = _utc(event.get("at"), "funding event at")
+                if event.get("symbol") != result["observed_symbol"]:
+                    raise ValueError("FUNDING_EVENT_SYMBOL_MISMATCH")
+                event_at = _utc(event.get("funding_timestamp"), "funding_timestamp")
+                timestamp = event_at.isoformat()
+                rate = _decimal(event.get("signed_funding_rate"), "signed_funding_rate")
+                mark = _decimal(event.get("mark_price"), "funding event mark_price")
+                source = event.get("source")
+                if not isinstance(source, str) or not source.strip():
+                    raise ValueError("FUNDING_EVENT_SOURCE_MISSING")
+                identity = (rate, mark, source)
+                if timestamp in deduped and deduped[timestamp] != identity:
+                    raise ValueError("CONFLICTING_DUPLICATE_FUNDING_EVENT")
+                deduped[timestamp] = identity
+            for timestamp, (rate, mark, _source) in deduped.items():
+                event_at = _utc(timestamp, "funding_timestamp")
                 if not (opened < event_at <= closed):
                     continue
-                rate = _decimal(event.get("rate"), "funding event rate")
-                mark = _decimal(event.get("mark_price"), "funding event mark_price")
                 signed = -(mark * quantity * rate) if side == "LONG" else mark * quantity * rate
                 funding += signed
-            provenance["funding_effect"] = {"source": "observed_events", "boundary": "entry < event <= exit"}
-    else:
-        rate = _decimal(assumptions["funding_rate_per_interval"], "funding_rate_per_interval")
-        interval = int(assumptions["funding_interval_seconds"])
-        event_at = _utc(assumptions["funding_first_event_at"], "funding_first_event_at")
+            provenance["funding_effect"] = {"source": "verified_observed_events", "events": len(deduped), "boundary": "entry < event <= exit"}
+    elif funding_mode == "CONFIGURED_RATE_BY_SYMBOL":
+        configured = (profile.get("funding_rate_by_symbol") or {}).get(result["observed_symbol"])
+        if configured is None:
+            raise ValueError("SYMBOL_FUNDING_RATE_NOT_CONFIGURED")
+        rate = _decimal(configured["rate_per_interval"], "rate_per_interval")
+        interval = int(configured["interval_seconds"])
+        event_at = _utc(configured["first_event_at"], "first_event_at")
         while event_at <= opened:
             event_at += timedelta(seconds=interval)
         count = 0
@@ -305,20 +454,32 @@ def assess_position_friction(
         per_event = -(entry * quantity * rate) if side == "LONG" else entry * quantity * rate
         funding = per_event * count
         provenance["funding_effect"] = {
-            "source": "configured_rate_per_interval", "events": count,
+            "source": configured["source"], "events": count,
             "boundary": "entry < event <= exit", "rate_unit": "decimal_per_interval",
         }
+    else:
+        # Kept solely to reproduce old analyses. A global scalar cannot prove
+        # the active symbol's perpetual contract and is never trusted.
+        funding_trusted = False
+        unavailable = True
+        provenance["funding_effect"] = {
+            "source": "diagnostic_global_scalar_only",
+            "boundary": "entry < event <= exit",
+        }
     component_quote["funding_effect"] = funding
+    result["funding_trusted"] = funding_trusted
 
     gap = _ZERO
     is_stop = position.get("status") == "STOP_LOSS_HIT"
     if not is_stop:
         provenance["gap_execution_effect"] = {"source": "not_applicable_non_stop"}
-    elif assumptions["gap_execution_mode"] == "UNAVAILABLE":
+    elif profile["gap_execution_mode"] == "UNAVAILABLE":
         unavailable = True
         provenance["gap_execution_effect"] = {"source": "missing_first_executable_price"}
     else:
         try:
+            if position.get("gap_execution_evidence_version") != "stop_trigger_bar_open_v1":
+                raise ValueError("unsupported gap execution evidence version")
             executable = _decimal(
                 position.get("gap_execution_reference_price"),
                 "gap_execution_reference_price",
@@ -332,6 +493,9 @@ def assess_position_friction(
             provenance["gap_execution_effect"] = {
                 "source": "observed_first_executable_price",
                 "reference_price": _decimal_text(executable),
+                "trigger_bar_open": position.get("exit_trigger_bar_open"),
+                "trigger_bar_close_time": position.get("exit_trigger_bar_close_time"),
+                "evidence_version": position.get("gap_execution_evidence_version"),
                 "separation": "gap is price displacement; exit slippage remains configured bps on lifecycle exit reference",
             }
         except ValueError:
@@ -377,12 +541,57 @@ def assess_position_friction(
 def aggregate_net_metrics(assessments: Iterable[dict[str, Any]]) -> dict[str, Any]:
     rows = list(assessments)
     complete = [r for r in rows if r.get("friction_model_status") in COMPLETE_STATUSES]
-    partial = [r for r in rows if r.get("friction_model_status") not in COMPLETE_STATUSES]
+    incomplete = [r for r in rows if r.get("friction_model_status") not in COMPLETE_STATUSES]
+    status_counts = {status.lower(): sum(r.get("friction_model_status") == status for r in rows)
+                     for status in FRICTION_MODEL_STATUSES}
+    complete_reasons: dict[str, int] = {}
+    excluded_reasons: dict[str, int] = {}
+    excluded_status_reasons: dict[str, int] = {}
+    all_reasons: dict[str, int] = {}
+    for row in rows:
+        reason = str(row.get("close_reason") or "UNKNOWN")
+        all_reasons[reason] = all_reasons.get(reason, 0) + 1
+        target = complete_reasons if row in complete else excluded_reasons
+        target[reason] = target.get(reason, 0) + 1
+        if row not in complete:
+            key = f"{row.get('friction_model_status')}:{'|'.join(row.get('errors') or ['unspecified'])}"
+            excluded_status_reasons[key] = excluded_status_reasons.get(key, 0) + 1
+    coverage_by_reason = {
+        reason: {
+            "eligible": count,
+            "complete": complete_reasons.get(reason, 0),
+            "coverage_ratio": _decimal_text(Decimal(complete_reasons.get(reason, 0)) / count),
+        }
+        for reason, count in sorted(all_reasons.items())
+    }
+    coverage = Decimal(len(complete)) / len(rows) if rows else _ZERO
+    outcome_bias = any(
+        count and complete_reasons.get(reason, 0) == 0
+        for reason, count in all_reasons.items()
+    ) or (bool(coverage_by_reason) and any(
+        Decimal(item["coverage_ratio"]) + Decimal("0.20") < coverage
+        for item in coverage_by_reason.values()
+    ))
+    if not rows:
+        metrics_status = "NO_SAMPLE"
+    elif len(complete) != len(rows):
+        metrics_status = "OUTCOME_SELECTION_BIAS" if outcome_bias else "INCOMPLETE_COVERAGE"
+    else:
+        metrics_status = "COMPLETE_ESTIMATED"
     result: dict[str, Any] = {
         "net_assessed_closed_count": len(rows),
+        "eligible_closed_count": len(rows),
         "net_complete_closed_count": len(complete),
-        "net_incomplete_closed_count": len(partial),
+        "net_incomplete_closed_count": len(incomplete),
+        "net_coverage_ratio": _decimal_text(coverage),
+        "net_metrics_status": metrics_status,
         "net_sample_status": "NO_SAMPLE" if not complete else "COMPLETE_SAMPLE",
+        "status_counts": status_counts,
+        "complete_by_close_reason": complete_reasons,
+        "excluded_by_close_reason": excluded_reasons,
+        "excluded_by_status_reason": excluded_status_reasons,
+        "coverage_by_close_reason": coverage_by_reason,
+        "outcome_selection_bias": outcome_bias,
     }
     if not complete:
         result.update({
@@ -400,11 +609,21 @@ def aggregate_net_metrics(assessments: Iterable[dict[str, Any]]) -> dict[str, An
         pf, pf_status = (None, "INFINITE") if wins > 0 else (None, "NO_SAMPLE")
     else:
         pf, pf_status = (_decimal_text(wins / losses), "FINITE")
+    gross_r = [_decimal(r["gross_r"], "gross_r") for r in complete]
+    gross_wins = sum((r for r in gross_r if r > 0), _ZERO)
+    gross_losses = abs(sum((r for r in gross_r if r < 0), _ZERO))
+    gross_pf = None if gross_losses == 0 else _decimal_text(gross_wins / gross_losses)
+    trusted_complete_population = len(complete) == len(rows)
     result.update({
-        "net_profit_factor": pf,
-        "net_profit_factor_status": pf_status,
-        "net_expectancy_r": _decimal_text(sum(net_r, _ZERO) / len(net_r)),
-        "net_average_r": _decimal_text(sum(net_r, _ZERO) / len(net_r)),
+        "net_profit_factor": pf if trusted_complete_population else None,
+        "net_profit_factor_status": pf_status if trusted_complete_population else "NO_RESULT",
+        "net_expectancy_r": _decimal_text(sum(net_r, _ZERO) / len(net_r)) if trusted_complete_population else None,
+        "net_average_r": _decimal_text(sum(net_r, _ZERO) / len(net_r)) if trusted_complete_population else None,
+        "diagnostic_complete_subset_count": len(complete),
+        "diagnostic_complete_subset_net_profit_factor": pf,
+        "diagnostic_complete_subset_net_expectancy_r": _decimal_text(sum(net_r, _ZERO) / len(net_r)),
+        "matched_subset_gross_profit_factor": gross_pf,
+        "matched_subset_gross_expectancy_r": _decimal_text(sum(gross_r, _ZERO) / len(gross_r)),
         "mean_friction_r": _decimal_text(sum(friction_r, _ZERO) / len(friction_r)),
         "median_friction_r": _decimal_text(Decimal(str(median(friction_r)))),
         "total_friction_r": _decimal_text(sum(friction_r, _ZERO)),
@@ -422,27 +641,33 @@ def aggregate_net_metrics(assessments: Iterable[dict[str, Any]]) -> dict[str, An
 def is_p1_03_trusted(
     position: dict[str, Any], assessment: dict[str, Any], manifest: dict[str, Any] | None,
 ) -> bool:
+    return bool(
+        is_p1_03_population_member(position, assessment, manifest)
+        and assessment.get("friction_model_status") in COMPLETE_STATUSES
+        and assessment.get("funding_trusted") is True
+        and assessment.get("notional_boundary_result") == "WITHIN_BOUNDARY"
+    )
+
+
+def is_p1_03_population_member(
+    position: dict[str, Any], assessment: dict[str, Any], manifest: dict[str, Any] | None,
+) -> bool:
+    """Return cohort membership without hiding incomplete friction outcomes."""
     if not manifest or not all(manifest.get(k) for k in NET_FRICTION_ACTIVATION_FIELDS):
         return False
     try:
         opened = _utc(position.get("opened_at"), "opened_at")
         activated = _utc(manifest["net_friction_trusted_cohort_start_at"], "activation")
-        closed_bar_activated = _utc(
-            manifest.get("closed_bar_trusted_cohort_start_at"), "closed-bar activation",
-        )
+        closed_bar_activated = _utc(manifest.get("closed_bar_trusted_cohort_start_at"), "closed-bar activation")
     except ValueError:
         return False
-    excluded_ids = {
-        str(item.get("position_id") or "")
-        for item in manifest.get("exclusions", []) if isinstance(item, dict)
-    }
+    excluded_ids = {str(item.get("position_id") or "") for item in manifest.get("exclusions", []) if isinstance(item, dict)}
     return bool(
         opened >= activated
         and opened >= closed_bar_activated
         and str(position.get("position_id") or "") not in excluded_ids
         and position.get("signal_bar_contract_version") == "closed_bar_v1"
         and assessment.get("friction_model_version") == FRICTION_MODEL_VERSION
-        and assessment.get("friction_model_status") in COMPLETE_STATUSES
         and assessment.get("friction_assumptions_hash") == manifest.get("net_friction_assumptions_hash")
         and manifest.get("net_friction_model_version") == FRICTION_MODEL_VERSION
     )

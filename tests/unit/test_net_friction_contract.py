@@ -14,30 +14,48 @@ from core.paper_trading.net_friction import (
     assess_position_friction,
     assumptions_hash,
     is_p1_03_trusted,
+    validate_assumptions_for_activation,
 )
 
 
 def assumptions(**overrides):
-    value = {
-        "friction_model_version": "net_friction_v1",
-        "instrument_type": "linear_spot",
-        "venue": "fixture_exchange",
-        "quote_currency": "USDT",
-        "entry_fee_bps": "4",
-        "exit_fee_bps": "4",
-        "entry_fee_liquidity": "TAKER",
-        "exit_fee_liquidity": "TAKER",
+    profile = {
+        "entry_fee_bps": "4", "exit_fee_bps": "4",
+        "entry_fee_liquidity": "TAKER", "exit_fee_liquidity": "TAKER",
         "fee_rate_source": "configured_fixture",
-        "entry_spread_bps": "1",
-        "exit_spread_bps": "1",
-        "entry_slippage_bps": "2",
-        "exit_slippage_bps": "2",
+        "entry_spread_bps": "1", "exit_spread_bps": "1",
+        "entry_slippage_bps": "2", "exit_slippage_bps": "2",
         "spread_input_semantics": "ONE_LEG_ADVERSE_BPS",
         "slippage_source": "CONFIGURED_ESTIMATE",
         "funding_mode": "NOT_APPLICABLE",
         "gap_execution_mode": "OBSERVED_FIRST_EXECUTABLE",
+        "maximum_supported_notional_quote": "1000",
+        "maximum_supported_notional_currency": "USDT",
+        "notional_measurement_version": "entry_exit_max_v1",
     }
-    value.update(overrides)
+    mapping = {
+        "profile": "DEFAULT", "venue": "fixture_exchange",
+        "instrument_type": "linear_spot",
+    }
+    root_fields = {"friction_model_version", "quote_currency", "active_symbol_mapping", "profiles"}
+    for key, value in overrides.items():
+        if key == "instrument_type":
+            mapping[key] = value
+        elif key == "venue":
+            mapping[key] = value
+        elif key in root_fields:
+            continue
+        else:
+            profile[key] = value
+    value = {
+        "friction_model_version": "net_friction_v1",
+        "quote_currency": "USDT",
+        "active_symbol_mapping": {"BTCUSDT": mapping},
+        "profiles": {"DEFAULT": profile},
+    }
+    for key in root_fields:
+        if key in overrides:
+            value[key] = overrides[key]
     return value
 
 
@@ -64,6 +82,11 @@ def position(**overrides):
         "signal_bar_contract_version": "closed_bar_v1",
     }
     value.update(overrides)
+    if value["status"] == "STOP_LOSS_HIT" and "gap_execution_reference_price" in overrides:
+        value.setdefault("exit_trigger_bar_open", value["gap_execution_reference_price"])
+        value.setdefault("exit_trigger_bar_close_time", "2026-07-21T09:00:00+00:00")
+        value.setdefault("nominal_stop_price", value["stop_loss"])
+        value.setdefault("gap_execution_evidence_version", "stop_trigger_bar_open_v1")
     return value
 
 
@@ -119,8 +142,9 @@ def test_slippage_is_adverse_for_long_and_short(side):
 )
 def test_observed_funding_direction(side, rate, expected_sign):
     p = position(side=side, funding_events=[{
-        "at": "2026-07-21T08:00:00+00:00", "rate": rate, "mark_price": "105",
-    }])
+        "symbol": "BTCUSDT", "funding_timestamp": "2026-07-21T08:00:00+00:00",
+        "signed_funding_rate": rate, "mark_price": "105", "source": "fixture",
+    }], funding_events_verified_complete=True)
     config = assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS")
     result = assess_position_friction(p, config)
     assert D(result, "funding_effect_quote").compare(Decimal("0")) == Decimal(expected_sign)
@@ -128,11 +152,9 @@ def test_observed_funding_direction(side, rate, expected_sign):
 
 def test_multiple_funding_events_and_boundary_entry_excluded_exit_included():
     p = position(funding_events=[
-        {"at": "2026-07-21T00:00:00+00:00", "rate": "0.001", "mark_price": "100"},
-        {"at": "2026-07-21T04:00:00+00:00", "rate": "0.001", "mark_price": "100"},
-        {"at": "2026-07-21T09:00:00+00:00", "rate": "0.001", "mark_price": "100"},
-        {"at": "2026-07-21T10:00:00+00:00", "rate": "0.001", "mark_price": "100"},
-    ])
+        {"symbol": "BTCUSDT", "funding_timestamp": at, "signed_funding_rate": "0.001", "mark_price": "100", "source": "fixture"}
+        for at in ["2026-07-21T00:00:00+00:00", "2026-07-21T04:00:00+00:00", "2026-07-21T09:00:00+00:00", "2026-07-21T10:00:00+00:00"]
+    ], funding_events_verified_complete=True)
     result = assess_position_friction(
         p, assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS"),
     )
@@ -142,10 +164,11 @@ def test_multiple_funding_events_and_boundary_entry_excluded_exit_included():
 def test_configured_funding_intervals_count_once():
     config = assumptions(
         instrument_type="linear_perpetual",
-        funding_mode="CONFIGURED_RATE_PER_INTERVAL",
-        funding_rate_per_interval="0.001",
-        funding_interval_seconds=14400,
-        funding_first_event_at="2026-07-21T00:00:00+00:00",
+        funding_mode="CONFIGURED_RATE_BY_SYMBOL",
+        funding_rate_by_symbol={"BTCUSDT": {
+            "rate_per_interval": "0.001", "interval_seconds": 14400,
+            "first_event_at": "2026-07-21T00:00:00+00:00", "source": "fixture",
+        }},
     )
     result = assess_position_friction(position(), config)
     assert D(result, "funding_effect_quote") == Decimal("-0.4")
@@ -206,7 +229,7 @@ def test_zero_risk_denominator_is_invalid():
 
 def test_missing_mandatory_fee_is_partial_not_zero_cost():
     config = assumptions()
-    del config["entry_fee_bps"]
+    del config["profiles"]["DEFAULT"]["entry_fee_bps"]
     result = assess_position_friction(position(), config)
     assert result["friction_model_status"] == "PARTIAL"
     assert "entry_fee_bps" in " ".join(result["errors"])
@@ -264,9 +287,139 @@ def test_net_metrics_exclude_partial_and_use_net_r():
     partial = assess_position_friction(position(position_id="c"), None)
     metrics = aggregate_net_metrics([a, b, partial])
     expected = (D(a, "net_r") + D(b, "net_r")) / 2
-    assert Decimal(metrics["net_expectancy_r"]) == expected
+    assert metrics["net_expectancy_r"] is None
+    assert Decimal(metrics["diagnostic_complete_subset_net_expectancy_r"]) == expected
+    assert metrics["net_metrics_status"] == "INCOMPLETE_COVERAGE"
     assert metrics["net_complete_closed_count"] == 2
     assert metrics["net_incomplete_closed_count"] == 1
+
+
+def test_unknown_symbol_fails_closed_with_mapping_diagnostics():
+    result = assess_position_friction(position(symbol="ETHUSDT"), assumptions())
+    assert result["friction_model_status"] == "INVALID"
+    assert result["errors"] == ["SYMBOL_MAPPING_NOT_FOUND"]
+
+
+def test_exact_symbol_mapping_and_notional_are_auditable():
+    result = assess_position_friction(position(), assumptions())
+    assert result["mapping_result"] == "EXACT_MATCH"
+    assert result["configured_symbol"] == result["observed_symbol"] == "BTCUSDT"
+    assert result["assessed_notional_quote"] == "220"
+    assert result["notional_boundary_result"] == "WITHIN_BOUNDARY"
+
+
+@pytest.mark.parametrize("quantity,exit_price", [("11", "100"), ("1", "1001")])
+def test_notional_above_boundary_is_invalid(quantity, exit_price):
+    result = assess_position_friction(
+        position(position_size_preview=quantity, exit_price=exit_price), assumptions(),
+    )
+    assert result["friction_model_status"] == "INVALID"
+    assert result["notional_boundary_result"] == "EXCEEDED"
+    assert result["errors"] == ["NOTIONAL_EXCEEDS_APPROVED_BOUNDARY"]
+
+
+def test_notional_boundary_is_inclusive():
+    result = assess_position_friction(
+        position(position_size_preview="10", exit_price="100"), assumptions(),
+    )
+    assert result["friction_model_status"] == "COMPLETE_ESTIMATED"
+    assert result["assessed_notional_quote"] == "1000"
+
+
+def test_global_scalar_funding_is_diagnostic_only_and_activation_rejected():
+    config = assumptions(
+        instrument_type="linear_perpetual", funding_mode="CONFIGURED_RATE_PER_INTERVAL",
+        funding_rate_per_interval="0.001", funding_interval_seconds=28800,
+        funding_first_event_at="2026-07-21T00:00:00+00:00",
+    )
+    result = assess_position_friction(position(), config)
+    assert result["friction_model_status"] == "PARTIAL"
+    assert result["funding_trusted"] is False
+    assert validate_assumptions_for_activation(config)
+
+
+def _observed_event(**overrides):
+    value = {
+        "symbol": "BTCUSDT", "funding_timestamp": "2026-07-21T08:00:00+00:00",
+        "signed_funding_rate": "0.001", "mark_price": "100", "source": "fixture",
+    }
+    value.update(overrides)
+    return value
+
+
+def test_observed_funding_requires_completeness_proof_even_when_empty():
+    config = assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS")
+    incomplete = assess_position_friction(position(funding_events=[]), config)
+    complete_zero = assess_position_friction(
+        position(funding_events=[], funding_events_verified_complete=True), config,
+    )
+    assert incomplete["friction_model_status"] == "PARTIAL"
+    assert complete_zero["friction_model_status"] == "COMPLETE_ESTIMATED"
+
+
+def test_observed_funding_rejects_wrong_symbol():
+    config = assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS")
+    result = assess_position_friction(position(
+        funding_events=[_observed_event(symbol="ETHUSDT")],
+        funding_events_verified_complete=True,
+    ), config)
+    assert result["friction_model_status"] == "INVALID"
+    assert result["errors"] == ["FUNDING_EVENT_SYMBOL_MISMATCH"]
+
+
+def test_observed_funding_deduplicates_identical_timestamp():
+    config = assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS")
+    event = _observed_event()
+    result = assess_position_friction(position(
+        funding_events=[event, deepcopy(event)], funding_events_verified_complete=True,
+    ), config)
+    assert D(result, "funding_effect_quote") == Decimal("-0.2")
+    assert result["component_provenance"]["funding_effect"]["events"] == 1
+
+
+def test_observed_funding_rejects_conflicting_duplicate_timestamp():
+    config = assumptions(instrument_type="linear_perpetual", funding_mode="OBSERVED_EVENTS")
+    result = assess_position_friction(position(
+        funding_events=[_observed_event(), _observed_event(signed_funding_rate="0.002")],
+        funding_events_verified_complete=True,
+    ), config)
+    assert result["friction_model_status"] == "INVALID"
+    assert result["errors"] == ["CONFLICTING_DUPLICATE_FUNDING_EVENT"]
+
+
+def test_symbol_funding_configuration_must_cover_position_symbol():
+    config = assumptions(
+        instrument_type="linear_perpetual", funding_mode="CONFIGURED_RATE_BY_SYMBOL",
+        funding_rate_by_symbol={"ETHUSDT": {
+            "rate_per_interval": "0.001", "interval_seconds": 28800,
+            "first_event_at": "2026-07-21T00:00:00+00:00", "source": "fixture",
+        }},
+    )
+    result = assess_position_friction(position(), config)
+    assert result["friction_model_status"] == "INVALID"
+    assert result["errors"] == ["SYMBOL_FUNDING_RATE_NOT_CONFIGURED"]
+
+
+def test_outcome_selection_bias_suppresses_trusted_net_result():
+    winner = assess_position_friction(position(position_id="win"), assumptions())
+    stop = assess_position_friction(position(
+        position_id="stop", status="STOP_LOSS_HIT", exit_reason="stop_loss triggered",
+        exit_price="95", realized_pnl="-10", r_multiple="-1",
+    ), assumptions())
+    metrics = aggregate_net_metrics([winner, stop])
+    assert metrics["net_metrics_status"] == "OUTCOME_SELECTION_BIAS"
+    assert metrics["net_profit_factor"] is None
+    assert metrics["net_expectancy_r"] is None
+    assert metrics["excluded_by_close_reason"] == {"stop_loss triggered": 1}
+    assert metrics["diagnostic_complete_subset_count"] == 1
+
+
+def test_full_coverage_allows_trusted_net_result():
+    rows = [assess_position_friction(position(position_id=str(i)), assumptions()) for i in range(2)]
+    metrics = aggregate_net_metrics(rows)
+    assert metrics["net_metrics_status"] == "COMPLETE_ESTIMATED"
+    assert metrics["net_coverage_ratio"] == "1"
+    assert metrics["net_expectancy_r"] is not None
 
 
 def test_empty_net_sample_is_explicit():

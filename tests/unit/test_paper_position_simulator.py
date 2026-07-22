@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import py_compile
+from datetime import datetime, timezone
 
 import pytest
 
@@ -155,6 +156,33 @@ class TestFutureOnly:
             existing_positions=[pos_dict],
         )
         assert r.positions[0]["status"] == "STOP_LOSS_HIT"
+
+    @pytest.mark.parametrize(
+        "intent,bar_open,expected",
+        [(_make_intent(), 1.20, 1.20), (_make_long_intent(), 58000.0, 58000.0)],
+    )
+    def test_stop_persists_trigger_bar_gap_evidence(self, intent, bar_open, expected):
+        pos = open_position(intent)
+        pos_dict = pos.to_dict()
+        pos_dict["opened_bar_time"] = 5000
+        if intent["side"] == "SHORT":
+            bar = MarketBar(6000, bar_open, 1.21, 1.17, 1.19, 1000,
+                            intent["symbol"], intent["timeframe"],
+                            datetime.fromtimestamp(6900, timezone.utc), True)
+        else:
+            bar = MarketBar(6000, bar_open, 60000, 57000, 58500, 1000,
+                            intent["symbol"], intent["timeframe"],
+                            datetime.fromtimestamp(6900, timezone.utc), True)
+        result = simulate_existing_positions_update_only(
+            [pos_dict], {f"{intent['symbol']}_{intent['timeframe']}": [bar]}, "2026-06-18",
+        ).positions[0]
+        assert result["status"] == "STOP_LOSS_HIT"
+        assert result["exit_price"] == intent["stop_loss"]
+        assert result["exit_trigger_bar_open"] == bar_open
+        assert result["gap_execution_reference_price"] == expected
+        assert result["nominal_stop_price"] == intent["stop_loss"]
+        assert result["gap_execution_evidence_version"] == "stop_trigger_bar_open_v1"
+        assert result["exit_trigger_bar_close_time"].endswith("+00:00")
 
     def test_future_bars_can_hit_tp(self):
         """Future bars after opened_bar_time can trigger TP."""

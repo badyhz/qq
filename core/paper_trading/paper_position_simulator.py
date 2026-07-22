@@ -22,7 +22,7 @@ from core.paper_trading.paper_position import (
     open_position, dict_to_position, PaperPosition, CLOSED_STATUSES,
     exposure_identity, stable_signal_key,
 )
-from core.paper_trading.data_source import MarketBar
+from core.paper_trading.data_source import MarketBar, format_utc_timestamp, _resolved_close_time
 
 
 @dataclass(frozen=True)
@@ -495,6 +495,8 @@ def _update_position(
             r_mult = pnl / risk_amount if risk_amount > 0 else 0.0
 
             result = pos.to_dict()
+            trigger_close_time = format_utc_timestamp(_resolved_close_time(bar))
+            executable = min(float(bar.open), sl) if side == "LONG" else max(float(bar.open), sl)
             result.update({
                 "status": "STOP_LOSS_HIT",
                 "closed_at": now,
@@ -506,6 +508,11 @@ def _update_position(
                 "r_multiple": round(r_mult, 4),
                 "last_checked_at": now,
                 "last_checked_bar_time": bar.timestamp,
+                "exit_trigger_bar_open": bar.open,
+                "exit_trigger_bar_close_time": trigger_close_time,
+                "nominal_stop_price": sl,
+                "gap_execution_reference_price": executable,
+                "gap_execution_evidence_version": "stop_trigger_bar_open_v1",
             })
             return result
 
