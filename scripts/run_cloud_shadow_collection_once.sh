@@ -22,6 +22,7 @@ run_step() {
 main() {
     local activate_closed_bar_cohort=0
     local activate_net_friction_cohort=0
+    local collect_friction_evidence=0
     local friction_config="${NET_FRICTION_CONFIG:-}"
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -41,8 +42,12 @@ main() {
                 friction_config="$2"
                 shift 2
                 ;;
+            --collect-friction-evidence)
+                collect_friction_evidence=1
+                shift
+                ;;
             *)
-                echo "Usage: $0 [--activate-closed-bar-cohort] [--activate-net-friction-cohort --net-friction-config PATH]" >&2
+                echo "Usage: $0 [--collect-friction-evidence] [--activate-closed-bar-cohort] [--activate-net-friction-cohort --net-friction-config PATH]" >&2
                 return 2
                 ;;
         esac
@@ -135,6 +140,21 @@ PY
             --defer-scorecard \
             --defer-gate \
             --defer-registry
+
+        if [ "$collect_friction_evidence" -eq 1 ]; then
+            echo
+            echo "=== Public Friction Evidence (observation only) ==="
+            if ! python3 -m core.paper_trading.friction_evidence \
+                --strategy-config "$PROJECT_DIR/config/strategies.yaml" \
+                --output-dir "$PROJECT_DIR/reports/strategies" \
+                --pipeline-run-id "$BATCH_RUN_ID" \
+                --pipeline-commit "$RUN_COMMIT" \
+                --report-date "$REPORT_DATE" \
+                --collected-at "$BATCH_STARTED_AT" \
+                --allow-public-http; then
+                echo "Public friction evidence incomplete; Shadow lifecycle continues"
+            fi
+        fi
 
         echo
         run_step "Scorecard" python3 scripts/run_paper_performance_scorecard.py \

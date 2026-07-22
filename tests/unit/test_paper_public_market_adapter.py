@@ -137,6 +137,41 @@ class TestBinancePublicKlineAdapter:
         assert snap.symbol == "BTCUSDT"
         assert snap.price == 50500.0
 
+    def test_public_evidence_endpoints_require_explicit_network(self):
+        adapter = BinancePublicKlineAdapter(DataSourceConfig(mode="snapshot", network_enabled=False))
+        with pytest.raises(ValueError, match="disabled"):
+            adapter.get_top_of_book("BTCUSDT")
+        with pytest.raises(ValueError, match="disabled"):
+            adapter.get_depth("BTCUSDT", 20)
+        with pytest.raises(ValueError, match="disabled"):
+            adapter.get_funding_events("BTCUSDT", 86400)
+
+    @patch("core.paper_trading.public_market_adapter.BinancePublicKlineAdapter._get_public_json")
+    def test_public_book_and_depth_parsing(self, mock_get):
+        adapter = BinancePublicKlineAdapter(DataSourceConfig(mode="snapshot", network_enabled=True))
+        mock_get.side_effect = [
+            {"symbol": "BTCUSDT", "bidPrice": "99", "bidQty": "2", "askPrice": "101", "askQty": "3", "time": 1_700_000_000_000},
+            {"bids": [["99", "2"]], "asks": [["101", "3"]], "E": 1_700_000_000_000},
+        ]
+        book = adapter.get_top_of_book("BTCUSDT")
+        depth = adapter.get_depth("BTCUSDT", 20)
+        assert book["best_bid_price"] == "99"
+        assert book["best_ask_price"] == "101"
+        assert depth["bids"] == [["99", "2"]]
+        assert depth["asks"] == [["101", "3"]]
+
+    @patch("core.paper_trading.public_market_adapter.BinancePublicKlineAdapter._get_public_json")
+    def test_public_funding_preserves_signed_rate_and_derives_interval(self, mock_get):
+        adapter = BinancePublicKlineAdapter(DataSourceConfig(mode="snapshot", network_enabled=True))
+        mock_get.return_value = [
+            {"symbol": "BTCUSDT", "fundingTime": 1_700_000_000_000, "fundingRate": "-0.001", "markPrice": "100"},
+            {"symbol": "BTCUSDT", "fundingTime": 1_700_028_800_000, "fundingRate": "0.002", "markPrice": "101"},
+        ]
+        events = adapter.get_funding_events("BTCUSDT", 86400)
+        assert [item["signed_funding_rate"] for item in events] == ["-0.001", "0.002"]
+        assert all(item["funding_interval_seconds"] == 28800 for item in events)
+        assert [item["mark_price"] for item in events] == ["100", "101"]
+
     def test_no_account_methods(self):
         config = DataSourceConfig(mode="snapshot", network_enabled=False)
         adapter = BinancePublicKlineAdapter(config)

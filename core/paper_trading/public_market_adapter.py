@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+import time
 from typing import List, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -138,7 +138,7 @@ class BinancePublicKlineAdapter(DataSource):
 
     @staticmethod
     def _event_at(epoch_ms: object) -> str:
-        return datetime.fromtimestamp(float(epoch_ms) / 1000, timezone.utc).isoformat(timespec="milliseconds")
+        return utc_datetime_from_epoch_ms(epoch_ms).isoformat(timespec="milliseconds")
 
     def get_top_of_book(self, symbol: str) -> dict:
         if not _validate_symbol(symbol):
@@ -173,7 +173,7 @@ class BinancePublicKlineAdapter(DataSource):
     def get_funding_events(self, symbol: str, lookback_seconds: int) -> list[dict]:
         if not _validate_symbol(symbol) or lookback_seconds <= 0:
             raise ValueError("invalid funding request")
-        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        now_ms = int(time.time() * 1000)
         raw = self._get_public_json("/fapi/v1/fundingRate", {
             "symbol": symbol,
             "startTime": now_ms - lookback_seconds * 1000,

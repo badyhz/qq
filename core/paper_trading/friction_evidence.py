@@ -178,6 +178,15 @@ class EvidenceStore:
                     raise ValueError(f"malformed evidence JSONL line {line_number}") from exc
                 if not isinstance(record, dict) or REQUIRED_FIELDS - record.keys():
                     raise ValueError(f"malformed evidence record line {line_number}")
+                if record.get("evidence_version") != EVIDENCE_VERSION:
+                    raise ValueError(f"unsupported evidence version line {line_number}")
+                for field in ("observed_at", "exchange_event_at", "collected_at"):
+                    _utc(record.get(field), field)
+                _validate_report_date(record.get("report_date"))
+                if evidence_id(record) != record.get("evidence_id"):
+                    raise ValueError(f"evidence identity mismatch line {line_number}")
+                if payload_hash(record) != record.get("payload_hash"):
+                    raise ValueError(f"evidence payload hash mismatch line {line_number}")
                 records.append(record)
         return records
 
@@ -604,6 +613,8 @@ def build_readiness_report(
     for symbol in universe["symbols"]:
         books = [row for row in rows if row.get("symbol") == symbol and row.get("evidence_type") == "TOP_OF_BOOK"]
         depths = [row for row in rows if row.get("symbol") == symbol and row.get("evidence_type") == "DEPTH_BOOK_IMPACT_ESTIMATE"]
+        book_failures = [row for row in rows if row.get("symbol") == symbol and row.get("evidence_type") == "SOURCE_QUALITY_FAILURE" and row.get("failed_evidence_type") == "TOP_OF_BOOK"]
+        depth_failures = [row for row in rows if row.get("symbol") == symbol and row.get("evidence_type") == "SOURCE_QUALITY_FAILURE" and row.get("failed_evidence_type") == "DEPTH_BOOK_IMPACT_ESTIMATE"]
         funding = [row for row in rows if row.get("symbol") == symbol and row.get("evidence_type") == "FUNDING_EVENT"]
         coverage_rows = [row for row in rows if row.get("symbol") == symbol and row.get("evidence_type") == "FUNDING_QUERY_COVERAGE"]
         continuity_resolved = bool(funding_continuity.get(symbol)) or any(
@@ -620,7 +631,8 @@ def build_readiness_report(
                 for row in valid_depths if band in row.get(field, {})
             ]
         bands = [str(item) for item in config["diagnostic_notional_bands"]]
-        success = Decimal(len(valid_books)) / len(books) if books else _ZERO
+        book_attempt_count = len(books) + len(book_failures)
+        success = Decimal(len(valid_books)) / book_attempt_count if book_attempt_count else _ZERO
         symbol_ready = (
             len(valid_books) >= int(targets["minimum_snapshots_per_symbol"])
             and success >= _decimal(targets["minimum_success_ratio"], "minimum_success_ratio")
@@ -628,13 +640,14 @@ def build_readiness_report(
         )
         all_targets = all_targets and symbol_ready
         per_symbol[symbol] = {
-            "first_observation_at": min((row["observed_at"] for row in books), default=None),
-            "last_observation_at": max((row["observed_at"] for row in books), default=None),
+            "first_observation_at": min((row["observed_at"] for row in books + book_failures), default=None),
+            "last_observation_at": max((row["observed_at"] for row in books + book_failures), default=None),
             "valid_book_snapshot_count": len(valid_books),
-            "invalid_book_snapshot_count": len(books) - len(valid_books),
+            "invalid_book_snapshot_count": len(books) - len(valid_books) + len(book_failures),
             "snapshot_success_ratio": _text(success),
             "valid_depth_snapshot_count": len(valid_depths),
             "insufficient_depth_count": sum(row.get("quality_status") == "INSUFFICIENT_DEPTH" for row in depths),
+            "depth_source_error_count": len(depth_failures),
             "median_one_leg_spread_bps": _percentile(spreads, Decimal("0.5")),
             "p75_one_leg_spread_bps": _percentile(spreads, Decimal("0.75")),
             "p90_one_leg_spread_bps": _percentile(spreads, Decimal("0.90")),

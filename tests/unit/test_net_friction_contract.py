@@ -6,6 +6,7 @@ from copy import deepcopy
 from decimal import Decimal
 
 import pytest
+import yaml
 
 from core.paper_trading.net_friction import (
     FRICTION_MODEL_VERSION,
@@ -15,6 +16,24 @@ from core.paper_trading.net_friction import (
     assumptions_hash,
     is_p1_03_trusted,
     validate_assumptions_for_activation,
+)
+from core.paper_trading.friction_evidence import (
+    ATTRIBUTION_VERSION,
+    EVIDENCE_VERSION,
+    EvidenceStore,
+    attribute_position_funding,
+    book_impact,
+    build_depth_evidence,
+    build_funding_evidence,
+    build_funding_coverage_evidence,
+    build_position_funding_attribution_evidence,
+    build_readiness_report,
+    build_top_of_book_evidence,
+    collect_evidence_cycle,
+    load_evidence_config,
+    resolve_active_universe,
+    stop_evidence_summary,
+    write_readiness_report,
 )
 
 
@@ -817,3 +836,532 @@ def test_net_activation_cli_and_metadata_without_flag(tmp_path, monkeypatch, cap
         "2026-07-21T10:00:00+00:00",
     ])
     assert runner.main() == 1
+
+
+# P1-03A-R3A public friction evidence collector
+
+STRATEGY_CONFIG = "config/strategies.yaml"
+
+
+def evidence_context(**overrides):
+    value = {
+        "pipeline_run_id": "run-fixture",
+        "pipeline_commit": "a" * 40,
+        "report_date": "2026-07-22",
+        "collected_at": "2026-07-22T01:00:30+00:00",
+        "fixture_mode": "true",
+    }
+    value.update(overrides)
+    return value
+
+
+def evidence_config():
+    return load_evidence_config(STRATEGY_CONFIG)
+
+
+def evidence_universe():
+    return resolve_active_universe(STRATEGY_CONFIG, evidence_config())
+
+
+def raw_book(symbol="BTCUSDT", **overrides):
+    value = {
+        "symbol": symbol,
+        "best_bid_price": "99",
+        "best_bid_quantity": "1000",
+        "best_ask_price": "101",
+        "best_ask_quantity": "1000",
+        "exchange_event_at": "2026-07-22T01:00:00+00:00",
+        "source": "local_fixture",
+    }
+    value.update(overrides)
+    return value
+
+
+def raw_depth(symbol="BTCUSDT", **overrides):
+    value = {
+        "symbol": symbol,
+        "bids": [["99", "100"], ["98", "100"]],
+        "asks": [["101", "100"], ["102", "100"]],
+        "exchange_event_at": "2026-07-22T01:00:00+00:00",
+        "source": "local_fixture",
+    }
+    value.update(overrides)
+    return value
+
+
+def raw_funding(symbol="BTCUSDT", **overrides):
+    value = {
+        "symbol": symbol,
+        "funding_event_at": "2026-07-22T00:00:00+00:00",
+        "signed_funding_rate": "0.001",
+        "mark_price": "100",
+        "funding_interval_seconds": 28800,
+        "source": "local_fixture",
+        "source_event_identity": f"{symbol}:202607220000",
+    }
+    value.update(overrides)
+    return value
+
+
+def build_book(raw=None, **kwargs):
+    return build_top_of_book_evidence(
+        raw or raw_book(), expected_symbol=kwargs.get("symbol", "BTCUSDT"),
+        context=kwargs.get("context", evidence_context()), config=evidence_config(),
+        inventory_hash=evidence_universe()["strategy_inventory_hash"],
+    )
+
+
+def build_depth(raw=None, **kwargs):
+    return build_depth_evidence(
+        raw or raw_depth(), expected_symbol=kwargs.get("symbol", "BTCUSDT"),
+        context=kwargs.get("context", evidence_context()), config=evidence_config(),
+        inventory_hash=evidence_universe()["strategy_inventory_hash"],
+    )
+
+
+def build_funding(raw=None, **kwargs):
+    return build_funding_evidence(
+        raw or raw_funding(), expected_symbol=kwargs.get("symbol", "BTCUSDT"),
+        context=kwargs.get("context", evidence_context()), config=evidence_config(),
+        inventory_hash=evidence_universe()["strategy_inventory_hash"],
+    )
+
+
+def test_evidence_config_and_active_universe_are_governed():
+    config = evidence_config()
+    universe = evidence_universe()
+    assert config["enabled"] is False
+    assert config["evidence_version"] == EVIDENCE_VERSION
+    assert config["diagnostic_notional_bands"] == [1000, 5000, 10000]
+    assert universe["symbols"] == [
+        "1000PEPEUSDT", "ARBUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT",
+        "ETHUSDT", "SUIUSDT", "XRPUSDT",
+    ]
+    assert "SOLUSDT" not in universe["symbols"]
+    assert len(universe["enabled_strategy_ids"]) == 2
+    assert len(universe["strategy_inventory_hash"]) == 64
+
+
+def test_unknown_venue_and_instrument_fail_closed(tmp_path):
+    raw = yaml.safe_load(open(STRATEGY_CONFIG))
+    for field, value in [("venue", "unknown"), ("market_type", "spot")]:
+        changed = deepcopy(raw)
+        changed["friction_evidence"][field] = value
+        path = tmp_path / f"{field}.yaml"
+        path.write_text(yaml.safe_dump(changed))
+        with pytest.raises(ValueError, match="unsupported venue or instrument"):
+            load_evidence_config(str(path))
+
+
+def test_duplicate_symbols_across_enabled_strategies_are_requested_once(tmp_path):
+    raw = yaml.safe_load(open(STRATEGY_CONFIG))
+    raw["strategies"]["weak_short_watch"]["symbols"].append("BTCUSDT")
+    path = tmp_path / "strategies.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    config = load_evidence_config(str(path))
+    universe = resolve_active_universe(str(path), config)
+    assert universe["symbols"].count("BTCUSDT") == 1
+    assert len(universe["symbols"]) == 8
+
+
+def test_valid_book_spread_is_exact_and_stable():
+    result = build_book()
+    assert result["mid_price"] == "100"
+    assert result["full_spread_bps"] == "200"
+    assert result["one_leg_adverse_spread_bps"] == "100"
+    assert result["quality_status"] == "VALID"
+    assert result == json.loads(json.dumps(result))
+
+
+@pytest.mark.parametrize(
+    "mutation,error",
+    [({"best_bid_price": "0"}, "positive"), ({"best_ask_price": "0"}, "positive"),
+     ({"best_bid_price": "102"}, "CROSSED_BOOK"), ({"symbol": "ETHUSDT"}, "symbol mismatch")],
+)
+def test_malformed_book_fails_closed(mutation, error):
+    with pytest.raises(ValueError, match=error):
+        build_book(raw_book(**mutation))
+
+
+def test_stale_book_is_classified_not_fabricated():
+    result = build_book(context=evidence_context(collected_at="2026-07-22T02:00:00+00:00"))
+    assert result["quality_status"] == "STALE"
+
+
+def test_depth_buy_sell_multilevel_and_exact_boundary():
+    asks = [(Decimal("100"), Decimal("5")), (Decimal("110"), Decimal("10"))]
+    buy = book_impact(asks, Decimal("1050"), Decimal("100"))
+    assert buy["fill_complete"] is True
+    assert buy["levels_consumed"] == 2
+    assert Decimal(buy["vwap_price"]) > 100
+    assert Decimal(buy["adverse_impact_bps"]) > 0
+    exact = book_impact(asks, Decimal("500"), Decimal("100"))
+    assert exact["fill_complete"] is True
+    assert exact["vwap_price"] == "100"
+
+
+def test_depth_evidence_contains_bounded_estimates_not_actual_slippage():
+    result = build_depth()
+    assert result["quality_status"] == "VALID"
+    assert result["actual_slippage_available"] is False
+    assert result["diagnostic_notional_bands"] == ["1000", "5000", "10000"]
+    serialized = json.dumps(result)
+    assert "BOOK_IMPACT_ESTIMATE" in serialized
+    assert "actual slippage" not in serialized.lower()
+    assert all(Decimal(item["adverse_impact_bps"]) >= 0 for item in result["buy_book_impact_bps_by_notional"].values())
+    assert all(Decimal(item["adverse_impact_bps"]) >= 0 for item in result["sell_book_impact_bps_by_notional"].values())
+
+
+def test_insufficient_depth_and_bad_levels_fail_closed():
+    result = build_depth(raw_depth(bids=[["99", "1"]], asks=[["101", "1"]]))
+    assert result["quality_status"] == "INSUFFICIENT_DEPTH"
+    with pytest.raises(ValueError, match="positive"):
+        build_depth(raw_depth(bids=[["99", "0"]]))
+
+
+def test_duplicate_depth_prices_are_normalized_deterministically():
+    result = build_depth(raw_depth(
+        bids=[["99", "50"], ["99", "50"]],
+        asks=[["101", "50"], ["101", "50"]],
+    ))
+    assert result["bid_levels"][0] == ["99", "100"]
+    assert result["ask_levels"][0] == ["101", "100"]
+
+
+def test_notional_bands_change_depth_payload_hash():
+    first = build_depth()
+    config = evidence_config()
+    config["diagnostic_notional_bands"] = [1000]
+    second = build_depth_evidence(
+        raw_depth(), expected_symbol="BTCUSDT", context=evidence_context(), config=config,
+        inventory_hash=evidence_universe()["strategy_inventory_hash"],
+    )
+    assert first["payload_hash"] != second["payload_hash"]
+
+
+def test_funding_signed_rate_identity_and_conflict(tmp_path):
+    store = EvidenceStore(str(tmp_path / "evidence.jsonl"))
+    positive = build_funding()
+    assert positive["signed_funding_rate"] == "0.001"
+    assert store.append(positive).status == "APPENDED"
+    before = (tmp_path / "evidence.jsonl").read_bytes()
+    assert store.append(deepcopy(positive)).status == "EXACT_DUPLICATE_NO_WRITE"
+    negative = build_funding(raw_funding(signed_funding_rate="-0.001"))
+    assert negative["evidence_id"] == positive["evidence_id"]
+    assert store.append(negative).status == "CONFLICT_REJECTED"
+    assert (tmp_path / "evidence.jsonl").read_bytes() == before
+
+
+def test_evidence_store_identity_hash_append_only_and_restart(tmp_path):
+    path = tmp_path / "evidence.jsonl"
+    store = EvidenceStore(str(path))
+    record = build_book()
+    assert store.append(record).status == "APPENDED"
+    prefix = path.read_bytes()
+    changed_collection = build_book(context=evidence_context(
+        collected_at="2026-07-22T01:01:00+00:00", pipeline_run_id="retry",
+    ))
+    assert changed_collection["evidence_id"] == record["evidence_id"]
+    assert changed_collection["payload_hash"] == record["payload_hash"]
+    assert EvidenceStore(str(path)).append(changed_collection).status == "EXACT_DUPLICATE_NO_WRITE"
+    assert path.read_bytes() == prefix
+    second = build_book(raw_book(exchange_event_at="2026-07-22T01:01:00+00:00"))
+    assert store.append(second).status == "APPENDED"
+    assert path.read_bytes().startswith(prefix)
+
+
+def test_malformed_store_record_rejected(tmp_path):
+    path = tmp_path / "bad.jsonl"
+    path.write_text('{"bad":true}\n')
+    with pytest.raises(ValueError, match="malformed evidence record"):
+        EvidenceStore(str(path)).read_all()
+
+
+def test_tampered_evidence_store_record_is_rejected(tmp_path):
+    path = tmp_path / "evidence.jsonl"
+    path.write_text(json.dumps({**build_book(), "best_ask_price": "999"}) + "\n")
+    with pytest.raises(ValueError, match="payload hash mismatch"):
+        EvidenceStore(str(path)).read_all()
+
+
+@pytest.mark.parametrize(
+    "side,rate,sign",
+    [("LONG", "0.001", -1), ("SHORT", "0.001", 1),
+     ("LONG", "-0.001", 1), ("SHORT", "-0.001", -1)],
+)
+def test_position_funding_attribution_direction_and_boundaries(side, rate, sign):
+    entry = build_funding(raw_funding(
+        funding_event_at="2026-07-21T00:00:00+00:00", signed_funding_rate=rate,
+    ))
+    inside = build_funding(raw_funding(
+        funding_event_at="2026-07-21T04:00:00+00:00", signed_funding_rate=rate,
+    ))
+    exit_event = build_funding(raw_funding(
+        funding_event_at="2026-07-21T09:00:00+00:00", signed_funding_rate=rate,
+    ))
+    wrong = build_funding(raw_funding(
+        symbol="ETHUSDT", funding_event_at="2026-07-21T04:00:00+00:00",
+        signed_funding_rate=rate,
+    ), symbol="ETHUSDT")
+    result = attribute_position_funding(
+        position(side=side), [entry, inside, exit_event, wrong],
+        query_succeeded=True, expected_windows_resolved=True,
+    )
+    assert result["event_count"] == 2
+    assert Decimal(result["funding_effect_quote"]).compare(Decimal("0")) == Decimal(sign)
+    assert result["attribution_version"] == ATTRIBUTION_VERSION
+    assert result["funding_completeness"] == "COMPLETE"
+
+
+def test_zero_funding_events_require_authoritative_continuity():
+    partial = attribute_position_funding(
+        position(), [], query_succeeded=True, expected_windows_resolved=False,
+    )
+    complete = attribute_position_funding(
+        position(), [], query_succeeded=True, expected_windows_resolved=True,
+    )
+    assert partial["funding_completeness"] == "PARTIAL"
+    assert partial["zero_events_proven"] is False
+    assert complete["zero_events_proven"] is True
+
+
+def test_position_funding_attribution_is_deterministic_evidence(tmp_path):
+    event = build_funding(raw_funding(funding_event_at="2026-07-21T04:00:00+00:00"))
+    record = build_position_funding_attribution_evidence(
+        position(), [event], query_succeeded=True, expected_windows_resolved=True,
+        context=evidence_context(), config=evidence_config(),
+        inventory_hash=evidence_universe()["strategy_inventory_hash"],
+    )
+    assert record["evidence_type"] == "POSITION_FUNDING_ATTRIBUTION"
+    assert record["attribution_version"] == ATTRIBUTION_VERSION
+    store = EvidenceStore(str(tmp_path / "evidence.jsonl"))
+    assert store.append(record).status == "APPENDED"
+    assert store.append(deepcopy(record)).status == "EXACT_DUPLICATE_NO_WRITE"
+
+
+def test_zero_event_public_query_is_recorded_partial_not_complete():
+    result = build_funding_coverage_evidence(
+        symbol="BTCUSDT", events=[], context=evidence_context(), config=evidence_config(),
+        inventory_hash=evidence_universe()["strategy_inventory_hash"],
+    )
+    assert result["query_succeeded"] is True
+    assert result["returned_event_count"] == 0
+    assert result["expected_windows_resolved"] is False
+    assert result["zero_events_proven"] is False
+    assert result["quality_status"] == "PARTIAL"
+
+
+def _stop(side, gap, *, closed_at="2026-07-22T01:00:00+00:00", valid=True, strategy="s"):
+    stop = "95" if side == "LONG" else "105"
+    value = position(
+        position_id=f"{side}-{gap}-{closed_at}-{strategy}", strategy_id=strategy,
+        side=side, status="STOP_LOSS_HIT", exit_reason="stop_loss triggered",
+        closed_at=closed_at, stop_loss=stop, exit_price=stop,
+        gap_execution_reference_price=gap, exit_trigger_bar_open=gap,
+        exit_trigger_bar_close_time=closed_at, nominal_stop_price=stop,
+        gap_execution_evidence_version="stop_trigger_bar_open_v1",
+    )
+    if not valid:
+        for field in (
+            "gap_execution_reference_price", "exit_trigger_bar_open",
+            "exit_trigger_bar_close_time", "nominal_stop_price", "gap_execution_evidence_version",
+        ):
+            value.pop(field, None)
+    return value
+
+
+def test_stop_readiness_separates_legacy_and_classifies_direction_gap():
+    positions = [
+        _stop("LONG", "95"), _stop("LONG", "90"),
+        _stop("SHORT", "105"), _stop("SHORT", "110"),
+        _stop("LONG", "90", closed_at="2026-07-19T01:00:00+00:00", valid=False),
+    ]
+    result = stop_evidence_summary(positions, "2026-07-22T00:00:00+00:00")
+    assert result["prospective_stop_count"] == 4
+    assert result["prospective_stop_with_gap_evidence"] == 4
+    assert result["prospective_gap_coverage_ratio"] == "1"
+    assert result["long_stop_count"] == result["short_stop_count"] == 2
+    assert result["normal_stop_count"] == result["gap_through_stop_count"] == 2
+
+
+def test_missing_prospective_gap_prevents_complete_coverage():
+    result = stop_evidence_summary([
+        _stop("LONG", "90"), _stop("SHORT", "110", valid=False),
+    ], "2026-07-22T00:00:00+00:00")
+    assert result["prospective_gap_coverage_ratio"] == "0.5"
+
+
+class FixtureEvidenceAdapter:
+    def __init__(self, conflict=False):
+        self.requested = []
+        self.conflict = conflict
+
+    def get_top_of_book(self, symbol):
+        self.requested.append(("book", symbol))
+        ask = "102" if self.conflict and symbol == "BTCUSDT" else "101"
+        return raw_book(symbol, best_ask_price=ask)
+
+    def get_depth(self, symbol, limit):
+        self.requested.append(("depth", symbol))
+        return raw_depth(symbol)
+
+    def get_funding_events(self, symbol, lookback):
+        self.requested.append(("funding", symbol))
+        return [raw_funding(symbol)]
+
+
+class OneSymbolFailureAdapter(FixtureEvidenceAdapter):
+    def get_top_of_book(self, symbol):
+        if symbol == "BTCUSDT":
+            raise ValueError("fixture source failure")
+        return super().get_top_of_book(symbol)
+
+
+def test_controlled_eight_symbol_cycle_repeat_and_conflict(tmp_path):
+    first_adapter = FixtureEvidenceAdapter()
+    first = collect_evidence_cycle(
+        strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
+        adapter=first_adapter, context=evidence_context(),
+    )
+    assert first["status"] == "PASS"
+    assert first["active_symbol_count"] == 8
+    assert first["appended"] == 32
+    assert first["duplicate_symbol_requests"] == 0
+    assert first["authenticated_calls"] == first["orders"] == 0
+    assert len({symbol for kind, symbol in first_adapter.requested if kind == "book"}) == 8
+    path = tmp_path / "friction_evidence.jsonl"
+    before = path.read_bytes()
+    repeat = collect_evidence_cycle(
+        strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
+        adapter=FixtureEvidenceAdapter(), context=evidence_context(pipeline_run_id="retry"),
+    )
+    assert repeat["appended"] == 0
+    assert repeat["duplicates"] == 32
+    assert path.read_bytes() == before
+    conflict = collect_evidence_cycle(
+        strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
+        adapter=FixtureEvidenceAdapter(conflict=True), context=evidence_context(pipeline_run_id="conflict"),
+    )
+    assert conflict["status"] == "CONFLICT"
+    assert conflict["conflicts"] == 1
+    assert path.read_bytes() == before
+
+
+def test_observation_only_source_failure_is_audited_and_isolated(tmp_path):
+    result = collect_evidence_cycle(
+        strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
+        adapter=OneSymbolFailureAdapter(), context=evidence_context(),
+    )
+    assert result["status"] == "PASS_WITH_SOURCE_ERRORS"
+    assert result["source_errors"] == 1
+    rows = EvidenceStore(str(tmp_path / "friction_evidence.jsonl")).read_all()
+    failures = [row for row in rows if row["evidence_type"] == "SOURCE_QUALITY_FAILURE"]
+    assert len(failures) == 1
+    assert failures[0]["symbol"] == "BTCUSDT"
+    assert failures[0]["quality_status"] == "SOURCE_ERROR"
+    assert any(row["symbol"] == "ETHUSDT" and row["evidence_type"] == "TOP_OF_BOOK" for row in rows)
+
+
+def _readiness_book(symbol, observed_at, valid=True):
+    return {
+        "symbol": symbol, "evidence_type": "TOP_OF_BOOK",
+        "observed_at": observed_at, "quality_status": "VALID" if valid else "STALE",
+        "one_leg_adverse_spread_bps": "1",
+    }
+
+
+def _readiness_depth(symbol, observed_at):
+    impacts = {str(band): {"adverse_impact_bps": "1"} for band in (1000, 5000, 10000)}
+    return {
+        "symbol": symbol, "evidence_type": "DEPTH_BOOK_IMPACT_ESTIMATE",
+        "observed_at": observed_at, "quality_status": "VALID",
+        "buy_book_impact_bps_by_notional": impacts,
+        "sell_book_impact_bps_by_notional": impacts,
+    }
+
+
+def test_readiness_immature_and_mature_remain_human_governed():
+    universe = evidence_universe()
+    config = evidence_config()
+    immature = build_readiness_report(
+        [], universe=universe, positions=[], prospective_start_at="2026-07-01T00:00:00+00:00",
+        config=config, funding_continuity={},
+    )
+    assert immature["status"] == "MORE_DATA"
+    rows = []
+    for symbol in universe["symbols"]:
+        for day_index in range(14):
+            for sample in range(18):
+                observed = f"2026-07-{day_index + 1:02d}T{sample:02d}:00:00+00:00"
+                rows.extend([_readiness_book(symbol, observed), _readiness_depth(symbol, observed)])
+    stops = [
+        _stop("LONG" if index % 2 == 0 else "SHORT", "90" if index % 2 == 0 else "110",
+              closed_at=f"2026-07-20T{index % 24:02d}:00:00+00:00",
+              strategy="macd_rebound_watch" if index < 15 else "weak_short_watch")
+        for index in range(30)
+    ]
+    mature = build_readiness_report(
+        rows, universe=universe, positions=stops,
+        prospective_start_at="2026-07-01T00:00:00+00:00", config=config,
+        funding_continuity={symbol: True for symbol in universe["symbols"]},
+    )
+    assert mature["status"] == "READY_FOR_HUMAN_REVIEW"
+    assert mature["assumptions_approved"] is False
+    assert mature["p1_03_cohort_activated"] is False
+    assert mature["testnet_enabled"] is mature["live_enabled"] is False
+    assert mature["actual_account_fee_tier"] == "UNVERIFIED"
+
+
+def test_readiness_each_target_fails_closed():
+    universe = evidence_universe()
+    config = evidence_config()
+    base = build_readiness_report(
+        [_readiness_book(symbol, "2026-07-01T00:00:00+00:00") for symbol in universe["symbols"]],
+        universe=universe, positions=[_stop("LONG", "90")],
+        prospective_start_at="2026-07-01T00:00:00+00:00", config=config,
+        funding_continuity={symbol: False for symbol in universe["symbols"]},
+    )
+    assert base["status"] == "MORE_DATA"
+    assert all(row["symbol_readiness"] == "MORE_DATA" for row in base["per_symbol"].values())
+
+
+def test_readiness_success_ratio_counts_source_failures():
+    universe = evidence_universe()
+    rows = [_readiness_book("BTCUSDT", "2026-07-01T00:00:00+00:00")]
+    failure = {
+        "symbol": "BTCUSDT", "evidence_type": "SOURCE_QUALITY_FAILURE",
+        "failed_evidence_type": "TOP_OF_BOOK", "observed_at": "2026-07-01T01:00:00+00:00",
+        "quality_status": "SOURCE_ERROR",
+    }
+    rows.append(failure)
+    report = build_readiness_report(
+        rows, universe=universe, positions=[],
+        prospective_start_at="2026-07-01T00:00:00+00:00",
+        config=evidence_config(), funding_continuity={},
+    )
+    btc = report["per_symbol"]["BTCUSDT"]
+    assert btc["valid_book_snapshot_count"] == 1
+    assert btc["invalid_book_snapshot_count"] == 1
+    assert btc["snapshot_success_ratio"] == "0.5"
+
+
+def test_readiness_report_is_machine_readable_and_explicit(tmp_path):
+    report = build_readiness_report(
+        [], universe=evidence_universe(), positions=[],
+        prospective_start_at="2026-07-01T00:00:00+00:00",
+        config=evidence_config(), funding_continuity={},
+    )
+    path = tmp_path / "friction_evidence_readiness.json"
+    assert write_readiness_report(report, str(path)) == str(path)
+    loaded = json.loads(path.read_text())
+    assert loaded["status"] == "MORE_DATA"
+    assert loaded["actual_account_fee_tier"] == "UNVERIFIED"
+    assert loaded["human_approval_required"] is True
+
+
+def test_wrapper_evidence_path_is_explicit_observation_only():
+    content = open("scripts/run_cloud_shadow_collection_once.sh").read()
+    assert "--collect-friction-evidence" in content
+    assert "Public friction evidence incomplete; Shadow lifecycle continues" in content
+    assert "core.paper_trading.friction_evidence" in content
+    assert "activate-net-friction-cohort" in content  # remains a separate explicit path
