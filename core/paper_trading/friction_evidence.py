@@ -24,6 +24,8 @@ getcontext().prec = 34
 EVIDENCE_VERSION = "friction_evidence_v1"
 ATTRIBUTION_VERSION = "position_funding_events_v1"
 STORE_FILENAME = "friction_evidence.jsonl"
+PROSPECTIVE_BOUNDARY_SOURCE = "EVIDENCE_COLLECTED_AT"
+PROSPECTIVE_BOUNDARY_VERSION = "friction_evidence_collected_at_v1"
 QUALITY_STATUSES = {
     "VALID", "STALE", "CROSSED_BOOK", "INVALID_PRICE", "MISSING_TIMESTAMP",
     "SOURCE_ERROR", "INSUFFICIENT_DEPTH", "PARTIAL", "UNAVAILABLE",
@@ -561,12 +563,84 @@ def build_position_funding_attribution_evidence(
     return finalize_record(result)
 
 
-def stop_evidence_summary(positions: Iterable[dict[str, Any]], prospective_start_at: str) -> dict[str, Any]:
+def derive_prospective_boundary(
+    records: Iterable[dict[str, Any]], existing_readiness: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Derive one immutable prospective boundary from validated ingestion time."""
+    valid: list[dict[str, Any]] = []
+    malformed_collected_at = 0
+    valid_observed_at: list[datetime] = []
+    for record in records:
+        if (
+            record.get("evidence_version") != EVIDENCE_VERSION
+            or record.get("quality_status") not in {"VALID", "PARTIAL"}
+            or evidence_id(record) != record.get("evidence_id")
+            or payload_hash(record) != record.get("payload_hash")
+        ):
+            continue
+        try:
+            _utc(record.get("collected_at"), "collected_at")
+        except ValueError:
+            malformed_collected_at += 1
+            continue
+        valid.append(record)
+        try:
+            valid_observed_at.append(_utc(record.get("observed_at"), "observed_at"))
+        except ValueError:
+            pass
+    if not valid:
+        return {
+            "prospective_boundary_status": "UNAVAILABLE",
+            "prospective_stop_cohort_start_at": None,
+            "prospective_boundary_source": PROSPECTIVE_BOUNDARY_SOURCE,
+            "prospective_boundary_version": PROSPECTIVE_BOUNDARY_VERSION,
+            "earliest_evidence_observed_at": None,
+            "earliest_evidence_collected_at": None,
+            "malformed_collected_at_records": malformed_collected_at,
+        }
+    earliest_collected = min(_utc(record["collected_at"], "collected_at") for record in valid)
+    earliest_observed = min(valid_observed_at) if valid_observed_at else None
+    candidate = earliest_collected.isoformat(timespec="seconds")
+    stored = (existing_readiness or {}).get("prospective_stop_cohort_start_at")
+    if stored is not None:
+        if (
+            (existing_readiness or {}).get("prospective_boundary_source") != PROSPECTIVE_BOUNDARY_SOURCE
+            or (existing_readiness or {}).get("prospective_boundary_version") != PROSPECTIVE_BOUNDARY_VERSION
+            or _utc_text(stored, "prospective_stop_cohort_start_at") != _utc_text(candidate, "candidate_boundary")
+        ):
+            raise ValueError("prospective boundary conflicts with earliest valid evidence collected_at")
+        candidate = _utc(stored, "prospective_stop_cohort_start_at").isoformat(timespec="seconds")
+    return {
+        "prospective_boundary_status": "READY",
+        "prospective_stop_cohort_start_at": candidate,
+        "prospective_boundary_source": PROSPECTIVE_BOUNDARY_SOURCE,
+        "prospective_boundary_version": PROSPECTIVE_BOUNDARY_VERSION,
+        "earliest_evidence_observed_at": (
+            earliest_observed.isoformat(timespec="milliseconds") if earliest_observed else None
+        ),
+        "earliest_evidence_collected_at": earliest_collected.isoformat(timespec="seconds"),
+        "malformed_collected_at_records": malformed_collected_at,
+    }
+
+
+def stop_evidence_summary(
+    positions: Iterable[dict[str, Any]], prospective_start_at: str,
+    historical_window_start_at: str | None = None,
+) -> dict[str, Any]:
     boundary = _utc(prospective_start_at, "prospective_start_at")
-    stops = [
+    all_stops = [
         position for position in positions
         if position.get("status") == "STOP_LOSS_HIT"
-        and _utc(position.get("closed_at"), "closed_at") >= boundary
+    ]
+    stops = [position for position in all_stops if _utc(position.get("closed_at"), "closed_at") >= boundary]
+    historical_start = (
+        _utc(historical_window_start_at, "historical_window_start_at")
+        if historical_window_start_at else None
+    )
+    historical = [
+        position for position in all_stops
+        if _utc(position.get("closed_at"), "closed_at") < boundary
+        and (historical_start is None or _utc(position.get("closed_at"), "closed_at") >= historical_start)
     ]
     valid = [position for position in stops if (
         position.get("gap_execution_evidence_version") == "stop_trigger_bar_open_v1"
@@ -579,10 +653,14 @@ def stop_evidence_summary(positions: Iterable[dict[str, Any]], prospective_start
         == _decimal(position.get("nominal_stop_price"), "stop") for position in valid
     )
     return {
+        "historical_stops_before_prospective_boundary": len(historical),
         "prospective_stop_count": len(stops),
         "prospective_stop_with_gap_evidence": len(valid),
         "prospective_stop_missing_gap_evidence": len(stops) - len(valid),
         "prospective_gap_coverage_ratio": _text(Decimal(len(valid)) / len(stops)) if stops else "0",
+        "prospective_gap_coverage_status": (
+            "NO_SAMPLE" if not stops else "COMPLETE" if len(valid) == len(stops) else "INCOMPLETE"
+        ),
         "long_stop_count": sum(str(position.get("side")).upper() == "LONG" for position in stops),
         "short_stop_count": sum(str(position.get("side")).upper() == "SHORT" for position in stops),
         "normal_stop_count": normal,
@@ -604,6 +682,7 @@ def build_readiness_report(
     positions: Iterable[dict[str, Any]], prospective_start_at: str,
     config: dict[str, Any], funding_continuity: dict[str, bool] | None = None,
     funding_conflicts: dict[str, int] | None = None,
+    boundary_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rows = list(records)
     targets = config["readiness_targets"]
@@ -665,17 +744,20 @@ def build_readiness_report(
             "funding_continuity_resolved": continuity_resolved,
             "symbol_readiness": "READY" if symbol_ready else "MORE_DATA",
         }
-    stop_summary = stop_evidence_summary(positions, prospective_start_at)
+    stop_summary = stop_evidence_summary(
+        positions, prospective_start_at,
+        historical_window_start_at=(boundary_metadata or {}).get("earliest_evidence_observed_at"),
+    )
     days = len(observation_dates)
     stop_ready = (
         stop_summary["prospective_stop_count"] >= int(targets["minimum_prospective_stops"])
-        and stop_summary["prospective_gap_coverage_ratio"] == "1"
+        and stop_summary["prospective_gap_coverage_status"] == "COMPLETE"
         and stop_summary["long_stop_count"] > 0
         and stop_summary["short_stop_count"] > 0
         and set(universe["enabled_strategy_ids"]).issubset(stop_summary["strategy_ids"])
     )
     all_targets = all_targets and stop_ready and days >= int(targets["minimum_calendar_days"])
-    return {
+    result = {
         "evidence_version": EVIDENCE_VERSION,
         "status": "READY_FOR_HUMAN_REVIEW" if all_targets else "MORE_DATA",
         "observation_calendar_days": days,
@@ -689,6 +771,8 @@ def build_readiness_report(
         "live_enabled": False,
         "human_approval_required": True,
     }
+    result.update(boundary_metadata or {})
+    return result
 
 
 def write_readiness_report(report: dict[str, Any], path: str) -> str:
@@ -706,6 +790,40 @@ def write_readiness_report(report: dict[str, Any], path: str) -> str:
         if os.path.exists(temporary):
             os.unlink(temporary)
     return path
+
+
+def regenerate_readiness(
+    strategy_config_path: str, output_dir: str,
+) -> dict[str, Any]:
+    """Regenerate only derived readiness from existing evidence and positions."""
+    from core.paper_trading.paper_position import load_canonical_positions
+
+    config = load_evidence_config(strategy_config_path)
+    store = EvidenceStore(os.path.join(output_dir, config["storage_filename"]))
+    records = store.read_all()
+    readiness_path = os.path.join(output_dir, "friction_evidence_readiness.json")
+    existing = None
+    if os.path.isfile(readiness_path):
+        with open(readiness_path, encoding="utf-8") as handle:
+            existing = json.load(handle)
+    boundary = derive_prospective_boundary(records, existing)
+    if boundary["prospective_boundary_status"] != "READY":
+        report = {
+            **boundary, "evidence_version": EVIDENCE_VERSION, "status": "MORE_DATA",
+            "assumptions_approved": False, "p1_03_cohort_activated": False,
+            "testnet_enabled": False, "live_enabled": False,
+            "human_approval_required": True,
+        }
+    else:
+        universe = resolve_active_universe(strategy_config_path, config)
+        positions, _ = load_canonical_positions(output_dir)
+        report = build_readiness_report(
+            records, universe=universe, positions=positions,
+            prospective_start_at=boundary["prospective_stop_cohort_start_at"],
+            config=config, boundary_metadata=boundary,
+        )
+    write_readiness_report(report, readiness_path)
+    return report
 
 
 def collect_evidence_cycle(
@@ -797,7 +915,9 @@ def main(argv: list[str] | None = None) -> int:
 
     probe = argparse.ArgumentParser(add_help=False)
     probe.add_argument("--strategy-config")
+    probe.add_argument("--output-dir")
     probe.add_argument("--check-config-enabled", action="store_true")
+    probe.add_argument("--regenerate-readiness-only", action="store_true")
     probe_args, _ = probe.parse_known_args(argv)
     if probe_args.check_config_enabled:
         if not probe_args.strategy_config:
@@ -805,6 +925,19 @@ def main(argv: list[str] | None = None) -> int:
         config = load_evidence_config(probe_args.strategy_config)
         print("ENABLED" if config["enabled"] else "DISABLED")
         return 0 if config["enabled"] else 3
+    if probe_args.regenerate_readiness_only:
+        if not probe_args.strategy_config or not probe_args.output_dir:
+            probe.error("--regenerate-readiness-only requires --strategy-config and --output-dir")
+        report = regenerate_readiness(probe_args.strategy_config, probe_args.output_dir)
+        print(json.dumps({
+            "status": report["status"],
+            "prospective_stop_cohort_start_at": report.get("prospective_stop_cohort_start_at"),
+            "prospective_boundary_source": report.get("prospective_boundary_source"),
+            "prospective_boundary_version": report.get("prospective_boundary_version"),
+            "public_market_requests": 0, "new_evidence_records": 0,
+            "ledger_writes": 0, "registry_writes": 0,
+        }, sort_keys=True))
+        return 0
 
     parser = argparse.ArgumentParser(description="Collect public friction evidence (no orders)")
     parser.add_argument("--strategy-config", required=True)
@@ -839,16 +972,9 @@ def main(argv: list[str] | None = None) -> int:
     store = EvidenceStore(os.path.join(args.output_dir, config["storage_filename"]))
     records = store.read_all()
     if records:
-        from core.paper_trading.paper_position import load_canonical_positions
-        universe = resolve_active_universe(args.strategy_config, config)
-        positions, _ = load_canonical_positions(args.output_dir)
-        prospective_start = min(record["observed_at"] for record in records)
-        report = build_readiness_report(
-            records, universe=universe, positions=positions,
-            prospective_start_at=prospective_start, config=config,
-        )
-        result["readiness_report_path"] = write_readiness_report(
-            report, os.path.join(args.output_dir, "friction_evidence_readiness.json"),
+        report = regenerate_readiness(args.strategy_config, args.output_dir)
+        result["readiness_report_path"] = os.path.join(
+            args.output_dir, "friction_evidence_readiness.json",
         )
     print(json.dumps(result, sort_keys=True))
     return 1 if result["status"] == "CONFLICT" else 0

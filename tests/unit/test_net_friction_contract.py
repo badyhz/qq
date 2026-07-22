@@ -22,6 +22,8 @@ from core.paper_trading.net_friction import (
 from core.paper_trading.friction_evidence import (
     ATTRIBUTION_VERSION,
     EVIDENCE_VERSION,
+    PROSPECTIVE_BOUNDARY_SOURCE,
+    PROSPECTIVE_BOUNDARY_VERSION,
     EvidenceStore,
     attribute_position_funding,
     book_impact,
@@ -32,7 +34,11 @@ from core.paper_trading.friction_evidence import (
     build_readiness_report,
     build_top_of_book_evidence,
     collect_evidence_cycle,
+    derive_prospective_boundary,
+    evidence_id,
     load_evidence_config,
+    payload_hash,
+    regenerate_readiness,
     resolve_active_universe,
     stop_evidence_summary,
     write_readiness_report,
@@ -1456,3 +1462,118 @@ def test_evidence_config_enabled_must_be_boolean(tmp_path, bad_enabled):
     path.write_text(yaml.safe_dump(raw))
     with pytest.raises(ValueError, match="enabled must be boolean"):
         load_evidence_config(str(path))
+
+
+def _boundary_records(*, collected_at="2026-07-22T15:58:23+00:00"):
+    context = evidence_context(collected_at=collected_at)
+    book = build_book(context=context)
+    funding = build_funding(
+        raw=raw_funding(funding_event_at="2026-07-21T16:00:00.002+00:00"),
+        context=context,
+    )
+    return [book, funding]
+
+
+def test_boundary_uses_collected_at_not_historical_funding_observed_at():
+    boundary = derive_prospective_boundary(_boundary_records())
+    assert boundary["prospective_stop_cohort_start_at"] == "2026-07-22T15:58:23+00:00"
+    assert boundary["earliest_evidence_observed_at"] == "2026-07-21T16:00:00.002+00:00"
+    assert boundary["earliest_evidence_collected_at"] == "2026-07-22T15:58:23+00:00"
+    assert boundary["prospective_boundary_source"] == PROSPECTIVE_BOUNDARY_SOURCE
+    assert boundary["prospective_boundary_version"] == PROSPECTIVE_BOUNDARY_VERSION
+
+
+def test_boundary_is_immutable_across_later_appends_and_old_event_times():
+    initial = derive_prospective_boundary(_boundary_records())
+    later = _boundary_records(collected_at="2026-07-23T00:58:23+00:00")
+    later.append(build_depth(context=evidence_context(collected_at="2026-07-23T00:58:23+00:00")))
+    later[1]["observed_at"] = "2020-01-01T00:00:00.000+00:00"
+    later[1]["exchange_event_at"] = "2020-01-01T00:00:00.000+00:00"
+    later[1]["evidence_id"] = evidence_id(later[1])
+    later[1]["payload_hash"] = payload_hash(later[1])
+    repeated = derive_prospective_boundary(_boundary_records() + later, initial)
+    assert repeated["prospective_stop_cohort_start_at"] == initial["prospective_stop_cohort_start_at"]
+
+
+def test_existing_boundary_conflict_fails_closed():
+    existing = {
+        "prospective_stop_cohort_start_at": "2026-07-22T16:00:00+00:00",
+        "prospective_boundary_source": PROSPECTIVE_BOUNDARY_SOURCE,
+        "prospective_boundary_version": PROSPECTIVE_BOUNDARY_VERSION,
+    }
+    with pytest.raises(ValueError, match="boundary conflicts"):
+        derive_prospective_boundary(_boundary_records(), existing)
+
+
+@pytest.mark.parametrize("bad_value", [None, "not-a-time"])
+def test_missing_or_malformed_collected_at_never_falls_back(bad_value):
+    row = _boundary_records()[1]
+    if bad_value is None:
+        row.pop("collected_at")
+    else:
+        row["collected_at"] = bad_value
+    row["payload_hash"] = payload_hash(row)
+    boundary = derive_prospective_boundary([row])
+    assert boundary["prospective_boundary_status"] == "UNAVAILABLE"
+    assert boundary["prospective_stop_cohort_start_at"] is None
+    assert boundary["malformed_collected_at_records"] == 1
+
+
+def test_boundary_does_not_require_diagnostic_observed_at_to_be_parseable():
+    row = _boundary_records()[1]
+    row["observed_at"] = "not-a-timestamp"
+    row["evidence_id"] = evidence_id(row)
+    row["payload_hash"] = payload_hash(row)
+
+    boundary = derive_prospective_boundary([row])
+
+    assert boundary["prospective_boundary_status"] == "READY"
+    assert boundary["prospective_stop_cohort_start_at"] == "2026-07-22T15:58:23+00:00"
+    assert boundary["earliest_evidence_observed_at"] is None
+    assert boundary["malformed_collected_at_records"] == 0
+
+
+def test_stop_boundary_is_inclusive_and_empty_sample_is_explicit():
+    boundary = "2026-07-22T15:58:23+00:00"
+    pre = _stop("LONG", "90", closed_at="2026-07-22T15:58:22+00:00")
+    equal = _stop("SHORT", "110", closed_at=boundary)
+    empty = stop_evidence_summary([pre], boundary, "2026-07-21T16:00:00+00:00")
+    assert empty["historical_stops_before_prospective_boundary"] == 1
+    assert empty["prospective_stop_count"] == 0
+    assert empty["prospective_stop_missing_gap_evidence"] == 0
+    assert empty["prospective_gap_coverage_status"] == "NO_SAMPLE"
+    included = stop_evidence_summary([pre, equal], boundary, "2026-07-21T16:00:00+00:00")
+    assert included["prospective_stop_count"] == 1
+    assert included["prospective_stop_with_gap_evidence"] == 1
+    assert included["prospective_gap_coverage_status"] == "COMPLETE"
+
+
+def test_post_boundary_missing_gap_is_in_denominator():
+    stop = _stop("LONG", "90", closed_at="2026-07-22T16:00:00+00:00", valid=False)
+    result = stop_evidence_summary([stop], "2026-07-22T15:58:23+00:00")
+    assert result["prospective_stop_count"] == 1
+    assert result["prospective_stop_with_gap_evidence"] == 0
+    assert result["prospective_stop_missing_gap_evidence"] == 1
+    assert result["prospective_gap_coverage_status"] == "INCOMPLETE"
+
+
+def test_readiness_only_regeneration_preserves_evidence_bytes(tmp_path):
+    collect_evidence_cycle(
+        strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
+        adapter=FixtureEvidenceAdapter(), context=evidence_context(),
+    )
+    store_path = tmp_path / "friction_evidence.jsonl"
+    before = store_path.read_bytes()
+    historical = _stop("LONG", "90", closed_at="2026-07-22T01:00:00+00:00")
+    (tmp_path / "2026-07-22_paper_position_ledger.jsonl").write_text(json.dumps(historical) + "\n")
+    report = regenerate_readiness(STRATEGY_CONFIG, str(tmp_path))
+    assert store_path.read_bytes() == before
+    assert report["prospective_stop_cohort_start_at"] == "2026-07-22T01:00:30+00:00"
+    assert report["prospective_boundary_source"] == PROSPECTIVE_BOUNDARY_SOURCE
+    assert report["prospective_stops"]["prospective_stop_count"] == 0
+    assert report["prospective_stops"]["prospective_stop_missing_gap_evidence"] == 0
+    assert report["prospective_stops"]["prospective_gap_coverage_status"] == "NO_SAMPLE"
+    assert report["status"] == "MORE_DATA"
+    repeated = regenerate_readiness(STRATEGY_CONFIG, str(tmp_path))
+    assert repeated["prospective_stop_cohort_start_at"] == report["prospective_stop_cohort_start_at"]
+    assert store_path.read_bytes() == before
