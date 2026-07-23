@@ -183,9 +183,11 @@ PY
                     echo "FRICTION_EVIDENCE_RESULT:COLLECTED"
                 fi
             else
+                FRICTION_EVIDENCE_RC=$?
                 echo "$FRICTION_EVIDENCE_OUTPUT"
                 echo "FRICTION_EVIDENCE_RESULT:FAIL"
-                echo "Public friction evidence incomplete; Shadow lifecycle continues"
+                echo "Public friction evidence hard failure; aborting pipeline"
+                exit "$FRICTION_EVIDENCE_RC"
             fi
         else
             echo "FRICTION_EVIDENCE_RESULT:DISABLED"

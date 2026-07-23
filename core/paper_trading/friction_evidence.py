@@ -26,6 +26,11 @@ ATTRIBUTION_VERSION = "position_funding_events_v1"
 STORE_FILENAME = "friction_evidence.jsonl"
 PROSPECTIVE_BOUNDARY_SOURCE = "EVIDENCE_COLLECTED_AT"
 PROSPECTIVE_BOUNDARY_VERSION = "friction_evidence_collected_at_v1"
+FUNDING_EVENT_IMMUTABLE_FIELDS = (
+    "evidence_version", "evidence_type", "venue", "market_type", "symbol",
+    "observed_at", "exchange_event_at", "signed_funding_rate", "mark_price",
+    "source_event_identity", "source", "source_endpoint_or_adapter", "quality_status",
+)
 QUALITY_STATUSES = {
     "VALID", "STALE", "CROSSED_BOOK", "INVALID_PRICE", "MISSING_TIMESTAMP",
     "SOURCE_ERROR", "INSUFFICIENT_DEPTH", "PARTIAL", "UNAVAILABLE",
@@ -197,6 +202,13 @@ class EvidenceStore:
         existing = {item["evidence_id"]: item for item in self.read_all()}
         prior = existing.get(record["evidence_id"])
         if prior is not None:
+            if prior == record:
+                return AppendResult("EXACT_DUPLICATE_NO_WRITE", record["evidence_id"], self.path)
+            if (
+                prior.get("evidence_type") == record.get("evidence_type") == "FUNDING_EVENT"
+                and all(prior.get(field) == record.get(field) for field in FUNDING_EVENT_IMMUTABLE_FIELDS)
+            ):
+                return AppendResult("FUNDING_SEMANTIC_REPLAY_NO_WRITE", record["evidence_id"], self.path)
             if prior.get("payload_hash") == record["payload_hash"]:
                 return AppendResult("EXACT_DUPLICATE_NO_WRITE", record["evidence_id"], self.path)
             return AppendResult("CONFLICT_REJECTED", record["evidence_id"], self.path)
@@ -832,10 +844,20 @@ def collect_evidence_cycle(
 ) -> dict[str, Any]:
     config = load_evidence_config(strategy_config_path)
     if not config["enabled"] and not context.get("fixture_mode"):
-        return {"status": "DISABLED", "appended": 0, "duplicates": 0, "conflicts": 0}
+        return {
+            "status": "DISABLED", "appended": 0, "duplicates": 0, "conflicts": 0,
+            "funding_exact_duplicate_no_writes": 0,
+            "funding_semantic_replay_no_writes": 0,
+            "funding_true_conflicts": 0, "new_funding_events": 0,
+        }
     universe = resolve_active_universe(strategy_config_path, config)
     store = EvidenceStore(os.path.join(output_dir, config["storage_filename"]))
-    counts = {"appended": 0, "duplicates": 0, "conflicts": 0, "source_errors": 0}
+    counts = {
+        "appended": 0, "duplicates": 0, "conflicts": 0, "source_errors": 0,
+        "funding_exact_duplicate_no_writes": 0,
+        "funding_semantic_replay_no_writes": 0,
+        "funding_true_conflicts": 0, "new_funding_events": 0,
+    }
     requested: set[str] = set()
     for symbol in universe["symbols"]:
         requested.add(symbol)
@@ -874,8 +896,18 @@ def collect_evidence_cycle(
                     inventory_hash=universe["strategy_inventory_hash"],
                 )
                 outcome = store.append(record)
-                counts["appended" if outcome.status == "APPENDED" else
-                       "duplicates" if outcome.status == "EXACT_DUPLICATE_NO_WRITE" else "conflicts"] += 1
+                if outcome.status == "APPENDED":
+                    counts["appended"] += 1
+                    counts["new_funding_events"] += 1
+                elif outcome.status == "EXACT_DUPLICATE_NO_WRITE":
+                    counts["duplicates"] += 1
+                    counts["funding_exact_duplicate_no_writes"] += 1
+                elif outcome.status == "FUNDING_SEMANTIC_REPLAY_NO_WRITE":
+                    counts["duplicates"] += 1
+                    counts["funding_semantic_replay_no_writes"] += 1
+                else:
+                    counts["conflicts"] += 1
+                    counts["funding_true_conflicts"] += 1
             coverage = build_funding_coverage_evidence(
                 symbol=symbol, events=events, context=context, config=config,
                 inventory_hash=universe["strategy_inventory_hash"],

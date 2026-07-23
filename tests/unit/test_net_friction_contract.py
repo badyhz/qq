@@ -1054,10 +1054,51 @@ def test_funding_signed_rate_identity_and_conflict(tmp_path):
     assert store.append(positive).status == "APPENDED"
     before = (tmp_path / "evidence.jsonl").read_bytes()
     assert store.append(deepcopy(positive)).status == "EXACT_DUPLICATE_NO_WRITE"
+    replay = build_funding(
+        raw_funding(funding_interval_seconds=28799),
+        context=evidence_context(
+            collected_at="2026-07-22T02:00:00+00:00",
+            pipeline_run_id="replay-run",
+        ),
+    )
+    assert replay["evidence_id"] == positive["evidence_id"]
+    assert replay["payload_hash"] != positive["payload_hash"]
+    assert store.append(replay).status == "FUNDING_SEMANTIC_REPLAY_NO_WRITE"
     negative = build_funding(raw_funding(signed_funding_rate="-0.001"))
     assert negative["evidence_id"] == positive["evidence_id"]
     assert store.append(negative).status == "CONFLICT_REJECTED"
+    changed_source_identity = build_funding(raw_funding(source_event_identity="BTCUSDT:different"))
+    assert changed_source_identity["evidence_id"] == positive["evidence_id"]
+    assert store.append(changed_source_identity).status == "CONFLICT_REJECTED"
+    changed_mark = build_funding(raw_funding(mark_price="101"))
+    assert store.append(changed_mark).status == "CONFLICT_REJECTED"
     assert (tmp_path / "evidence.jsonl").read_bytes() == before
+
+
+def test_funding_new_event_appends_then_provenance_repeat_is_semantic_no_write(tmp_path):
+    store = EvidenceStore(str(tmp_path / "evidence.jsonl"))
+    event = build_funding(raw_funding(funding_event_at="2026-07-22T08:00:00+00:00"))
+    assert store.append(event).status == "APPENDED"
+    before = (tmp_path / "evidence.jsonl").read_bytes()
+    replay = build_funding(
+        raw_funding(funding_event_at="2026-07-22T08:00:00+00:00"),
+        context=evidence_context(
+            collected_at="2026-07-22T09:00:00+00:00",
+            pipeline_run_id="later-run", pipeline_commit="b" * 40,
+            report_date="2026-07-23",
+        ),
+    )
+    assert store.append(replay).status == "FUNDING_SEMANTIC_REPLAY_NO_WRITE"
+    later = build_funding(raw_funding(funding_event_at="2026-07-22T16:00:00+00:00"))
+    assert later["evidence_id"] != event["evidence_id"]
+    assert store.append(later).status == "APPENDED"
+    other_symbol = build_funding(
+        raw_funding(symbol="ETHUSDT", funding_event_at="2026-07-22T08:00:00+00:00"),
+        symbol="ETHUSDT",
+    )
+    assert other_symbol["evidence_id"] != event["evidence_id"]
+    assert store.append(other_symbol).status == "APPENDED"
+    assert (tmp_path / "evidence.jsonl").read_bytes().startswith(before)
 
 
 def test_evidence_store_identity_hash_append_only_and_restart(tmp_path):
@@ -1225,6 +1266,12 @@ class OneSymbolFailureAdapter(FixtureEvidenceAdapter):
         return super().get_top_of_book(symbol)
 
 
+class FundingRateConflictAdapter(FixtureEvidenceAdapter):
+    def get_funding_events(self, symbol, lookback):
+        self.requested.append(("funding", symbol))
+        return [raw_funding(symbol, signed_funding_rate="0.002")]
+
+
 def test_controlled_eight_symbol_cycle_repeat_and_conflict(tmp_path):
     first_adapter = FixtureEvidenceAdapter()
     first = collect_evidence_cycle(
@@ -1245,6 +1292,9 @@ def test_controlled_eight_symbol_cycle_repeat_and_conflict(tmp_path):
     )
     assert repeat["appended"] == 0
     assert repeat["duplicates"] == 32
+    assert repeat["funding_exact_duplicate_no_writes"] == 0
+    assert repeat["funding_semantic_replay_no_writes"] == 8
+    assert repeat["funding_true_conflicts"] == 0
     assert path.read_bytes() == before
     conflict = collect_evidence_cycle(
         strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
@@ -1252,6 +1302,24 @@ def test_controlled_eight_symbol_cycle_repeat_and_conflict(tmp_path):
     )
     assert conflict["status"] == "CONFLICT"
     assert conflict["conflicts"] == 1
+    assert path.read_bytes() == before
+
+
+def test_funding_true_conflict_is_counted_and_store_is_unchanged(tmp_path):
+    first = collect_evidence_cycle(
+        strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
+        adapter=FixtureEvidenceAdapter(), context=evidence_context(),
+    )
+    assert first["new_funding_events"] == 8
+    path = tmp_path / "friction_evidence.jsonl"
+    before = path.read_bytes()
+    conflict = collect_evidence_cycle(
+        strategy_config_path=STRATEGY_CONFIG, output_dir=str(tmp_path),
+        adapter=FundingRateConflictAdapter(), context=evidence_context(),
+    )
+    assert conflict["status"] == "CONFLICT"
+    assert conflict["funding_true_conflicts"] == 8
+    assert conflict["funding_semantic_replay_no_writes"] == 0
     assert path.read_bytes() == before
 
 
@@ -1375,12 +1443,12 @@ def test_wrapper_evidence_path_is_explicit_observation_only():
     collector_block = content[content.index('if [ "$FRICTION_EVIDENCE_CONFIG_ENABLED" -eq 1 ]'):]
     assert "python3 -m core.paper_trading.friction_evidence" in collector_block
     assert "FRICTION_EVIDENCE_ENABLEMENT_SOURCE:" in content
-    assert "Public friction evidence incomplete; Shadow lifecycle continues" in content
+    assert "Public friction evidence hard failure; aborting pipeline" in content
     assert "core.paper_trading.friction_evidence" in content
     assert "activate-net-friction-cohort" in content  # remains a separate explicit path
 
 
-def _governed_wrapper_fixture(tmp_path, *, config_enabled):
+def _governed_wrapper_fixture(tmp_path, *, config_enabled, collector_result="PASS"):
     project = tmp_path / "project"
     fakebin = project / "fakebin"
     (project / ".venv" / "bin").mkdir(parents=True)
@@ -1400,7 +1468,11 @@ def _governed_wrapper_fixture(tmp_path, *, config_enabled):
         "elif [[ \"$*\" == *build_pipeline_context* ]]; then\n"
         "  echo 'RUN-GOVERNED 2026-07-22T01:00:30+00:00 2026-07-22'\n"
         "elif [[ \"$*\" == *core.paper_trading.friction_evidence* ]]; then\n"
-        "  echo '{\"status\": \"PASS\", \"active_symbol_count\": 8, \"appended\": 32, \"duplicate_symbol_requests\": 0, \"authenticated_calls\": 0, \"orders\": 0}'\n"
+        "  if [ \"$COLLECTOR_RESULT\" = CONFLICT ]; then\n"
+        "    echo '{\"status\": \"CONFLICT\", \"funding_true_conflicts\": 1}'\n"
+        "    exit 1\n"
+        "  fi\n"
+        "  echo '{\"status\": \"PASS\", \"active_symbol_count\": 8, \"appended\": 32, \"funding_semantic_replay_no_writes\": 16, \"duplicate_symbol_requests\": 0, \"authenticated_calls\": 0, \"orders\": 0}'\n"
         "fi\n"
     )
     fake_python.chmod(0o755)
@@ -1411,6 +1483,7 @@ def _governed_wrapper_fixture(tmp_path, *, config_enabled):
     env.update({
         "PROJECT_DIR": str(project), "CALL_LOG": str(call_log),
         "CONFIG_ENABLED": "1" if config_enabled else "0",
+        "COLLECTOR_RESULT": collector_result,
         "PATH": f"{fakebin}:{env['PATH']}",
     })
     return call_log, env
@@ -1452,6 +1525,23 @@ def test_wrapper_tracked_config_is_single_master_switch(
     assert "48edb9dcacbb032d69bdc16ffffd91b786b399c8ce8a88199ccbe676d4653a91" not in output
     if not config_enabled and cli_requested:
         assert "friction_evidence_decision=DISABLED_BY_TRACKED_CONFIG" in output
+
+
+def test_wrapper_propagates_true_evidence_conflict_nonzero(tmp_path):
+    call_log, env = _governed_wrapper_fixture(
+        tmp_path, config_enabled=True, collector_result="CONFLICT",
+    )
+    result = subprocess.run(
+        ["bash", "scripts/run_cloud_shadow_collection_once.sh"],
+        cwd=".", env=env, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "FRICTION_EVIDENCE_RESULT:FAIL" in result.stdout
+    assert "Public friction evidence hard failure; aborting pipeline" in result.stdout
+    calls = call_log.read_text().splitlines()
+    collector_index = next(i for i, line in enumerate(calls) if "--allow-public-http" in line and "friction_evidence" in line)
+    assert not any("run_paper_performance_scorecard.py" in line for line in calls[collector_index + 1:])
+    assert not (tmp_path / "project" / "reports").exists()
 
 
 @pytest.mark.parametrize("bad_enabled", ["true", 1, None])
