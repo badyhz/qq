@@ -1,4 +1,4 @@
-name: IronTop Short Multi-Symbol Research
+name: Market Accelerator Activation Research
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  iron-top-short:
+  accelerator-activation:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -36,15 +36,15 @@ jobs:
             --output-dir data/indicator_composite_history \
             --manifest research_results/history_manifest.json
 
-      - name: Run exact IronTop SHORT variants
+      - name: Run unchanged accelerator activation variants
         run: python scripts/research_indicator_composite_multisymbol.py
 
-      - name: Upload compact IronTop results
+      - name: Upload compact accelerator results
         uses: actions/upload-artifact@v4
         with:
-          name: iron-top-short-multisymbol
+          name: market-accelerator-activation-multisymbol
           path: |
             research_results/history_manifest.json
-            research_results/iron_top_short_multisymbol.json
+            research_results/market_accelerator_activation_multisymbol.json
           if-no-files-found: error
           retention-days: 7
