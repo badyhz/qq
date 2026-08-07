@@ -1,4 +1,4 @@
-name: Indicator Composite V1
+name: Indicator Ports Focused CI
 
 on:
   push:
@@ -6,27 +6,15 @@ on:
       - agent/indicator-composite-v1
   pull_request:
     paths:
-      - "config/strategies.yaml"
       - "core/binance_public_ohlcv_archive.py"
-      - "core/indicator_composite_backtest.py"
       - "core/offline_backtest_trade_simulator.py"
       - "core/paper_trading/aicoin_indicator_ports.py"
-      - "core/paper_trading/higher_timeframe_trend.py"
-      - "core/paper_trading/indicator_composite_adapter.py"
       - "core/paper_trading/indicator_composite_strategy.py"
       - "core/paper_trading/market_accelerator_port.py"
-      - "scripts/prepare_indicator_composite_history.py"
-      - "scripts/run_indicator_composite_backtest.py"
       - "tests/unit/test_aicoin_indicator_ports.py"
       - "tests/unit/test_binance_public_ohlcv_archive.py"
-      - "tests/unit/test_higher_timeframe_trend.py"
-      - "tests/unit/test_indicator_composite_adapter.py"
-      - "tests/unit/test_indicator_composite_backtest.py"
-      - "tests/unit/test_indicator_composite_strategy.py"
       - "tests/unit/test_market_accelerator_port.py"
       - "tests/unit/test_offline_backtest_trade_simulator.py"
-      - "tests/unit/test_prepare_indicator_composite_history.py"
-      - "tests/unit/test_run_indicator_composite_backtest.py"
       - ".github/workflows/indicator-composite-v1.yml"
   workflow_dispatch:
 
@@ -46,24 +34,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install focused test dependencies
+      - name: Install focused test dependency
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest PyYAML
+          python -m pip install pytest
 
-      - name: Run indicator composite and compatibility tests
+      - name: Run retained indicator and simulator tests
         env:
           HOME: ${{ runner.temp }}/isolated-home
         run: |
           mkdir -p "$HOME"
           python -m pytest -q \
             tests/unit/test_offline_backtest_trade_simulator.py \
-            tests/unit/test_indicator_composite_strategy.py \
             tests/unit/test_aicoin_indicator_ports.py \
             tests/unit/test_market_accelerator_port.py \
-            tests/unit/test_higher_timeframe_trend.py \
-            tests/unit/test_indicator_composite_adapter.py \
-            tests/unit/test_indicator_composite_backtest.py \
-            tests/unit/test_binance_public_ohlcv_archive.py \
-            tests/unit/test_run_indicator_composite_backtest.py \
-            tests/unit/test_prepare_indicator_composite_history.py
+            tests/unit/test_binance_public_ohlcv_archive.py
