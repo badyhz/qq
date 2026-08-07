@@ -1,9 +1,12 @@
 name: Indicator Composite BTC Baseline
 
 on:
-  push:
+  pull_request:
     branches:
-      - research/indicator-composite-btc-baseline
+      - agent/indicator-composite-v1
+    paths:
+      - ".github/workflows/indicator-composite-btc-baseline.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout research branch
+      - name: Checkout research merge
         uses: actions/checkout@v4
 
       - name: Set up Python
