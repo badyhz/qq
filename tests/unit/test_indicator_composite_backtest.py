@@ -4,6 +4,7 @@ import pytest
 
 from core.indicator_composite_backtest import (
     CompositeBacktestConfig,
+    run_indicator_composite_ablation,
     run_indicator_composite_backtest,
 )
 from core.offline_backtest_trade_simulator import TradeSimulationParams
@@ -43,14 +44,8 @@ def _state(
     )
 
 
-def test_backtest_reuses_existing_simulator_for_take_profit_trade():
-    bars = [
-        _bar(0, close=100.0, high=101.0, low=98.0),
-        _bar(1, close=104.0, high=106.0, low=100.0),
-        _bar(2, close=104.0, high=105.0, low=103.0),
-    ]
-    states = [_state(trigger=True), _state(), _state()]
-    cfg = CompositeBacktestConfig(
+def _zero_friction_config() -> CompositeBacktestConfig:
+    return CompositeBacktestConfig(
         simulation=TradeSimulationParams(
             slippage_pct=0.0,
             fee_pct=0.0,
@@ -58,7 +53,20 @@ def test_backtest_reuses_existing_simulator_for_take_profit_trade():
         )
     )
 
-    result = run_indicator_composite_backtest(bars, states, cfg)
+
+def test_backtest_reuses_existing_simulator_for_take_profit_trade():
+    bars = [
+        _bar(0, close=100.0, high=101.0, low=98.0),
+        _bar(1, close=104.0, high=106.0, low=100.0),
+        _bar(2, close=104.0, high=105.0, low=103.0),
+    ]
+    states = [_state(trigger=True), _state(), _state()]
+
+    result = run_indicator_composite_backtest(
+        bars,
+        states,
+        _zero_friction_config(),
+    )
 
     assert result["signal_count"] == 1
     assert result["trade_count"] == 1
@@ -147,15 +155,12 @@ def test_overlapping_signal_is_counted_but_not_opened_twice():
         _state(),
         _state(),
     ]
-    cfg = CompositeBacktestConfig(
-        simulation=TradeSimulationParams(
-            slippage_pct=0.0,
-            fee_pct=0.0,
-            max_hold_bars=10,
-        )
-    )
 
-    result = run_indicator_composite_backtest(bars, states, cfg)
+    result = run_indicator_composite_backtest(
+        bars,
+        states,
+        _zero_friction_config(),
+    )
 
     assert result["signal_count"] == 2
     assert result["trade_count"] == 1
@@ -203,6 +208,63 @@ def test_existing_fee_and_slippage_model_remain_active():
     assert trade["fees"] > 0
     assert trade["slippage_cost"] > 0
     assert trade["net_pnl"] < trade["gross_pnl"]
+
+
+def test_ablation_identifies_accelerator_filter_effect():
+    bars = [
+        _bar(0, close=100.0, high=101.0, low=98.0),
+        _bar(1, close=104.0, high=106.0, low=100.0),
+    ]
+    states = [
+        _state(trigger=True, regime=AccelerationRegime.IDLE),
+        _state(),
+    ]
+
+    ablation = run_indicator_composite_ablation(
+        bars,
+        states,
+        _zero_friction_config(),
+    )
+    variants = {entry["variant"]: entry["result"] for entry in ablation["variants"]}
+
+    assert variants["A_BOTTOM_ONLY"]["signal_count"] == 1
+    assert variants["A_BOTTOM_ONLY"]["trade_count"] == 1
+    assert variants["B_BOTTOM_ACCELERATOR"]["signal_count"] == 0
+    assert variants["C_BOTTOM_ACCELERATOR_HTF"]["signal_count"] == 0
+    assert ablation["comparisons"][0]["added_component"] == "market_accelerator"
+    assert ablation["comparisons"][0]["delta"]["signal_count_delta"] == -1
+
+
+def test_ablation_identifies_higher_timeframe_filter_effect():
+    bars = [
+        _bar(0, close=100.0, high=101.0, low=98.0),
+        _bar(1, close=104.0, high=106.0, low=100.0),
+    ]
+    states = [
+        _state(
+            trigger=True,
+            regime=AccelerationRegime.START,
+            trend=HigherTimeframeTrend.DOWN,
+        ),
+        _state(),
+    ]
+
+    ablation = run_indicator_composite_ablation(
+        bars,
+        states,
+        _zero_friction_config(),
+    )
+    variants = {entry["variant"]: entry["result"] for entry in ablation["variants"]}
+
+    assert variants["A_BOTTOM_ONLY"]["trade_count"] == 1
+    assert variants["B_BOTTOM_ACCELERATOR"]["trade_count"] == 1
+    assert variants["C_BOTTOM_ACCELERATOR_HTF"]["trade_count"] == 0
+    assert ablation["comparisons"][1]["added_component"] == "higher_timeframe_trend"
+    assert ablation["comparisons"][1]["delta"]["trade_count_delta"] == -1
+    assert ablation["same_bars"] is True
+    assert ablation["same_friction_config"] is True
+    assert ablation["dynamic_exit_variant_included"] is False
+    assert ablation["orders_enabled"] is False
 
 
 def test_length_mismatch_fails_closed():
