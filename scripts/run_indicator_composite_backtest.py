@@ -30,7 +30,7 @@ from core.historical_ohlcv_chunked_reader import (
 from core.historical_ohlcv_schema import OHLCVColumnMapping
 from core.indicator_composite_backtest import (
     CompositeBacktestConfig,
-    run_indicator_composite_backtest,
+    run_indicator_composite_ablation,
 )
 from core.offline_backtest_trade_simulator import TradeSimulationParams
 from core.paper_trading.aicoin_indicator_ports import (
@@ -182,17 +182,19 @@ def run_from_csv(
     trends = align_higher_timeframe_trends(lower_hist, higher_hist)
     lower_market = _market_bars(lower_hist)
     states = build_recovered_v0_composite_states(lower_market, trends)
-    backtest = run_indicator_composite_backtest(
-        lower_market,
-        states,
-        CompositeBacktestConfig(
-            cooldown_bars=cooldown_bars,
-            simulation=TradeSimulationParams(
-                slippage_pct=slippage_pct,
-                fee_pct=fee_pct,
-                max_hold_bars=max_hold_bars,
-            ),
+    config = CompositeBacktestConfig(
+        cooldown_bars=cooldown_bars,
+        simulation=TradeSimulationParams(
+            slippage_pct=slippage_pct,
+            fee_pct=fee_pct,
+            max_hold_bars=max_hold_bars,
         ),
+    )
+    ablation = run_indicator_composite_ablation(lower_market, states, config)
+    full_result = next(
+        entry["result"]
+        for entry in ablation["variants"]
+        if entry["variant"] == "C_BOTTOM_ACCELERATOR_HTF"
     )
 
     return _json_safe({
@@ -207,7 +209,8 @@ def run_from_csv(
             "lower": lower_quality,
             "higher": higher_quality,
         },
-        "backtest": backtest,
+        "backtest": full_result,
+        "entry_ablation": ablation,
         "safety_flags": SAFETY_FLAGS,
     })
 
