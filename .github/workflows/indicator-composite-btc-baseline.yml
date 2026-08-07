@@ -1,4 +1,4 @@
-name: Market Accelerator Activation Research
+name: Market Accelerator Short Time-Split
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  accelerator-activation:
+  accelerator-short-timesplit:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -36,15 +36,20 @@ jobs:
             --output-dir data/indicator_composite_history \
             --manifest research_results/history_manifest.json
 
-      - name: Run unchanged accelerator activation variants
+      - name: Run unchanged short variants with six-month split
+        env:
+          RESEARCH_SYMBOLS: BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT
+          RESEARCH_START: 2025-08-01
+          RESEARCH_SPLIT: 2026-02-01
+          RESEARCH_END: 2026-07-31
         run: python scripts/research_indicator_composite_multisymbol.py
 
-      - name: Upload compact accelerator results
+      - name: Upload compact time-split results
         uses: actions/upload-artifact@v4
         with:
-          name: market-accelerator-activation-multisymbol
+          name: market-accelerator-short-timesplit
           path: |
             research_results/history_manifest.json
-            research_results/market_accelerator_activation_multisymbol.json
+            research_results/market_accelerator_short_timesplit.json
           if-no-files-found: error
           retention-days: 7
