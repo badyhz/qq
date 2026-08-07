@@ -1,27 +1,30 @@
 #!/usr/bin/env python3
-"""Two-year lifecycle research for the recovered Market Accelerator.
+"""Two-year FAST-confirmed Market Accelerator SHORT research.
 
 Research branch only; do not merge.
 
-The entry is frozen from C_SHORT_ACCEL:
-- previous regime in {IDLE, DECELERATING};
-- current regime in {START, FAST};
+This is the final pre-declared structural interpretation for the recovered
+疾速500 indicator and targets the user's original 'only catch big moves' intent.
+No threshold is tuned: the existing START/FAST/EXTREME levels remain 20/40/80.
+
+Entry event:
+- current regime == FAST;
+- previous regime in {IDLE, START, DECELERATING};
+- previous regime is NOT FAST/EXTREME;
 - signed_speed < 0;
-- signal close -> next-bar-open SHORT;
-- protective stop = signal-bar high + 0.10%;
-- one exposure at a time.
+- signal close -> next-bar-open SHORT.
 
-The only strategy change is role-correct exit behavior.  There is no fixed 2R
-profit target.  After entry, hold the short while negative acceleration remains
-active and exit on the next bar open after the first completed bar where any of
-these is true:
-- regime becomes DECELERATING;
-- regime becomes IDLE;
-- signed_speed becomes non-negative.
+Execution:
+- stop = signal-bar high + 0.10%;
+- fixed 2R target;
+- existing Shadow TradeIntent risk gate;
+- existing offline simulator with bar-open execution;
+- one exposure at a time;
+- EXTREME is never a new entry;
+- 100-bar maximum hold.
 
-A 100-bar fail-safe maximum hold remains. Fees are isolated with a hypothetical
-0 / 0.5 / 1 bp-per-side grid; slippage stays zero. Fee values are research
-stress inputs, not P1-03 assumptions.
+Fee grid 0 / 0.5 / 1 bp per side is hypothetical research stress only, not an
+approved P1-03 assumption. Slippage stays zero so fee robustness is isolated.
 """
 from __future__ import annotations
 
@@ -37,11 +40,13 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.offline_backtest_metrics_engine import compute_run_metrics
+from core.offline_backtest_trade_simulator import TradeSimulationParams, simulate_trade
 from core.paper_trading.indicator_composite_strategy import AccelerationRegime
 from core.paper_trading.market_accelerator_port import (
     calculate_market_accelerator,
     classify_accelerator_series,
 )
+from core.paper_trading.trade_intent_risk_gate import validate_trade_intent
 from scripts.prepare_indicator_composite_history import DEFAULT_SYMBOLS
 from scripts.run_indicator_composite_backtest import _load_historical, _market_bars
 
@@ -56,11 +61,15 @@ SYMBOLS = tuple(
 LOWER_TF = "15m"
 DATA_ROOT = Path("data/indicator_composite_history")
 STOP_BUFFER_PCT = 0.10
+TARGET_R = 2.0
+MAX_RISK_PCT = 0.5
 MAX_HOLD_BARS = 100
 FEE_BPS_GRID = (0.0, 0.5, 1.0)
-_ACTIVE = {AccelerationRegime.START, AccelerationRegime.FAST}
-_REARMED = {AccelerationRegime.IDLE, AccelerationRegime.DECELERATING}
-_EXIT_REGIMES = {AccelerationRegime.IDLE, AccelerationRegime.DECELERATING}
+_PRE_FAST = {
+    AccelerationRegime.IDLE,
+    AccelerationRegime.START,
+    AccelerationRegime.DECELERATING,
+}
 
 
 def _epoch(day: str) -> float:
@@ -72,35 +81,47 @@ def _day_after(day: str) -> float:
     return (dt + timedelta(days=1)).timestamp()
 
 
-def _indicator_state(bars):
+def _fast_entries(bars) -> tuple[bool, ...]:
     series = calculate_market_accelerator(bars)
     regimes = classify_accelerator_series(series.points)
     entries = [False] * len(bars)
-    exits = [False] * len(bars)
-
     for index in range(1, len(bars)):
-        point = series.points[index]
-        signed_speed = point.signed_speed
+        signed_speed = series.points[index].signed_speed
         entries[index] = bool(
-            regimes[index - 1].regime in _REARMED
-            and regimes[index].regime in _ACTIVE
+            regimes[index - 1].regime in _PRE_FAST
+            and regimes[index].regime == AccelerationRegime.FAST
             and signed_speed is not None
             and signed_speed < 0
         )
-        exits[index] = bool(
-            regimes[index].regime in _EXIT_REGIMES
-            or (signed_speed is not None and signed_speed >= 0)
-        )
-    return tuple(entries), tuple(exits)
+    return tuple(entries)
 
 
-def _simulate_symbol(symbol: str, bars, entries, exits, fee_bps: float) -> dict:
-    fee_pct = fee_bps / 10000.0
+def _bar_dict(bar) -> dict:
+    return {
+        "timestamp": float(bar.timestamp),
+        "open": float(bar.open),
+        "high": float(bar.high),
+        "low": float(bar.low),
+        "close": float(bar.close),
+        "volume": float(bar.volume),
+        "symbol": str(bar.symbol),
+        "timeframe": str(bar.timeframe),
+    }
+
+
+def _run_symbol(symbol: str, bars, entries, fee_bps: float) -> dict:
+    bar_dicts = [_bar_dict(bar) for bar in bars]
+    params = TradeSimulationParams(
+        slippage_pct=0.0,
+        fee_pct=fee_bps / 10000.0,
+        max_hold_bars=MAX_HOLD_BARS,
+    )
     unavailable_until = -1
     trades: list[dict] = []
-    blocked_invalid = 0
-    blocked_overlap = 0
     raw_signals = 0
+    blocked_invalid = 0
+    blocked_risk_gate = 0
+    blocked_overlap = 0
 
     for signal_index, active in enumerate(entries):
         if not active:
@@ -109,9 +130,6 @@ def _simulate_symbol(symbol: str, bars, entries, exits, fee_bps: float) -> dict:
         entry_index = signal_index + 1
         if entry_index >= len(bars):
             continue
-        if entry_index <= unavailable_until:
-            blocked_overlap += 1
-            continue
 
         entry_price = float(bars[entry_index].open)
         stop_price = float(bars[signal_index].high) * (1.0 + STOP_BUFFER_PCT / 100.0)
@@ -119,121 +137,93 @@ def _simulate_symbol(symbol: str, bars, entries, exits, fee_bps: float) -> dict:
             blocked_invalid += 1
             continue
 
-        risk_distance = stop_price - entry_price
-        risk_distance_pct = risk_distance / entry_price * 100.0
-        if risk_distance_pct <= 0 or risk_distance_pct > 5.0:
+        risk = stop_price - entry_price
+        take_profit = entry_price - TARGET_R * risk
+        if take_profit <= 0:
             blocked_invalid += 1
             continue
 
-        best_favorable = 0.0
-        worst_adverse = 0.0
-        exit_index = entry_index
-        exit_price = entry_price
-        exit_reason = "END_OF_DATA"
-        scan_end = min(entry_index + MAX_HOLD_BARS, len(bars) - 1)
-
-        for index in range(entry_index, scan_end + 1):
-            high = float(bars[index].high)
-            low = float(bars[index].low)
-            best_favorable = max(
-                best_favorable,
-                (entry_price - low) / risk_distance,
-            )
-            worst_adverse = max(
-                worst_adverse,
-                (high - entry_price) / risk_distance,
-            )
-
-            if high >= stop_price:
-                exit_index = index
-                exit_price = stop_price
-                exit_reason = "STOP_LOSS"
-                break
-
-            # Exit signal is only known after this bar closes, so fill at the
-            # next bar open. Do not inspect the next bar's high/low first.
-            if exits[index] and index + 1 < len(bars):
-                exit_index = index + 1
-                exit_price = float(bars[index + 1].open)
-                exit_reason = "ACCELERATOR_DECELERATION"
-                break
-
-            if index == scan_end:
-                if index + 1 < len(bars):
-                    exit_index = index + 1
-                    exit_price = float(bars[index + 1].open)
-                else:
-                    exit_index = index
-                    exit_price = float(bars[index].close)
-                exit_reason = "MAX_HOLD"
-
-        gross_pnl = entry_price - exit_price
-        fees = (entry_price + exit_price) * fee_pct
-        net_pnl = gross_pnl - fees
-        realized_r = net_pnl / risk_distance
-        trades.append({
-            "trade_id": f"lifecycle_{symbol}_{signal_index}",
-            "signal_id": f"accelerator_short_{symbol}_{signal_index}",
-            "entry_bar_index": entry_index,
-            "exit_bar_index": exit_index,
-            "entry_timestamp": float(bars[entry_index].timestamp),
+        risk_distance_pct = risk / entry_price * 100.0
+        gate = validate_trade_intent({
+            "execution_mode": "shadow_only",
+            "side": "SHORT",
+            "intent_status": "SHADOW_READY",
+            "rr_ratio": TARGET_R,
+            "risk_distance_pct": risk_distance_pct,
+            "reward_distance_pct": TARGET_R * risk_distance_pct,
+            "max_risk_pct": MAX_RISK_PCT,
             "entry_price": entry_price,
-            "exit_price": exit_price,
-            "exit_reason": exit_reason,
-            "realized_r": round(realized_r, 6),
-            "gross_pnl": round(gross_pnl, 6),
-            "fees": round(fees, 6),
-            "slippage_cost": 0.0,
-            "net_pnl": round(net_pnl, 6),
-            "mfe_r": round(best_favorable, 6),
-            "mae_r": round(worst_adverse, 6),
-            "hold_bars": exit_index - entry_index,
+            "stop_loss": stop_price,
+            "take_profit": take_profit,
+        })
+        if not gate.passed:
+            blocked_risk_gate += 1
+            continue
+        if entry_index <= unavailable_until:
+            blocked_overlap += 1
+            continue
+
+        outcome = simulate_trade(
+            {
+                "signal_id": f"fast_short_{symbol}_{signal_index}",
+                "entry_bar_index": entry_index,
+                "entry_execution": "bar_open",
+                "entry_price": entry_price,
+                "stop_price": stop_price,
+                "tp_price": take_profit,
+            },
+            bar_dicts,
+            params,
+        )
+        trades.append({
+            "trade_id": outcome.trade_id,
+            "signal_id": outcome.signal_id,
+            "entry_timestamp": float(bars[entry_index].timestamp),
+            "entry_bar_index": outcome.entry_bar_index,
+            "exit_bar_index": outcome.exit_bar_index,
+            "realized_r": outcome.realized_r,
+            "gross_pnl": outcome.gross_pnl,
+            "fees": outcome.fees,
+            "slippage_cost": outcome.slippage_cost,
+            "net_pnl": outcome.net_pnl,
+            "mfe_r": outcome.mfe_r,
+            "mae_r": outcome.mae_r,
+            "hold_bars": outcome.hold_bars,
             "risk_distance_pct": risk_distance_pct,
         })
-        unavailable_until = exit_index
+        unavailable_until = outcome.exit_bar_index
 
-    metrics = compute_run_metrics(trades)
     return {
         "symbol": symbol,
         "fee_bps_per_side": fee_bps,
         "raw_signals": raw_signals,
         "trade_count": len(trades),
         "blocked_invalid_execution": blocked_invalid,
+        "blocked_risk_gate": blocked_risk_gate,
         "blocked_overlap": blocked_overlap,
-        "metrics": metrics,
+        "metrics": compute_run_metrics(trades),
         "trades": trades,
     }
 
 
-def _phase_trades(results: list[dict], lower: float, upper: float) -> list[dict]:
-    return [
+def _aggregate(results: list[dict], lower: float, upper: float) -> dict:
+    trades = [
         trade
         for result in results
         for trade in result["trades"]
         if lower <= float(trade["entry_timestamp"]) < upper
     ]
-
-
-def _aggregate(results: list[dict], lower: float, upper: float) -> dict:
-    trades = _phase_trades(results, lower, upper)
     metrics = compute_run_metrics(trades)
     risks = [float(trade["risk_distance_pct"]) for trade in trades]
     holds = [int(trade["hold_bars"]) for trade in trades]
-    exit_reasons: dict[str, int] = {}
-    for trade in trades:
-        reason = str(trade["exit_reason"])
-        exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
-
     positive_symbols = []
     for result in results:
         symbol_trades = [
             trade for trade in result["trades"]
             if lower <= float(trade["entry_timestamp"]) < upper
         ]
-        symbol_metrics = compute_run_metrics(symbol_trades)
-        if float(symbol_metrics["expectancy_r"]) > 0:
+        if float(compute_run_metrics(symbol_trades)["expectancy_r"]) > 0:
             positive_symbols.append(result["symbol"])
-
     return {
         "total_trades": len(trades),
         "win_rate": metrics["win_rate"],
@@ -245,10 +235,8 @@ def _aggregate(results: list[dict], lower: float, upper: float) -> dict:
         "median_risk_distance_pct": round(statistics.median(risks), 6) if risks else 0.0,
         "mean_risk_distance_pct": round(statistics.mean(risks), 6) if risks else 0.0,
         "median_hold_bars": round(statistics.median(holds), 3) if holds else 0.0,
-        "mean_hold_bars": round(statistics.mean(holds), 3) if holds else 0.0,
         "positive_expectancy_symbols": positive_symbols,
         "positive_symbol_count": len(positive_symbols),
-        "exit_reasons": exit_reasons,
         "portfolio_drawdown_not_computed": True,
     }
 
@@ -265,35 +253,33 @@ def main() -> int:
         path = DATA_ROOT / symbol / f"{symbol}_{LOWER_TF}.csv"
         history = _load_historical(path, symbol, LOWER_TF, 500)
         bars = _market_bars(history)
-        entries, exits = _indicator_state(bars)
-        loaded[symbol] = (bars, entries, exits)
+        loaded[symbol] = (bars, _fast_entries(bars))
 
     rows = []
     for fee_bps in FEE_BPS_GRID:
         results = [
-            _simulate_symbol(symbol, bars, entries, exits, fee_bps)
-            for symbol, (bars, entries, exits) in loaded.items()
+            _run_symbol(symbol, bars, entries, fee_bps)
+            for symbol, (bars, entries) in loaded.items()
         ]
-        phases = {
-            "full": _aggregate(results, start_epoch, end_epoch),
-            "first_year": _aggregate(results, start_epoch, split_epoch),
-            "second_year": _aggregate(results, split_epoch, end_epoch),
-        }
         rows.append({
             "fee_bps_per_side": fee_bps,
             "nominal_round_trip_fee_bps": fee_bps * 2.0,
-            "phases": phases,
+            "phases": {
+                "full": _aggregate(results, start_epoch, end_epoch),
+                "first_year": _aggregate(results, start_epoch, split_epoch),
+                "second_year": _aggregate(results, split_epoch, end_epoch),
+            },
         })
 
     output = {
-        "experiment_id": "market_accelerator_short_lifecycle_exit_v1",
+        "experiment_id": "market_accelerator_fast_confirmed_short_v1",
         "period": f"{START}..{END}",
         "split": SPLIT,
         "symbols": list(SYMBOLS),
-        "entry_definition": "previous IDLE/DECELERATING -> START/FAST; signed_speed<0",
-        "exit_definition": "next open after DECELERATING/IDLE or signed_speed>=0",
-        "fixed_take_profit": None,
-        "protective_stop_buffer_pct": STOP_BUFFER_PCT,
+        "entry_definition": "current FAST; previous IDLE/START/DECELERATING; signed_speed<0",
+        "extreme_entry": False,
+        "stop_buffer_pct": STOP_BUFFER_PCT,
+        "target_r": TARGET_R,
         "max_hold_bars": MAX_HOLD_BARS,
         "fee_grid_bps_per_side": list(FEE_BPS_GRID),
         "fee_grid_status": "hypothetical_research_stress_not_p1_03",
@@ -301,14 +287,14 @@ def main() -> int:
         "formula_modified": False,
         "regime_thresholds_modified": False,
         "parameter_optimization": False,
-        "risk_gate_note": "dynamic exit cannot be represented by the current fixed-RR TradeIntent gate; structural stop constraints are enforced in this temporary research only",
+        "entry_execution": "closed_signal_next_bar_open_v1",
         "rows": rows,
     }
-    destination = Path("research_results/market_accelerator_short_lifecycle_exit.json")
+    destination = Path("research_results/market_accelerator_fast_confirmed_short.json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(output, indent=2), encoding="utf-8")
 
-    print("=== MARKET_ACCELERATOR_SHORT_LIFECYCLE_EXIT ===")
+    print("=== MARKET_ACCELERATOR_FAST_CONFIRMED_SHORT ===")
     for row in rows:
         print("FEE_BPS_PER_SIDE", row["fee_bps_per_side"])
         for phase in ("full", "first_year", "second_year"):
