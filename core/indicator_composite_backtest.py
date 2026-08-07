@@ -4,19 +4,17 @@ This module intentionally reuses the repository's existing trade simulator,
 metrics engine, scorecard and TradeIntent risk gate. It does not implement a
 second execution engine.
 
-V1 scope:
-- long-only composite entry decisions;
-- one open simulated position at a time (no overlapping exposures);
-- optional post-exit cooldown;
-- the same rr/risk-distance/max-risk/side checks as Shadow TradeIntent;
-- existing fee/slippage/max-hold behavior via TradeSimulationParams;
-- fixed stop/take-profit lifecycle for the first entry-quality backtest;
-- a deterministic A/B/C entry ablation matrix so each filter's contribution
-  can be measured on the same bars and friction assumptions.
+Execution contract:
+- all indicator state is computed from a fully closed signal bar ``i``;
+- an accepted signal can only enter at bar ``i+1`` open;
+- the existing simulator's explicit ``bar_open`` mode applies stop/target checks
+  from that entry bar onward;
+- a signal on the final dataset bar is unexecutable and never counted as a
+  trade.
 
-Iron Top / accelerator-deceleration dynamic exits are deliberately reported as
-not yet applied. They will be layered on only after the entry cohort is
-measurable, without changing the underlying historical population.
+V1 also provides a deterministic A/B/C entry ablation matrix on identical bars
+and friction assumptions. Iron Top / accelerator-deceleration dynamic exits are
+not yet applied; they remain a later overlay experiment.
 """
 from __future__ import annotations
 
@@ -39,6 +37,9 @@ from core.paper_trading.indicator_composite_strategy import (
     evaluate_long_entry,
 )
 from core.paper_trading.trade_intent_risk_gate import validate_trade_intent
+
+
+ENTRY_EXECUTION_CONTRACT = "closed_signal_next_bar_open_v1"
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,17 @@ def _outcome_dict(outcome) -> dict:
     }
 
 
+def _entry_filters_ready(state: IndicatorCompositeState) -> bool:
+    return (
+        state.bottom_treasure_trigger
+        and state.acceleration_regime in {
+            AccelerationRegime.START,
+            AccelerationRegime.FAST,
+        }
+        and state.higher_timeframe_trend != HigherTimeframeTrend.DOWN
+    )
+
+
 def _risk_gate_for_decision(decision, max_risk_pct: float):
     assert decision.entry_price is not None
     assert decision.stop_price is not None
@@ -125,13 +137,7 @@ def run_indicator_composite_backtest(
     states: Sequence[IndicatorCompositeState],
     config: CompositeBacktestConfig | None = None,
 ) -> dict:
-    """Backtest already-normalized composite states on historical bars.
-
-    ``states[i]`` must have been computed using information available no later
-    than ``bars[i]``. This adapter never looks ahead when deciding whether a
-    signal exists; only the existing trade simulator scans future bars to
-    determine that signal's fixed-stop/fixed-target outcome.
-    """
+    """Backtest normalized states using closed-signal -> next-open execution."""
     cfg = config or CompositeBacktestConfig()
     cfg.validate()
     if len(bars) != len(states):
@@ -141,17 +147,38 @@ def run_indicator_composite_backtest(
     trades: list[dict] = []
     signals: list[dict] = []
     filtered_count = 0
+    blocked_no_next_bar = 0
+    blocked_invalid_execution = 0
     blocked_risk_gate = 0
     blocked_overlap_or_cooldown = 0
     unavailable_until = -1
 
-    for index, (bar, state) in enumerate(zip(bars, states)):
-        decision = evaluate_long_entry(
-            state=state,
-            entry_price=float(bar.close),
-            signal_low=float(bar.low),
-            config=cfg.strategy,
-        )
+    for signal_index, (signal_bar, state) in enumerate(zip(bars, states)):
+        if signal_index + 1 >= len(bars):
+            if _entry_filters_ready(state):
+                blocked_no_next_bar += 1
+            else:
+                filtered_count += 1
+            continue
+
+        entry_index = signal_index + 1
+        entry_bar = bars[entry_index]
+        try:
+            decision = evaluate_long_entry(
+                state=state,
+                entry_price=float(entry_bar.open),
+                signal_low=float(signal_bar.low),
+                config=cfg.strategy,
+            )
+        except ValueError as exc:
+            # A next-bar gap can invalidate a signal-low stop by opening at or
+            # below that stop. Treat this as a missed/invalid execution rather
+            # than crashing the experiment. Other configuration errors surface.
+            if "computed stop" in str(exc):
+                blocked_invalid_execution += 1
+                continue
+            raise
+
         if not decision.should_enter:
             filtered_count += 1
             continue
@@ -160,8 +187,11 @@ def run_indicator_composite_backtest(
             decision, cfg.max_risk_pct
         )
         signal = {
-            "signal_id": f"indicator_composite_v1_{index}",
-            "entry_bar_index": index,
+            "signal_id": f"indicator_composite_v1_{signal_index}",
+            "signal_bar_index": signal_index,
+            "entry_bar_index": entry_index,
+            "entry_execution": "bar_open",
+            "entry_execution_contract": ENTRY_EXECUTION_CONTRACT,
             "entry_price": decision.entry_price,
             "stop_price": decision.stop_price,
             "tp_price": decision.take_profit_price,
@@ -180,7 +210,7 @@ def run_indicator_composite_backtest(
             blocked_risk_gate += 1
             continue
 
-        if index <= unavailable_until:
+        if entry_index <= unavailable_until:
             blocked_overlap_or_cooldown += 1
             continue
 
@@ -206,6 +236,8 @@ def run_indicator_composite_backtest(
         "signal_count": len(signals),
         "trade_count": len(trades),
         "filtered_count": filtered_count,
+        "blocked_no_next_bar": blocked_no_next_bar,
+        "blocked_invalid_execution": blocked_invalid_execution,
         "blocked_risk_gate": blocked_risk_gate,
         "blocked_overlap_or_cooldown": blocked_overlap_or_cooldown,
         "signals": signals,
@@ -214,6 +246,7 @@ def run_indicator_composite_backtest(
         "scorecard": scorecard,
         "cooldown_bars": cfg.cooldown_bars,
         "max_risk_pct": cfg.max_risk_pct,
+        "entry_execution_contract": ENTRY_EXECUTION_CONTRACT,
         "dynamic_exit_overlay_applied": False,
         "execution_mode": "offline_backtest_only",
         "orders_enabled": False,
@@ -224,15 +257,7 @@ def _states_for_ablation(
     states: Sequence[IndicatorCompositeState],
     variant: str,
 ) -> tuple[IndicatorCompositeState, ...]:
-    """Remove only the requested entry filters while preserving Bottom triggers.
-
-    A uses Bottom Treasure alone by forcing accelerator=START and HTF=NEUTRAL.
-    B restores the real accelerator but keeps HTF neutral.
-    C uses the full real accelerator + real HTF state.
-
-    Iron Top strength is preserved in every variant for future exit-overlay
-    comparisons, but the current fixed-exit baseline does not consume it.
-    """
+    """Remove only requested entry filters while preserving Bottom triggers."""
     if variant not in ABLATION_VARIANTS:
         raise ValueError(f"unknown ablation variant: {variant}")
 
@@ -294,7 +319,7 @@ def run_indicator_composite_ablation(
     states: Sequence[IndicatorCompositeState],
     config: CompositeBacktestConfig | None = None,
 ) -> dict:
-    """Run the A/B/C entry-filter ablation on identical data and frictions."""
+    """Run A/B/C entry-filter ablation on identical data and frictions."""
     cfg = config or CompositeBacktestConfig()
     cfg.validate()
     if len(bars) != len(states):
@@ -338,6 +363,7 @@ def run_indicator_composite_ablation(
         "comparisons": comparisons,
         "same_bars": True,
         "same_friction_config": True,
+        "entry_execution_contract": ENTRY_EXECUTION_CONTRACT,
         "dynamic_exit_variant_included": False,
         "orders_enabled": False,
     }
