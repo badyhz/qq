@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Temporary research-only reconstruction test for the later Bottom Treasure formula.
+"""Temporary BTC entry research for Bottom Treasure recovery.
 
-This file lives only on the temporary research branch. It does not claim to be
-the final AiCoin port. Known recovered formula components are held constant;
-the unresolved 30-bar pressure-maximum definition is tested both current-
-inclusive and previous-only.
+This file lives only on the temporary research branch and must not be merged.
+It performs two kinds of zero-friction research on the same 12-month BTC data:
+
+1. Two explicitly-labelled hypotheses for the unresolved final SMMA treasure
+   value formula. They are not promoted as the final AiCoin implementation.
+2. A formula-free baseline containing only the two price-action conditions that
+   are already confirmed exactly: prior-30 new low + close reclaim of the prior
+   bar's low. This tells us whether the known price event itself has edge before
+   adding an unrecovered treasure-value calculation.
 """
 from __future__ import annotations
 
@@ -48,7 +53,27 @@ def _ema(values: list[float], length: int = 3) -> list[float]:
     return out
 
 
-def _bottom_triggers(bars, pressure_max_mode: str):
+def _dedupe_immediate(raw: list[bool]) -> list[bool]:
+    return [
+        value and (index == 0 or not raw[index - 1])
+        for index, value in enumerate(raw)
+    ]
+
+
+def _confirmed_price_action_triggers(bars) -> list[bool]:
+    """Exact known conditions only: prior-30 new low + previous-low reclaim."""
+    lows = [float(bar.low) for bar in bars]
+    closes = [float(bar.close) for bar in bars]
+    raw: list[bool] = []
+    for index in range(len(bars)):
+        previous_lows = lows[max(0, index - 30):index]
+        new_low_30 = bool(previous_lows) and lows[index] < min(previous_lows)
+        reclaim = index > 0 and closes[index] > lows[index - 1]
+        raw.append(new_low_30 and reclaim)
+    return _dedupe_immediate(raw)
+
+
+def _smma_hypothesis_triggers(bars, pressure_max_mode: str):
     lows = [float(bar.low) for bar in bars]
     closes = [float(bar.close) for bar in bars]
 
@@ -100,11 +125,27 @@ def _bottom_triggers(bars, pressure_max_mode: str):
         and closes[index] > lows[index - 1]
         for index in range(len(bars))
     ]
-    buy = [
-        value and (index == 0 or not buy_raw[index - 1])
-        for index, value in enumerate(buy_raw)
-    ]
-    return buy, treasure
+    return _dedupe_immediate(buy_raw), treasure
+
+
+def _compact_ablation(bars, trends, triggers, config) -> dict:
+    states = build_external_bottom_composite_states(bars, triggers, trends)
+    ablation = run_indicator_composite_ablation(bars, states, config)
+    variants = {}
+    for entry in ablation["variants"]:
+        result = entry["result"]
+        metrics = result["metrics"]
+        variants[entry["variant"]] = {
+            "signals": result["signal_count"],
+            "trades": result["trade_count"],
+            "win_rate": metrics["win_rate"],
+            "expectancy_r": metrics["expectancy_r"],
+            "profit_factor": metrics["profit_factor"],
+            "max_drawdown_r": metrics["max_drawdown_r"],
+            "avg_mfe_r": metrics["avg_mfe_r"],
+            "avg_mae_r": metrics["avg_mae_r"],
+        }
+    return variants
 
 
 def main() -> int:
@@ -126,44 +167,40 @@ def main() -> int:
         )
     )
 
+    confirmed = _confirmed_price_action_triggers(bars)
     output = {
         "symbol": "BTCUSDT",
         "period": "2025-08-01..2026-07-31",
         "friction": "zero",
-        "formula_status": "research_hypothesis_not_final_aicoin_port",
-        "hypotheses": [],
+        "entry_execution": "closed_signal_next_bar_open_v1",
+        "confirmed_price_action_baseline": {
+            "definition": "prior_30_new_low_and_close_above_previous_low",
+            "trigger_count": sum(confirmed),
+            "variants": _compact_ablation(bars, trends, confirmed, config),
+        },
+        "smma_formula_status": "research_hypothesis_not_final_aicoin_port",
+        "smma_hypotheses": [],
     }
 
     for mode in ("current_inclusive_30", "previous_30"):
-        triggers, treasure = _bottom_triggers(bars, mode)
-        states = build_external_bottom_composite_states(bars, triggers, trends)
-        ablation = run_indicator_composite_ablation(bars, states, config)
-        record = {
+        triggers, treasure = _smma_hypothesis_triggers(bars, mode)
+        output["smma_hypotheses"].append({
             "pressure_max_mode": mode,
             "raw_buy_count": sum(triggers),
             "treasure_over_10_count": sum(value > 10.0 for value in treasure),
-            "variants": {},
-        }
-        for entry in ablation["variants"]:
-            result = entry["result"]
-            metrics = result["metrics"]
-            record["variants"][entry["variant"]] = {
-                "signals": result["signal_count"],
-                "trades": result["trade_count"],
-                "win_rate": metrics["win_rate"],
-                "expectancy_r": metrics["expectancy_r"],
-                "profit_factor": metrics["profit_factor"],
-                "max_drawdown_r": metrics["max_drawdown_r"],
-                "avg_mfe_r": metrics["avg_mfe_r"],
-                "avg_mae_r": metrics["avg_mae_r"],
-            }
-        output["hypotheses"].append(record)
+            "variants": _compact_ablation(bars, trends, triggers, config),
+        })
 
     destination = Path("research_results/btc_smma_bottom_hypotheses.json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(output, indent=2), encoding="utf-8")
 
-    for record in output["hypotheses"]:
+    print("=== CONFIRMED_PRICE_ACTION_BASELINE ===")
+    print("trigger_count=", output["confirmed_price_action_baseline"]["trigger_count"])
+    for name, values in output["confirmed_price_action_baseline"]["variants"].items():
+        print(name, values)
+
+    for record in output["smma_hypotheses"]:
         print(f"=== SMMA_HYPOTHESIS {record['pressure_max_mode']} ===")
         print(
             "raw_buy_count=",
