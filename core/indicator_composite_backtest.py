@@ -10,15 +10,18 @@ V1 scope:
 - optional post-exit cooldown;
 - the same rr/risk-distance/max-risk/side checks as Shadow TradeIntent;
 - existing fee/slippage/max-hold behavior via TradeSimulationParams;
-- fixed stop/take-profit lifecycle for the first entry-quality backtest.
+- fixed stop/take-profit lifecycle for the first entry-quality backtest;
+- a deterministic A/B/C entry ablation matrix so each filter's contribution
+  can be measured on the same bars and friction assumptions.
 
 Iron Top / accelerator-deceleration dynamic exits are deliberately reported as
-not yet applied. They will be layered on after the entry cohort is measurable,
-without changing the underlying signal formula or historical population.
+not yet applied. They will be layered on only after the entry cohort is
+measurable, without changing the underlying historical population.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Sequence
 
 from core.offline_backtest_metrics_engine import compute_run_metrics
@@ -29,6 +32,8 @@ from core.offline_backtest_trade_simulator import (
 from core.offline_shadow_scorecard import grade_run
 from core.paper_trading.data_source import MarketBar
 from core.paper_trading.indicator_composite_strategy import (
+    AccelerationRegime,
+    HigherTimeframeTrend,
     IndicatorCompositeConfig,
     IndicatorCompositeState,
     evaluate_long_entry,
@@ -49,6 +54,13 @@ class CompositeBacktestConfig:
         if self.max_risk_pct <= 0:
             raise ValueError("max_risk_pct must be positive")
         self.strategy.validate()
+
+
+ABLATION_VARIANTS = (
+    "A_BOTTOM_ONLY",
+    "B_BOTTOM_ACCELERATOR",
+    "C_BOTTOM_ACCELERATOR_HTF",
+)
 
 
 def _bar_dict(bar: MarketBar) -> dict:
@@ -118,7 +130,7 @@ def run_indicator_composite_backtest(
     ``states[i]`` must have been computed using information available no later
     than ``bars[i]``. This adapter never looks ahead when deciding whether a
     signal exists; only the existing trade simulator scans future bars to
-    determine that signal's outcome.
+    determine that signal's fixed-stop/fixed-target outcome.
     """
     cfg = config or CompositeBacktestConfig()
     cfg.validate()
@@ -204,5 +216,128 @@ def run_indicator_composite_backtest(
         "max_risk_pct": cfg.max_risk_pct,
         "dynamic_exit_overlay_applied": False,
         "execution_mode": "offline_backtest_only",
+        "orders_enabled": False,
+    }
+
+
+def _states_for_ablation(
+    states: Sequence[IndicatorCompositeState],
+    variant: str,
+) -> tuple[IndicatorCompositeState, ...]:
+    """Remove only the requested entry filters while preserving Bottom triggers.
+
+    A uses Bottom Treasure alone by forcing accelerator=START and HTF=NEUTRAL.
+    B restores the real accelerator but keeps HTF neutral.
+    C uses the full real accelerator + real HTF state.
+
+    Iron Top strength is preserved in every variant for future exit-overlay
+    comparisons, but the current fixed-exit baseline does not consume it.
+    """
+    if variant not in ABLATION_VARIANTS:
+        raise ValueError(f"unknown ablation variant: {variant}")
+
+    output: list[IndicatorCompositeState] = []
+    for state in states:
+        if variant == "A_BOTTOM_ONLY":
+            acceleration = AccelerationRegime.START
+            trend = HigherTimeframeTrend.NEUTRAL
+        elif variant == "B_BOTTOM_ACCELERATOR":
+            acceleration = state.acceleration_regime
+            trend = HigherTimeframeTrend.NEUTRAL
+        else:
+            acceleration = state.acceleration_regime
+            trend = state.higher_timeframe_trend
+
+        output.append(IndicatorCompositeState(
+            bottom_treasure_trigger=state.bottom_treasure_trigger,
+            acceleration_regime=acceleration,
+            higher_timeframe_trend=trend,
+            iron_top_strength=state.iron_top_strength,
+            atr=state.atr,
+        ))
+    return tuple(output)
+
+
+def _finite_delta(current: float | int, previous: float | int) -> float | None:
+    current_f = float(current)
+    previous_f = float(previous)
+    if not math.isfinite(current_f) or not math.isfinite(previous_f):
+        return None
+    return round(current_f - previous_f, 6)
+
+
+def _ablation_delta(previous: dict, current: dict) -> dict:
+    previous_metrics = previous.get("metrics", {})
+    current_metrics = current.get("metrics", {})
+    return {
+        "signal_count_delta": int(current.get("signal_count", 0))
+        - int(previous.get("signal_count", 0)),
+        "trade_count_delta": int(current.get("trade_count", 0))
+        - int(previous.get("trade_count", 0)),
+        "expectancy_r_delta": _finite_delta(
+            current_metrics.get("expectancy_r", 0.0),
+            previous_metrics.get("expectancy_r", 0.0),
+        ),
+        "profit_factor_delta": _finite_delta(
+            current_metrics.get("profit_factor", 0.0),
+            previous_metrics.get("profit_factor", 0.0),
+        ),
+        "max_drawdown_r_delta": _finite_delta(
+            current_metrics.get("max_drawdown_r", 0.0),
+            previous_metrics.get("max_drawdown_r", 0.0),
+        ),
+    }
+
+
+def run_indicator_composite_ablation(
+    bars: Sequence[MarketBar],
+    states: Sequence[IndicatorCompositeState],
+    config: CompositeBacktestConfig | None = None,
+) -> dict:
+    """Run the A/B/C entry-filter ablation on identical data and frictions."""
+    cfg = config or CompositeBacktestConfig()
+    cfg.validate()
+    if len(bars) != len(states):
+        raise ValueError("bars and states must have the same length")
+
+    definitions = {
+        "A_BOTTOM_ONLY": ["bottom_treasure"],
+        "B_BOTTOM_ACCELERATOR": ["bottom_treasure", "market_accelerator"],
+        "C_BOTTOM_ACCELERATOR_HTF": [
+            "bottom_treasure",
+            "market_accelerator",
+            "higher_timeframe_trend",
+        ],
+    }
+    variants = []
+    for variant in ABLATION_VARIANTS:
+        result = run_indicator_composite_backtest(
+            bars,
+            _states_for_ablation(states, variant),
+            cfg,
+        )
+        variants.append({
+            "variant": variant,
+            "entry_components": definitions[variant],
+            "result": result,
+        })
+
+    comparisons = []
+    for previous, current in zip(variants, variants[1:]):
+        comparisons.append({
+            "from": previous["variant"],
+            "to": current["variant"],
+            "added_component": current["entry_components"][-1],
+            "delta": _ablation_delta(previous["result"], current["result"]),
+        })
+
+    return {
+        "experiment_id": "indicator_composite_entry_ablation_v1",
+        "variant_order": list(ABLATION_VARIANTS),
+        "variants": variants,
+        "comparisons": comparisons,
+        "same_bars": True,
+        "same_friction_config": True,
+        "dynamic_exit_variant_included": False,
         "orders_enabled": False,
     }
