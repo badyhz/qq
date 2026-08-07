@@ -6,16 +6,15 @@ event already confirmed by the user:
 
     prior-30 new low + close above previous bar low
 
-It runs the existing A/B/C ablation on the full 12-month sample and then, with
-no parameter changes, checks the full C strategy independently in the first and
-second six-month halves. Full-history states are built before slicing so the
-second half retains realistic indicator warm-up from prior history while every
-state remains no-lookahead.
+The symbol set and time window may be supplied via RESEARCH_SYMBOLS,
+RESEARCH_START, RESEARCH_SPLIT and RESEARCH_END. No strategy parameter is
+optimized by these inputs; they only choose an untouched validation sample.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import statistics
 import sys
@@ -38,9 +37,16 @@ from scripts.prepare_indicator_composite_history import DEFAULT_SYMBOLS
 from scripts.run_indicator_composite_backtest import _load_historical, _market_bars
 
 
-START = "2025-08-01"
-SPLIT = "2026-02-01"
-END = "2026-07-31"
+START = os.environ.get("RESEARCH_START", "2025-08-01")
+SPLIT = os.environ.get("RESEARCH_SPLIT", "2026-02-01")
+END = os.environ.get("RESEARCH_END", "2026-07-31")
+SYMBOLS = tuple(
+    value.strip().upper()
+    for value in os.environ.get(
+        "RESEARCH_SYMBOLS", ",".join(DEFAULT_SYMBOLS)
+    ).split(",")
+    if value.strip()
+)
 LOWER_TF = "15m"
 HIGHER_TF = "1h"
 DATA_ROOT = Path("data/indicator_composite_history")
@@ -48,6 +54,11 @@ DATA_ROOT = Path("data/indicator_composite_history")
 
 def _epoch(day: str) -> float:
     return datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+
+
+def _day_after(day: str) -> float:
+    parsed = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return (parsed + timedelta(days=1)).timestamp()
 
 
 def _dedupe_immediate(raw: list[bool]) -> list[bool]:
@@ -165,6 +176,11 @@ def _aggregate_c(per_symbol: list[dict]) -> dict:
 
 
 def main() -> int:
+    if not SYMBOLS:
+        raise ValueError("RESEARCH_SYMBOLS produced an empty symbol set")
+    if not (_epoch(START) < _epoch(SPLIT) < _day_after(END)):
+        raise ValueError("research dates must satisfy START < SPLIT <= END")
+
     config = CompositeBacktestConfig(
         simulation=TradeSimulationParams(
             slippage_pct=0.0,
@@ -175,9 +191,9 @@ def main() -> int:
     records: list[dict] = []
     start_epoch = _epoch(START)
     split_epoch = _epoch(SPLIT)
-    end_epoch = _epoch("2026-08-01")
+    end_epoch = _day_after(END)
 
-    for symbol in DEFAULT_SYMBOLS:
+    for symbol in SYMBOLS:
         lower_path = DATA_ROOT / symbol / f"{symbol}_{LOWER_TF}.csv"
         higher_path = DATA_ROOT / symbol / f"{symbol}_{HIGHER_TF}.csv"
         lower_hist = _load_historical(lower_path, symbol, LOWER_TF, 500)
@@ -241,7 +257,7 @@ def main() -> int:
         "friction": "zero",
         "entry_execution": "closed_signal_next_bar_open_v1",
         "parameter_optimization": False,
-        "symbols": list(DEFAULT_SYMBOLS),
+        "symbols": list(SYMBOLS),
         "per_symbol": serializable_records,
         "aggregate_c": aggregate,
     }
@@ -251,6 +267,7 @@ def main() -> int:
     destination.write_text(json.dumps(output, indent=2), encoding="utf-8")
 
     print("=== MULTISYMBOL_CONFIRMED_PRICE_ACTION ===")
+    print("PERIOD", START, END, "SPLIT", SPLIT, "SYMBOLS", SYMBOLS)
     for entry in serializable_records:
         c = entry["variants"]["C_BOTTOM_ACCELERATOR_HTF"]
         h1 = entry["walk_forward_halves"]["first_half"]
