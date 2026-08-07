@@ -145,6 +145,9 @@ jobs:
                   print(name, values)
           PY
 
+      - name: Run temporary recovered-SMMA Bottom hypotheses
+        run: python scripts/research_btc_smma_bottom_hypotheses.py
+
       - name: Print compact baseline summary
         run: |
           python - <<'PY'
@@ -188,5 +191,6 @@ jobs:
             research_results/btc_zero_friction.json
             research_results/btc_research_friction.json
             research_results/btc_positive_direction_r_grid.json
+            research_results/btc_smma_bottom_hypotheses.json
           if-no-files-found: error
           retention-days: 7
