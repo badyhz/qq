@@ -6,6 +6,7 @@ on:
       - agent/indicator-composite-v1
     paths:
       - ".github/workflows/indicator-composite-btc-baseline.yml"
+      - "scripts/research_btc_smma_bottom_hypotheses.py"
   workflow_dispatch:
 
 permissions:
