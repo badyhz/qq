@@ -97,25 +97,3 @@ strategies:
     alert:
       feishu_payload: true
       auto_send: false
-
-  indicator_composite_v1:
-    enabled: false
-    strategy_type: indicator_composite_v1
-    description: "Bottom Treasure + Market Accelerator + Iron Top composite, long-only research cohort"
-    data_api: binance_usdm_klines
-    symbols:
-      - BTCUSDT
-      - ETHUSDT
-      - BNBUSDT
-      - SUIUSDT
-      - 1000PEPEUSDT
-      - XRPUSDT
-      - ARBUSDT
-      - DOGEUSDT
-    timeframes:
-      - 15m
-      - 1h
-    mode: paper
-    alert:
-      feishu_payload: true
-      auto_send: false
