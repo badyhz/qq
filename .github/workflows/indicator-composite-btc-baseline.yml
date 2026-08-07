@@ -1,4 +1,4 @@
-name: Market Accelerator Short Fee Sensitivity
+name: Market Accelerator Short Lifecycle Exit
 
 on:
   pull_request:
@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  accelerator-short-fee-sensitivity:
+  accelerator-short-lifecycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - name: Checkout research merge
         uses: actions/checkout@v4
@@ -25,18 +25,28 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Download verified two-year 8-symbol history
+      - name: Download verified two-year 15m history only
         run: |
-          python scripts/prepare_indicator_composite_history.py \
-            --symbols BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT \
-            --lower-timeframe 15m \
-            --higher-timeframe 1h \
-            --start 2024-08-01 \
-            --end 2026-07-31 \
-            --output-dir data/indicator_composite_history \
-            --manifest research_results/history_manifest.json
+          python - <<'PY'
+          from datetime import date
+          from pathlib import Path
+          from core.binance_public_ohlcv_archive import download_range_to_csv
+          from scripts.prepare_indicator_composite_history import DEFAULT_SYMBOLS
 
-      - name: Run frozen candidate across hypothetical fee grid
+          root = Path("data/indicator_composite_history")
+          for symbol in DEFAULT_SYMBOLS:
+              output = root / symbol / f"{symbol}_15m.csv"
+              result = download_range_to_csv(
+                  symbol=symbol,
+                  interval="15m",
+                  start=date(2024, 8, 1),
+                  end=date(2026, 7, 31),
+                  output_path=output,
+              )
+              print(symbol, result["row_count"], result["archive_count"])
+          PY
+
+      - name: Run frozen entry with lifecycle exit and fee grid
         env:
           RESEARCH_SYMBOLS: BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT
           RESEARCH_START: 2024-08-01
@@ -44,12 +54,10 @@ jobs:
           RESEARCH_END: 2026-07-31
         run: python scripts/research_indicator_composite_multisymbol.py
 
-      - name: Upload compact fee sensitivity results
+      - name: Upload lifecycle research result
         uses: actions/upload-artifact@v4
         with:
-          name: market-accelerator-short-fee-sensitivity
-          path: |
-            research_results/history_manifest.json
-            research_results/market_accelerator_short_fee_sensitivity.json
+          name: market-accelerator-short-lifecycle-exit
+          path: research_results/market_accelerator_short_lifecycle_exit.json
           if-no-files-found: error
           retention-days: 7
