@@ -54,6 +54,16 @@ def test_run_from_csv_executes_complete_offline_chain(tmp_path: Path):
     assert result["backtest"]["orders_enabled"] is False
     assert result["backtest"]["dynamic_exit_overlay_applied"] is False
     assert "metrics" in result["backtest"]
+    assert result["entry_ablation"]["variant_order"] == [
+        "A_BOTTOM_ONLY",
+        "B_BOTTOM_ACCELERATOR",
+        "C_BOTTOM_ACCELERATOR_HTF",
+    ]
+    assert result["entry_ablation"]["same_bars"] is True
+    assert result["entry_ablation"]["same_friction_config"] is True
+    assert result["entry_ablation"]["orders_enabled"] is False
+    full_variant = result["entry_ablation"]["variants"][2]["result"]
+    assert result["backtest"] == full_variant
 
 
 def test_runner_rejects_non_higher_timeframe(tmp_path: Path):
@@ -91,6 +101,9 @@ def test_main_writes_json_output(tmp_path: Path):
     assert rc == 0
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["strategy_id"] == "indicator_composite_v1"
+    assert payload["entry_ablation"]["experiment_id"] == (
+        "indicator_composite_entry_ablation_v1"
+    )
     assert payload["safety_flags"] == [
         "OFFLINE_BACKTEST_ONLY",
         "NO_NETWORK",
