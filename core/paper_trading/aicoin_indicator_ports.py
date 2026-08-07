@@ -1,7 +1,7 @@
 """Pure Python ports of confirmed AiCoin indicator contracts.
 
 Only formula behavior that is explicitly known from the accepted AiCoin work is
-implemented here.  Missing/ambiguous parts are not guessed.
+implemented here. Missing or ambiguous parts are not guessed.
 
 Confirmed contracts currently covered:
 
@@ -19,11 +19,9 @@ Revised Iron Top / 修正版铁顶临界
 - close turns weak when current close < previous bar low;
 - 55-bar new high is the stronger signal; 30-only is the early signal.
 
-Market Accelerator / 疾速500
-The final accepted reference parameters are recorded, but the component
-normalization formulas are intentionally not invented here.  The composite
-strategy consumes an already-normalized AccelerationRegime until the exact
-formula port is available.
+Market Accelerator / 疾速500 is intentionally implemented in the dedicated
+``market_accelerator_port`` module so there is only one authoritative formula
+source for that indicator.
 """
 from __future__ import annotations
 
@@ -54,35 +52,6 @@ class BottomTreasureResult:
     close_reclaimed_previous_low: bool
     treasure_value: float
     threshold: float
-
-
-@dataclass(frozen=True)
-class AcceleratorReferenceConfig:
-    """Confirmed final reference settings for the original-rhythm replica."""
-
-    base_len: int = 21
-    fast_len: int = 2
-    mid_len: int = 3
-    slow_len: int = 5
-    start_level: float = 15.0
-    extreme_level: float = 80.0
-    max_level: float = 125.0
-    speed_weight: float = 0.48
-    volatility_weight: float = 0.32
-    volume_weight: float = 0.20
-    epsilon: float = 0.000001
-
-    def validate(self) -> None:
-        for name in ("base_len", "fast_len", "mid_len", "slow_len"):
-            if getattr(self, name) <= 0:
-                raise ValueError(f"{name} must be positive")
-        if not 0 <= self.start_level < self.extreme_level <= self.max_level:
-            raise ValueError("accelerator levels must satisfy 0 <= start < extreme <= max")
-        total = self.speed_weight + self.volatility_weight + self.volume_weight
-        if not math.isclose(total, 1.0, rel_tol=0.0, abs_tol=1e-12):
-            raise ValueError("accelerator weights must sum to 1")
-        if self.epsilon <= 0:
-            raise ValueError("epsilon must be positive")
 
 
 @dataclass(frozen=True)
@@ -126,7 +95,7 @@ def evaluate_bottom_treasure_trigger(
 
     ``treasure_value`` is passed in explicitly because the final accepted
     pressure/treasure-value formula is not fully recoverable from the current
-    repository.  This keeps the known trigger semantics exact without silently
+    repository. This keeps the known trigger semantics exact without silently
     substituting a different formula.
     """
     cfg = config or BottomTreasureConfig()
@@ -204,7 +173,7 @@ def evaluate_iron_top(
     new_high_30_only = new_high_30 and not new_high_55
 
     speed_5 = _speed_5_at(bars, current_index, cfg.speed_lookback)
-    baseline_end = current_index  # exclude current; Python range end is exclusive
+    baseline_end = current_index
     baseline_start = baseline_end - cfg.speed_baseline_length
     prior_speeds = [
         _speed_5_at(bars, index, cfg.speed_lookback)
