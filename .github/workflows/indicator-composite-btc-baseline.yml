@@ -1,4 +1,4 @@
-name: Market Accelerator Short Lifecycle Exit
+name: Market Accelerator FAST-Confirmed Short
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  accelerator-short-lifecycle:
+  accelerator-fast-short:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -35,18 +35,17 @@ jobs:
 
           root = Path("data/indicator_composite_history")
           for symbol in DEFAULT_SYMBOLS:
-              output = root / symbol / f"{symbol}_15m.csv"
               result = download_range_to_csv(
                   symbol=symbol,
                   interval="15m",
                   start=date(2024, 8, 1),
                   end=date(2026, 7, 31),
-                  output_path=output,
+                  output_path=root / symbol / f"{symbol}_15m.csv",
               )
               print(symbol, result["row_count"], result["archive_count"])
           PY
 
-      - name: Run frozen entry with lifecycle exit and fee grid
+      - name: Run FAST-confirmed short with fee grid
         env:
           RESEARCH_SYMBOLS: BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT
           RESEARCH_START: 2024-08-01
@@ -54,10 +53,10 @@ jobs:
           RESEARCH_END: 2026-07-31
         run: python scripts/research_indicator_composite_multisymbol.py
 
-      - name: Upload lifecycle research result
+      - name: Upload FAST-confirmed result
         uses: actions/upload-artifact@v4
         with:
-          name: market-accelerator-short-lifecycle-exit
-          path: research_results/market_accelerator_short_lifecycle_exit.json
+          name: market-accelerator-fast-confirmed-short
+          path: research_results/market_accelerator_fast_confirmed_short.json
           if-no-files-found: error
           retention-days: 7
