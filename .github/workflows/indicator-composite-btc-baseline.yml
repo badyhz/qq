@@ -1,0 +1,102 @@
+name: Indicator Composite BTC Baseline
+
+on:
+  push:
+    branches:
+      - research/indicator-composite-btc-baseline
+
+permissions:
+  contents: read
+
+jobs:
+  btc-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download verified BTCUSDT 15m and 1h history
+        run: |
+          python scripts/prepare_indicator_composite_history.py \
+            --symbols BTCUSDT \
+            --lower-timeframe 15m \
+            --higher-timeframe 1h \
+            --start 2025-08-01 \
+            --end 2026-07-31 \
+            --output-dir data/indicator_composite_history \
+            --manifest research_results/history_manifest.json
+
+      - name: Run zero-friction entry ablation
+        run: |
+          python scripts/run_indicator_composite_backtest.py \
+            --lower-csv data/indicator_composite_history/BTCUSDT/BTCUSDT_15m.csv \
+            --higher-csv data/indicator_composite_history/BTCUSDT/BTCUSDT_1h.csv \
+            --symbol BTCUSDT \
+            --lower-timeframe 15m \
+            --higher-timeframe 1h \
+            --fee-pct 0 \
+            --slippage-pct 0 \
+            --output research_results/btc_zero_friction.json
+
+      - name: Run conservative research-friction entry ablation
+        run: |
+          python scripts/run_indicator_composite_backtest.py \
+            --lower-csv data/indicator_composite_history/BTCUSDT/BTCUSDT_15m.csv \
+            --higher-csv data/indicator_composite_history/BTCUSDT/BTCUSDT_1h.csv \
+            --symbol BTCUSDT \
+            --lower-timeframe 15m \
+            --higher-timeframe 1h \
+            --fee-pct 0.001 \
+            --slippage-pct 0.0005 \
+            --output research_results/btc_research_friction.json
+
+      - name: Print compact research summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for path in (
+              Path("research_results/btc_zero_friction.json"),
+              Path("research_results/btc_research_friction.json"),
+          ):
+              data = json.loads(path.read_text())
+              print(f"=== {path.name} ===")
+              print(
+                  "bars",
+                  data["lower_bar_count"],
+                  data["higher_bar_count"],
+                  "formula",
+                  data["research_formula_version"],
+              )
+              for entry in data["entry_ablation"]["variants"]:
+                  result = entry["result"]
+                  metrics = result["metrics"]
+                  print(
+                      entry["variant"],
+                      "signals=", result["signal_count"],
+                      "trades=", result["trade_count"],
+                      "win_rate=", metrics["win_rate"],
+                      "expectancy_r=", metrics["expectancy_r"],
+                      "pf=", metrics["profit_factor"],
+                      "max_dd_r=", metrics["max_drawdown_r"],
+                      "risk_blocked=", result["blocked_risk_gate"],
+                  )
+          PY
+
+      - name: Upload compact research results
+        uses: actions/upload-artifact@v4
+        with:
+          name: indicator-composite-btc-baseline
+          path: |
+            research_results/history_manifest.json
+            research_results/btc_zero_friction.json
+            research_results/btc_research_friction.json
+          if-no-files-found: error
+          retention-days: 7
