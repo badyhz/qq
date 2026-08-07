@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 
 from core.paper_trading.aicoin_indicator_ports import (
+    BOTTOM_TREASURE_RECOVERED_VERSION,
     BottomTreasureConfig,
+    RecoveredBottomTreasureConfig,
+    calculate_recovered_bottom_treasure,
     evaluate_bottom_treasure_trigger,
     evaluate_iron_top,
 )
@@ -22,7 +25,7 @@ def _bar(
     return MarketBar(
         timestamp=float(index * 900),
         open=open_,
-        high=high,
+        high=max(high, close),
         low=low,
         close=close,
         volume=volume,
@@ -71,6 +74,70 @@ def test_bottom_treasure_requires_enough_history():
             [_bar(i) for i in range(30)],
             treasure_value=20.0,
         )
+
+
+def test_recovered_bottom_treasure_constants_are_explicit_and_versioned():
+    cfg = RecoveredBottomTreasureConfig()
+    cfg.validate()
+    assert cfg.lookback == 30
+    assert cfg.scale_k == 618.0
+    assert cfg.pressure_ema_len == 3
+    assert cfg.historical_m == 5
+    assert cfg.buy_threshold == 10.0
+    assert BOTTOM_TREASURE_RECOVERED_VERSION == "bottom_treasure_recovered_v0"
+
+
+def test_recovered_bottom_treasure_large_new_low_can_trigger_buy():
+    bars = [_bar(i, low=100.0, close=101.0) for i in range(30)]
+    bars.append(_bar(30, low=90.0, close=101.0))
+
+    latest = calculate_recovered_bottom_treasure(bars)[-1]
+
+    assert latest.new_low is True
+    assert latest.close_reclaimed_previous_low is True
+    assert latest.pressure_ratio == pytest.approx(1000.0)
+    assert latest.treasure > 10.0
+    assert latest.buy_signal is True
+    assert latest.formula_version == BOTTOM_TREASURE_RECOVERED_VERSION
+
+
+def test_recovered_bottom_treasure_requires_previous_low_reclaim():
+    bars = [_bar(i, low=100.0, close=101.0) for i in range(30)]
+    bars.append(_bar(30, low=90.0, close=99.0))
+
+    latest = calculate_recovered_bottom_treasure(bars)[-1]
+
+    assert latest.new_low is True
+    assert latest.treasure > 10.0
+    assert latest.close_reclaimed_previous_low is False
+    assert latest.buy_signal is False
+
+
+def test_recovered_bottom_treasure_is_capped_at_100():
+    bars = [_bar(i, low=100.0, close=101.0) for i in range(30)]
+    bars.append(_bar(30, low=1.0, close=101.0))
+
+    latest = calculate_recovered_bottom_treasure(bars)[-1]
+    assert latest.treasure == pytest.approx(100.0)
+
+
+def test_recovered_bottom_treasure_threshold_is_strictly_greater():
+    cfg = RecoveredBottomTreasureConfig(buy_threshold=100.0)
+    bars = [_bar(i, low=100.0, close=101.0) for i in range(30)]
+    bars.append(_bar(30, low=1.0, close=101.0))
+
+    latest = calculate_recovered_bottom_treasure(bars, cfg)[-1]
+    assert latest.treasure == 100.0
+    assert latest.buy_signal is False
+
+
+def test_recovered_bottom_treasure_empty_input_is_empty():
+    assert calculate_recovered_bottom_treasure([]) == ()
+
+
+def test_recovered_bottom_treasure_invalid_price_fails_closed():
+    with pytest.raises(ValueError, match="finite and positive"):
+        calculate_recovered_bottom_treasure([_bar(0, low=0.0, close=1.0)])
 
 
 def _flat_iron_top_history(count: int = 61) -> list[MarketBar]:
