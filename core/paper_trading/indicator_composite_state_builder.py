@@ -2,7 +2,7 @@
 
 This builder is deliberately explicit about the Bottom Treasure formula source.
 The only fully automatic source currently implemented is the versioned
-``bottom_treasure_recovered_v0`` research formula.  The later SMMA variant is
+``bottom_treasure_recovered_v0`` research formula. The later SMMA variant is
 not guessed; callers may instead supply exact external Bottom Treasure triggers
 once that final formula is recovered.
 """
@@ -20,11 +20,9 @@ from core.paper_trading.indicator_composite_strategy import (
     IndicatorCompositeState,
 )
 from core.paper_trading.market_accelerator_port import (
+    AcceleratorRegimeConfig,
     MarketAcceleratorConfig,
     calculate_market_accelerator,
-)
-from core.paper_trading.market_accelerator_regime import (
-    AcceleratorRegimeConfig,
     classify_accelerator_series,
 )
 
@@ -48,13 +46,7 @@ def build_recovered_v0_composite_states(
     accelerator_config: MarketAcceleratorConfig | None = None,
     regime_config: AcceleratorRegimeConfig | None = None,
 ) -> tuple[IndicatorCompositeState, ...]:
-    """Build states using recovered-v0 Bottom Treasure + recovered accelerator.
-
-    ``higher_timeframe_trends[i]`` must be calculated from information available
-    by ``bars[i]``.  Requiring the caller to provide it prevents this builder
-    from quietly replacing a true higher-timeframe filter with same-timeframe
-    information.
-    """
+    """Build states using recovered-v0 Bottom Treasure + recovered accelerator."""
     if len(bars) != len(higher_timeframe_trends):
         raise ValueError("bars and higher_timeframe_trends must have the same length")
     if not bars:
@@ -67,16 +59,16 @@ def build_recovered_v0_composite_states(
     regimes = classify_accelerator_series(accelerator.points, regime_config)
     iron_strengths = _iron_top_strength_by_index(bars)
 
-    states = []
-    for index in range(len(bars)):
-        states.append(IndicatorCompositeState(
+    return tuple(
+        IndicatorCompositeState(
             bottom_treasure_trigger=bottoms[index].buy_signal,
             acceleration_regime=regimes[index].regime,
             higher_timeframe_trend=higher_timeframe_trends[index],
             iron_top_strength=iron_strengths[index],
             atr=None,
-        ))
-    return tuple(states)
+        )
+        for index in range(len(bars))
+    )
 
 
 def build_external_bottom_composite_states(
@@ -87,12 +79,7 @@ def build_external_bottom_composite_states(
     accelerator_config: MarketAcceleratorConfig | None = None,
     regime_config: AcceleratorRegimeConfig | None = None,
 ) -> tuple[IndicatorCompositeState, ...]:
-    """Build states using exact externally supplied Bottom Treasure triggers.
-
-    This is the intended bridge for the later final SMMA-based AiCoin formula:
-    once its exact port exists, its boolean trigger series can be fed here
-    without changing accelerator, Iron Top, backtest, or shadow adapters.
-    """
+    """Build states using exact externally supplied Bottom Treasure triggers."""
     if not (len(bars) == len(bottom_triggers) == len(higher_timeframe_trends)):
         raise ValueError("bars, bottom_triggers and trends must have the same length")
     if any(not isinstance(value, bool) for value in bottom_triggers):
