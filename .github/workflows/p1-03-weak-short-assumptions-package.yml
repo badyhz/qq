@@ -1,0 +1,44 @@
+name: P1-03 Weak Short Assumptions Proposal
+
+on:
+  push:
+    branches:
+      - agent/p1-03-weak-short-assumptions-package
+  pull_request:
+    paths:
+      - "scripts/build_p1_03_weak_short_assumptions_package.py"
+      - "tests/unit/test_build_p1_03_weak_short_assumptions_package.py"
+      - "core/paper_trading/net_friction.py"
+      - "tests/unit/test_net_friction_contract.py"
+      - ".github/workflows/p1-03-weak-short-assumptions-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest PyYAML
+
+      - name: Run proposal and authoritative friction tests
+        env:
+          HOME: ${{ runner.temp }}/isolated-home
+        run: |
+          mkdir -p "$HOME"
+          python -m pytest -q \
+            tests/unit/test_build_p1_03_weak_short_assumptions_package.py \
+            tests/unit/test_net_friction_contract.py
