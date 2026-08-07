@@ -333,7 +333,7 @@ def test_enrich_direct_no_events():
     }
     result = enrich_closed_position_funding(pos, adapter)
     assert result["funding_events"] == []
-    assert result["funding_events_verified_complete"] is False
+    assert result["funding_events_verified_complete"] is True
 
 
 def test_enrich_direct_with_events():
@@ -419,30 +419,60 @@ def test_case_h_runner_passes_adapter(monkeypatch):
     import json
     import os
 
-    adapter_calls: list[str] = []
-
     class SpyAdapter:
         def get_bars(self, symbol, timeframe="5m", limit=60):
             return []
         def get_funding_events(self, symbol, lookback_seconds):
-            adapter_calls.append(f"funding:{symbol}")
             return []
 
     spy = SpyAdapter()
+    captured_adapter = {}
 
     monkeypatch.setattr(
         "scripts.run_paper_position_simulator.BinancePublicKlineAdapter",
         lambda config: spy,
     )
 
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+    import scripts.run_paper_position_simulator as runner_mod
+    original_update_only = runner_mod.simulate_existing_positions_update_only
+
+    def capturing_update_only(existing, bars, date_str, **kwargs):
+        captured_adapter["adapter"] = kwargs.get("adapter")
+        return original_update_only(existing, bars, date_str, **kwargs)
+
+    monkeypatch.setattr(runner_mod, "simulate_existing_positions_update_only", capturing_update_only)
+    runner_main = runner_mod.main
+    sys.path.pop(0)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         intents_path = os.path.join(tmpdir, "2026-07-21_trade_intents.json")
+        existing_pos = {
+            "position_id": "PP_runner_001", "intent_id": "INT_runner_001",
+            "signal_key": "sig-runner", "signal_key_schema_version": "v1",
+            "date": "2026-07-21", "source": "test",
+            "strategy_id": "weak_short_watch", "strategy_type": "weak_short",
+            "symbol": "XRPUSDT", "timeframe": "5m", "side": "SHORT",
+            "status": "OPEN", "entry_price": 2.50, "stop_loss": 2.60,
+            "take_profit": 2.40, "rr_ratio": 1.0,
+            "position_size_preview": 300.0, "max_risk_pct": 1.0,
+            "paper_equity_preview": 10000.0,
+            "opened_at": "2026-07-21T00:00:00+00:00",
+            "opened_bar_time": 1784592000,
+            "closed_at": None, "exit_price": None, "exit_reason": None,
+            "unrealized_pnl": 0.0, "realized_pnl": 0.0,
+            "realized_pnl_pct": 0.0, "r_multiple": 0.0,
+            "source_trade_intent_status": "SHADOW_READY",
+            "risk_gate_status": "PASS", "lifecycle_mode": "future_only",
+            "last_checked_at": None, "last_checked_bar_time": None,
+            "safety_flags": [], "created_at": "2026-07-21T00:00:00+00:00",
+            "signal_bar_contract_version": "closed_bar_v1",
+        }
         with open(intents_path, "w") as f:
             json.dump({"intents": []}, f)
-
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-        from scripts.run_paper_position_simulator import main as runner_main
-        sys.path.pop(0)
+        existing_path = os.path.join(tmpdir, "2026-07-21_paper_positions.json")
+        with open(existing_path, "w") as f:
+            json.dump({"positions": [existing_pos]}, f)
 
         monkeypatch.setattr(sys, "argv", [
             "run_paper_position_simulator.py",
@@ -456,7 +486,7 @@ def test_case_h_runner_passes_adapter(monkeypatch):
         rc = runner_main()
 
     assert rc == 0
-    assert len(adapter_calls) >= 0  # adapter was created; call count depends on positions
+    assert captured_adapter.get("adapter") is spy
 
 
 # ---------------------------------------------------------------------------

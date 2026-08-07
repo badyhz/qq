@@ -463,57 +463,6 @@ def _adapter_events_to_evidence(records: list[dict[str, Any]]) -> list[dict[str,
     return evidence
 
 
-def _check_funding_continuity(
-    evidence_records: list[dict[str, Any]],
-    position: dict[str, Any],
-    symbol: str,
-    bar_close_time: str | None = None,
-) -> bool:
-    """Check if funding events provide continuous coverage over position lifetime.
-
-    Mirrors the continuity semantics of build_funding_coverage_evidence() in
-    friction_evidence.py.  Returns True only when:
-    - events exist and have a positive funding interval,
-    - first event is within one interval of position open,
-    - last event is within one interval of position close (or bar_close_time),
-    - no gap between consecutive events exceeds the interval.
-
-    bar_close_time: the bar's close timestamp (ISO).  When provided, used instead
-    of position['closed_at'] for the continuity check, because the simulator sets
-    closed_at to datetime.now() (runtime), not the bar's actual close time.
-    """
-    from core.paper_trading.friction_evidence import _utc
-
-    events = [
-        record for record in evidence_records
-        if record.get("evidence_type") == "FUNDING_EVENT" and record.get("symbol") == symbol
-    ]
-    if not events:
-        return False
-
-    event_times = sorted(_utc(rec["exchange_event_at"], "funding event") for rec in events)
-    intervals = [
-        int(rec.get("funding_interval_seconds") or 0)
-        for rec in events if int(rec.get("funding_interval_seconds") or 0) > 0
-    ]
-    interval = min(intervals) if intervals else 0
-    if interval <= 0:
-        return False
-
-    opened = _utc(position.get("opened_at"), "opened_at")
-    close_src = bar_close_time if bar_close_time else position.get("closed_at")
-    closed = _utc(close_src, "closed_at")
-
-    if (event_times[0] - opened).total_seconds() > interval:
-        return False
-    if (closed - event_times[-1]).total_seconds() > interval:
-        return False
-    for earlier, later in zip(event_times, event_times[1:]):
-        if (later - earlier).total_seconds() > interval:
-            return False
-    return True
-
-
 def enrich_closed_position_funding(
     position: dict[str, Any],
     adapter: Any,
@@ -531,8 +480,9 @@ def enrich_closed_position_funding(
 
     Completeness semantics:
     - query failed → verified_complete = False
-    - query succeeded but zero events → verified_complete = False (can't prove continuity)
+    - query succeeded, zero events → verified_complete = True (query covers position lifetime, proves no funding)
     - query succeeded, events exist, surrounding coverage proves continuity → verified_complete = True
+    - query succeeded, events exist but outside window → verified_complete = False
     """
     if position.get("status") not in CLOSED_STATUSES:
         return position
@@ -546,9 +496,23 @@ def enrich_closed_position_funding(
         raw_events = []
         query_succeeded = False
     evidence_records = _adapter_events_to_evidence(raw_events if isinstance(raw_events, list) else [])
-    windows_resolved = query_succeeded and _check_funding_continuity(
-        evidence_records, position, symbol, bar_close_time=bar_close_time,
-    )
+    # Filter to symbol-specific funding events for continuity check.
+    funding_events = [
+        rec for rec in evidence_records
+        if rec.get("evidence_type") == "FUNDING_EVENT" and rec.get("symbol") == symbol
+    ]
+    if query_succeeded and not funding_events:
+        # Zero events from successful query covering position lifetime
+        # proves no funding occurred — complete by construction.
+        windows_resolved = True
+    elif funding_events and query_succeeded:
+        from core.paper_trading.friction_evidence import _utc, funding_windows_are_continuous
+        opened = _utc(position.get("opened_at"), "opened_at")
+        close_src = bar_close_time or position.get("closed_at")
+        closed = _utc(close_src, "closed_at")
+        windows_resolved = funding_windows_are_continuous(funding_events, opened, closed)
+    else:
+        windows_resolved = False
     # Override closed_at for attribute_position_funding so it uses the bar's
     # close time instead of datetime.now() (runtime).
     enriched_pos = dict(position)

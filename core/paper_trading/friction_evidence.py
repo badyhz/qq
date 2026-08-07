@@ -467,26 +467,56 @@ def build_quality_failure_evidence(
     return finalize_record(result)
 
 
+def funding_windows_are_continuous(
+    events: list[dict[str, Any]],
+    window_start: datetime,
+    window_end: datetime,
+) -> bool:
+    """Check if funding events provide continuous coverage over a time window.
+
+    Shared helper used by both build_funding_coverage_evidence() (pipeline
+    evidence) and enrich_closed_position_funding() (prospective enrichment).
+
+    Accepts raw adapter events (funding_event_at) or evidence records
+    (exchange_event_at).  Returns True only when:
+    - events exist and have a positive funding interval,
+    - first event is within one interval of window_start,
+    - last event is within one interval of window_end,
+    - no gap between consecutive events exceeds the interval.
+    """
+    if not events:
+        return False
+
+    def _event_at(item: dict[str, Any]) -> str:
+        return item.get("funding_event_at") or item.get("exchange_event_at") or ""
+
+    event_times = sorted(_utc(_event_at(item), "funding event") for item in events)
+    intervals = [int(item.get("funding_interval_seconds") or 0) for item in events]
+    known_intervals = [item for item in intervals if item > 0]
+    interval = min(known_intervals) if known_intervals else 0
+    if interval <= 0:
+        return False
+    if (event_times[0] - window_start).total_seconds() > interval:
+        return False
+    if (window_end - event_times[-1]).total_seconds() > interval:
+        return False
+    for earlier, later in zip(event_times, event_times[1:]):
+        if (later - earlier).total_seconds() > interval:
+            return False
+    return True
+
+
 def build_funding_coverage_evidence(
     *, symbol: str, events: list[dict[str, Any]], context: dict[str, str],
     config: dict[str, Any], inventory_hash: str,
 ) -> dict[str, Any]:
     """Record query success separately from event rows; zero is not complete."""
-    event_times = sorted(_utc(item["funding_event_at"], "funding_event_at") for item in events)
+    query_end = _utc(context["collected_at"], "collected_at")
+    query_start = query_end - timedelta(seconds=int(config["funding_synchronization_lookback_seconds"]))
+    continuity = funding_windows_are_continuous(events, query_start, query_end)
     intervals = [int(item.get("funding_interval_seconds") or 0) for item in events]
     known_intervals = [item for item in intervals if item > 0]
     interval = min(known_intervals) if known_intervals else 0
-    query_end = _utc(context["collected_at"], "collected_at")
-    query_start = query_end - timedelta(seconds=int(config["funding_synchronization_lookback_seconds"]))
-    continuity = bool(
-        events and interval
-        and (event_times[0] - query_start).total_seconds() <= interval
-        and (query_end - event_times[-1]).total_seconds() <= interval
-        and all(
-            int((later - earlier).total_seconds()) <= interval
-            for earlier, later in zip(event_times, event_times[1:])
-        )
-    )
     result = _base_record(
         kind="FUNDING_QUERY_COVERAGE", symbol=symbol, event_at=context["collected_at"],
         source="binance_usdm_public", endpoint="GET /fapi/v1/fundingRate",
