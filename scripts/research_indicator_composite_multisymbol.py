@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
-"""Temporary multi-symbol robustness research for INDICATOR_COMPOSITE_V1.
+"""Temporary multi-symbol IronTop SHORT research for INDICATOR_COMPOSITE_V1.
 
-Research branch only; do not merge. Uses only the exact, formula-free price
-event already confirmed by the user:
+Research branch only; do not merge.
 
-    prior-30 new low + close above previous bar low
+This experiment uses the exact recovered IronTop formula without changing its
+30/55-bar highs, 5-bar speed, prior-55 speed baseline, 1.5 sigma threshold, or
+weak-close rule.  It tests four pre-declared entry variants on the same 12-month
+zero-friction sample:
 
-The symbol set and time window may be supplied via RESEARCH_SYMBOLS,
-RESEARCH_START, RESEARCH_SPLIT and RESEARCH_END. No strategy parameter is
-optimized by these inputs; they only choose an untouched validation sample.
+A_STRONG_ONLY       = strength == 2
+B_STRONG_HTF        = strength == 2 and higher-timeframe trend is not UP
+C_ANY_IRON_TOP      = strength >= 1
+D_ANY_IRON_TOP_HTF  = strength >= 1 and higher-timeframe trend is not UP
+
+Execution is conservative and identical across variants:
+- signal becomes known only after bar i closes;
+- SHORT entry is bar i+1 open;
+- stop is signal-bar high + 0.10%;
+- target is fixed 2R;
+- existing Shadow TradeIntent risk gate is reused;
+- existing offline simulator runs with entry_execution='bar_open';
+- one simulated exposure at a time, no overlapping positions;
+- no parameter optimization, fees, slippage, accounts, orders, Testnet or Live.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import json
-import os
+import math
 from pathlib import Path
 import statistics
 import sys
@@ -23,67 +35,191 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from core.indicator_composite_backtest import (
-    CompositeBacktestConfig,
-    run_indicator_composite_ablation,
-    run_indicator_composite_backtest,
+from core.offline_backtest_metrics_engine import compute_run_metrics
+from core.offline_backtest_trade_simulator import (
+    TradeSimulationParams,
+    simulate_trade,
 )
-from core.offline_backtest_trade_simulator import TradeSimulationParams
+from core.paper_trading.aicoin_indicator_ports import evaluate_iron_top
 from core.paper_trading.higher_timeframe_trend import align_higher_timeframe_trends
-from core.paper_trading.indicator_composite_adapter import (
-    build_external_bottom_composite_states,
-)
+from core.paper_trading.indicator_composite_strategy import HigherTimeframeTrend
+from core.paper_trading.trade_intent_risk_gate import validate_trade_intent
 from scripts.prepare_indicator_composite_history import DEFAULT_SYMBOLS
 from scripts.run_indicator_composite_backtest import _load_historical, _market_bars
 
 
-START = os.environ.get("RESEARCH_START", "2025-08-01")
-SPLIT = os.environ.get("RESEARCH_SPLIT", "2026-02-01")
-END = os.environ.get("RESEARCH_END", "2026-07-31")
-SYMBOLS = tuple(
-    value.strip().upper()
-    for value in os.environ.get(
-        "RESEARCH_SYMBOLS", ",".join(DEFAULT_SYMBOLS)
-    ).split(",")
-    if value.strip()
-)
+START = "2025-08-01"
+END = "2026-07-31"
 LOWER_TF = "15m"
 HIGHER_TF = "1h"
 DATA_ROOT = Path("data/indicator_composite_history")
+STOP_BUFFER_PCT = 0.10
+TARGET_R = 2.0
+MAX_RISK_PCT = 0.5
+MAX_HOLD_BARS = 100
+
+VARIANTS = (
+    "A_STRONG_ONLY",
+    "B_STRONG_HTF",
+    "C_ANY_IRON_TOP",
+    "D_ANY_IRON_TOP_HTF",
+)
 
 
-def _epoch(day: str) -> float:
-    return datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+def _iron_strengths(bars) -> tuple[int, ...]:
+    """Evaluate exact IronTop using only the minimum required rolling window."""
+    strengths = [0] * len(bars)
+    for index in range(60, len(bars)):
+        result = evaluate_iron_top(bars[index - 60:index + 1])
+        strengths[index] = result.strength
+    return tuple(strengths)
 
 
-def _day_after(day: str) -> float:
-    parsed = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    return (parsed + timedelta(days=1)).timestamp()
+def _variant_matches(
+    strength: int,
+    trend: HigherTimeframeTrend,
+    variant: str,
+) -> bool:
+    if variant == "A_STRONG_ONLY":
+        return strength == 2
+    if variant == "B_STRONG_HTF":
+        return strength == 2 and trend != HigherTimeframeTrend.UP
+    if variant == "C_ANY_IRON_TOP":
+        return strength >= 1
+    if variant == "D_ANY_IRON_TOP_HTF":
+        return strength >= 1 and trend != HigherTimeframeTrend.UP
+    raise ValueError(f"unknown variant: {variant}")
 
 
-def _dedupe_immediate(raw: list[bool]) -> list[bool]:
-    return [
-        value and (index == 0 or not raw[index - 1])
-        for index, value in enumerate(raw)
-    ]
+def _bar_dict(bar) -> dict:
+    return {
+        "timestamp": float(bar.timestamp),
+        "open": float(bar.open),
+        "high": float(bar.high),
+        "low": float(bar.low),
+        "close": float(bar.close),
+        "volume": float(bar.volume),
+        "symbol": str(bar.symbol),
+        "timeframe": str(bar.timeframe),
+    }
 
 
-def _confirmed_price_action_triggers(bars) -> list[bool]:
-    lows = [float(bar.low) for bar in bars]
-    closes = [float(bar.close) for bar in bars]
-    raw: list[bool] = []
-    for index in range(len(bars)):
-        previous_lows = lows[max(0, index - 30):index]
-        new_low_30 = bool(previous_lows) and lows[index] < min(previous_lows)
-        reclaim = index > 0 and closes[index] > lows[index - 1]
-        raw.append(new_low_30 and reclaim)
-    return _dedupe_immediate(raw)
+def _outcome_dict(outcome) -> dict:
+    return {
+        "trade_id": outcome.trade_id,
+        "signal_id": outcome.signal_id,
+        "entry_bar_index": outcome.entry_bar_index,
+        "exit_bar_index": outcome.exit_bar_index,
+        "entry_price": outcome.entry_price,
+        "exit_price": outcome.exit_price,
+        "exit_reason": outcome.exit_reason,
+        "realized_r": outcome.realized_r,
+        "gross_pnl": outcome.gross_pnl,
+        "fees": outcome.fees,
+        "slippage_cost": outcome.slippage_cost,
+        "net_pnl": outcome.net_pnl,
+        "mfe_r": outcome.mfe_r,
+        "mae_r": outcome.mae_r,
+        "hold_bars": outcome.hold_bars,
+    }
 
 
-def _compact_result(result: dict) -> dict:
+def _run_variant(bars, strengths, trends, variant: str) -> dict:
+    bar_dicts = [_bar_dict(bar) for bar in bars]
+    params = TradeSimulationParams(
+        slippage_pct=0.0,
+        fee_pct=0.0,
+        max_hold_bars=MAX_HOLD_BARS,
+    )
+    raw_signal_count = 0
+    accepted_signal_count = 0
+    blocked_no_next_bar = 0
+    blocked_invalid_execution = 0
+    blocked_risk_gate = 0
+    blocked_overlap = 0
+    unavailable_until = -1
+    trades: list[dict] = []
+
+    for signal_index, (strength, trend) in enumerate(zip(strengths, trends)):
+        if not _variant_matches(strength, trend, variant):
+            continue
+        raw_signal_count += 1
+
+        if signal_index + 1 >= len(bars):
+            blocked_no_next_bar += 1
+            continue
+
+        entry_index = signal_index + 1
+        entry_price = float(bars[entry_index].open)
+        stop_price = float(bars[signal_index].high) * (
+            1.0 + STOP_BUFFER_PCT / 100.0
+        )
+        if entry_price <= 0 or entry_price >= stop_price:
+            blocked_invalid_execution += 1
+            continue
+
+        risk = stop_price - entry_price
+        take_profit = entry_price - TARGET_R * risk
+        if take_profit <= 0:
+            blocked_invalid_execution += 1
+            continue
+
+        risk_distance_pct = risk / entry_price * 100.0
+        reward_distance_pct = (entry_price - take_profit) / entry_price * 100.0
+        gate = validate_trade_intent({
+            "execution_mode": "shadow_only",
+            "side": "SHORT",
+            "intent_status": "SHADOW_READY",
+            "rr_ratio": TARGET_R,
+            "risk_distance_pct": risk_distance_pct,
+            "reward_distance_pct": reward_distance_pct,
+            "max_risk_pct": MAX_RISK_PCT,
+            "entry_price": entry_price,
+            "stop_loss": stop_price,
+            "take_profit": take_profit,
+        })
+        if not gate.passed:
+            blocked_risk_gate += 1
+            continue
+
+        accepted_signal_count += 1
+        if entry_index <= unavailable_until:
+            blocked_overlap += 1
+            continue
+
+        signal = {
+            "signal_id": f"iron_top_short_{variant}_{signal_index}",
+            "signal_bar_index": signal_index,
+            "entry_bar_index": entry_index,
+            "entry_execution": "bar_open",
+            "entry_price": entry_price,
+            "stop_price": stop_price,
+            "tp_price": take_profit,
+        }
+        outcome = simulate_trade(signal, bar_dicts, params)
+        trades.append(_outcome_dict(outcome))
+        unavailable_until = outcome.exit_bar_index
+
+    metrics = compute_run_metrics(trades)
+    return {
+        "variant": variant,
+        "raw_signal_count": raw_signal_count,
+        "accepted_signal_count": accepted_signal_count,
+        "trade_count": len(trades),
+        "blocked_no_next_bar": blocked_no_next_bar,
+        "blocked_invalid_execution": blocked_invalid_execution,
+        "blocked_risk_gate": blocked_risk_gate,
+        "blocked_overlap": blocked_overlap,
+        "metrics": metrics,
+        "trades": trades,
+    }
+
+
+def _compact(result: dict) -> dict:
     metrics = result["metrics"]
     return {
-        "signals": result["signal_count"],
+        "raw_signals": result["raw_signal_count"],
+        "accepted_signals": result["accepted_signal_count"],
         "trades": result["trade_count"],
         "win_rate": metrics["win_rate"],
         "expectancy_r": metrics["expectancy_r"],
@@ -91,60 +227,32 @@ def _compact_result(result: dict) -> dict:
         "max_drawdown_r": metrics["max_drawdown_r"],
         "avg_mfe_r": metrics["avg_mfe_r"],
         "avg_mae_r": metrics["avg_mae_r"],
-        "blocked_risk_gate": result["blocked_risk_gate"],
+        "avg_hold_bars": metrics["avg_hold_bars"],
         "blocked_invalid_execution": result["blocked_invalid_execution"],
-        "blocked_no_next_bar": result["blocked_no_next_bar"],
+        "blocked_risk_gate": result["blocked_risk_gate"],
+        "blocked_overlap": result["blocked_overlap"],
     }
 
 
-def _slice_by_time(bars, states, start_epoch: float, end_epoch: float):
-    pairs = [
-        (bar, state)
-        for bar, state in zip(bars, states)
-        if start_epoch <= float(bar.timestamp) < end_epoch
-    ]
-    return (
-        tuple(pair[0] for pair in pairs),
-        tuple(pair[1] for pair in pairs),
-    )
-
-
-def _aggregate_c(per_symbol: list[dict]) -> dict:
+def _aggregate(per_symbol: list[dict], variant: str) -> dict:
     all_r: list[float] = []
-    pfs: list[float] = []
+    symbol_pfs: list[float] = []
     positive_symbols: list[str] = []
-    pf_over_one_symbols: list[str] = []
-    stable_both_halves: list[str] = []
-    total_signals = 0
     worst_symbol_drawdown = 0.0
+    total_raw_signals = 0
 
     for entry in per_symbol:
-        c_full = entry["_c_full"]
-        compact = entry["variants"]["C_BOTTOM_ACCELERATOR_HTF"]
-        total_signals += compact["signals"]
-        pfs.append(float(compact["profit_factor"]))
+        full = entry["_full_results"][variant]
+        compact = entry["variants"][variant]
+        total_raw_signals += compact["raw_signals"]
+        symbol_pfs.append(float(compact["profit_factor"]))
         worst_symbol_drawdown = min(
             worst_symbol_drawdown,
             float(compact["max_drawdown_r"]),
         )
         if float(compact["expectancy_r"]) > 0:
             positive_symbols.append(entry["symbol"])
-        if float(compact["profit_factor"]) > 1:
-            pf_over_one_symbols.append(entry["symbol"])
-
-        h1 = entry["walk_forward_halves"]["first_half"]
-        h2 = entry["walk_forward_halves"]["second_half"]
-        if (
-            h1["trades"] >= 10
-            and h2["trades"] >= 10
-            and float(h1["expectancy_r"]) > 0
-            and float(h2["expectancy_r"]) > 0
-            and float(h1["profit_factor"]) > 1
-            and float(h2["profit_factor"]) > 1
-        ):
-            stable_both_halves.append(entry["symbol"])
-
-        all_r.extend(float(trade["realized_r"]) for trade in c_full["trades"])
+        all_r.extend(float(trade["realized_r"]) for trade in full["trades"])
 
     wins = [value for value in all_r if value > 0]
     losses = [value for value in all_r if value <= 0]
@@ -156,129 +264,103 @@ def _aggregate_c(per_symbol: list[dict]) -> dict:
         else (float("inf") if gross_wins > 0 else 0.0)
     )
     return {
+        "variant": variant,
         "symbol_count": len(per_symbol),
-        "total_signals": total_signals,
+        "total_raw_signals": total_raw_signals,
         "total_trades": len(all_r),
         "combined_win_rate": round(len(wins) / len(all_r), 6) if all_r else 0.0,
         "combined_expectancy_r": round(sum(all_r) / len(all_r), 6) if all_r else 0.0,
         "combined_profit_factor": round(combined_pf, 6),
-        "median_symbol_profit_factor": round(statistics.median(pfs), 6) if pfs else 0.0,
-        "worst_symbol_drawdown_r": round(worst_symbol_drawdown, 6),
+        "median_symbol_profit_factor": round(
+            statistics.median(symbol_pfs), 6
+        ) if symbol_pfs else 0.0,
         "positive_expectancy_symbols": positive_symbols,
-        "profit_factor_over_one_symbols": pf_over_one_symbols,
         "positive_symbol_count": len(positive_symbols),
-        "pf_over_one_symbol_count": len(pf_over_one_symbols),
-        "stable_positive_both_halves": stable_both_halves,
-        "stable_positive_both_halves_count": len(stable_both_halves),
-        "stability_rule": "each_half_trades>=10_and_expectancy>0_and_pf>1",
+        "worst_symbol_drawdown_r": round(worst_symbol_drawdown, 6),
         "portfolio_drawdown_not_computed": True,
     }
 
 
 def main() -> int:
-    if not SYMBOLS:
-        raise ValueError("RESEARCH_SYMBOLS produced an empty symbol set")
-    if not (_epoch(START) < _epoch(SPLIT) < _day_after(END)):
-        raise ValueError("research dates must satisfy START < SPLIT <= END")
+    per_symbol: list[dict] = []
 
-    config = CompositeBacktestConfig(
-        simulation=TradeSimulationParams(
-            slippage_pct=0.0,
-            fee_pct=0.0,
-            max_hold_bars=100,
-        )
-    )
-    records: list[dict] = []
-    start_epoch = _epoch(START)
-    split_epoch = _epoch(SPLIT)
-    end_epoch = _day_after(END)
-
-    for symbol in SYMBOLS:
+    for symbol in DEFAULT_SYMBOLS:
         lower_path = DATA_ROOT / symbol / f"{symbol}_{LOWER_TF}.csv"
         higher_path = DATA_ROOT / symbol / f"{symbol}_{HIGHER_TF}.csv"
         lower_hist = _load_historical(lower_path, symbol, LOWER_TF, 500)
         higher_hist = _load_historical(higher_path, symbol, HIGHER_TF, 500)
         trends = align_higher_timeframe_trends(lower_hist, higher_hist)
         bars = _market_bars(lower_hist)
-        triggers = _confirmed_price_action_triggers(bars)
-        states = build_external_bottom_composite_states(bars, triggers, trends)
-        ablation = run_indicator_composite_ablation(bars, states, config)
+        strengths = _iron_strengths(bars)
 
-        variants = {
-            entry["variant"]: _compact_result(entry["result"])
-            for entry in ablation["variants"]
+        full_results = {
+            variant: _run_variant(bars, strengths, trends, variant)
+            for variant in VARIANTS
         }
-        c_full = next(
-            entry["result"]
-            for entry in ablation["variants"]
-            if entry["variant"] == "C_BOTTOM_ACCELERATOR_HTF"
-        )
-
-        first_bars, first_states = _slice_by_time(
-            bars, states, start_epoch, split_epoch
-        )
-        second_bars, second_states = _slice_by_time(
-            bars, states, split_epoch, end_epoch
-        )
-        first_result = run_indicator_composite_backtest(
-            first_bars, first_states, config
-        )
-        second_result = run_indicator_composite_backtest(
-            second_bars, second_states, config
-        )
-
-        records.append({
+        per_symbol.append({
             "symbol": symbol,
             "lower_bars": len(lower_hist),
             "higher_bars": len(higher_hist),
-            "trigger_count": sum(triggers),
-            "variants": variants,
-            "walk_forward_halves": {
-                "first_half": _compact_result(first_result),
-                "second_half": _compact_result(second_result),
+            "iron_strength_1_count": sum(value == 1 for value in strengths),
+            "iron_strength_2_count": sum(value == 2 for value in strengths),
+            "variants": {
+                variant: _compact(result)
+                for variant, result in full_results.items()
             },
-            "_c_full": c_full,
+            "_full_results": full_results,
         })
 
-    aggregate = _aggregate_c(records)
-    serializable_records = []
-    for entry in records:
-        serializable_records.append({
-            key: value for key, value in entry.items() if key != "_c_full"
-        })
-
+    aggregates = {
+        variant: _aggregate(per_symbol, variant)
+        for variant in VARIANTS
+    }
+    serializable = [
+        {key: value for key, value in entry.items() if key != "_full_results"}
+        for entry in per_symbol
+    ]
     output = {
-        "experiment_id": "confirmed_price_action_multisymbol_v1",
-        "definition": "prior_30_new_low_and_close_above_previous_low",
+        "experiment_id": "iron_top_short_multisymbol_v1",
         "period": f"{START}..{END}",
-        "walk_forward_split": SPLIT,
         "lower_timeframe": LOWER_TF,
         "higher_timeframe": HIGHER_TF,
+        "symbols": list(DEFAULT_SYMBOLS),
+        "variants": list(VARIANTS),
+        "iron_top_formula_modified": False,
+        "stop_buffer_pct": STOP_BUFFER_PCT,
+        "target_r": TARGET_R,
+        "max_risk_pct": MAX_RISK_PCT,
+        "max_hold_bars": MAX_HOLD_BARS,
         "friction": "zero",
         "entry_execution": "closed_signal_next_bar_open_v1",
         "parameter_optimization": False,
-        "symbols": list(SYMBOLS),
-        "per_symbol": serializable_records,
-        "aggregate_c": aggregate,
+        "per_symbol": serializable,
+        "aggregate": aggregates,
     }
 
-    destination = Path("research_results/multisymbol_confirmed_price_action.json")
+    destination = Path("research_results/iron_top_short_multisymbol.json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(output, indent=2), encoding="utf-8")
 
-    print("=== MULTISYMBOL_CONFIRMED_PRICE_ACTION ===")
-    print("PERIOD", START, END, "SPLIT", SPLIT, "SYMBOLS", SYMBOLS)
-    for entry in serializable_records:
-        c = entry["variants"]["C_BOTTOM_ACCELERATOR_HTF"]
-        h1 = entry["walk_forward_halves"]["first_half"]
-        h2 = entry["walk_forward_halves"]["second_half"]
+    print("=== IRON_TOP_SHORT_MULTISYMBOL ===")
+    for entry in serializable:
         print(
             entry["symbol"],
-            "FULL trades=", c["trades"], "exp=", c["expectancy_r"], "pf=", c["profit_factor"],
-            "H1 trades=", h1["trades"], "exp=", h1["expectancy_r"], "pf=", h1["profit_factor"],
-            "H2 trades=", h2["trades"], "exp=", h2["expectancy_r"], "pf=", h2["profit_factor"],
+            "strength1=", entry["iron_strength_1_count"],
+            "strength2=", entry["iron_strength_2_count"],
         )
-    print("AGGREGATE_C", aggregate)
+        for variant in VARIANTS:
+            values = entry["variants"][variant]
+            print(
+                " ", variant,
+                "trades=", values["trades"],
+                "win=", values["win_rate"],
+                "exp=", values["expectancy_r"],
+                "pf=", values["profit_factor"],
+                "mdd=", values["max_drawdown_r"],
+            )
+    print("=== AGGREGATE ===")
+    for variant in VARIANTS:
+        print(variant, aggregates[variant])
     return 0
 
 
