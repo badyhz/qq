@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
-"""Deferred Stage-2 check: existing MACD 5m with the same two overlays.
+"""Untouched older-year holdout for the existing weak_short_watch baseline.
 
 Research branch only; do not merge.
 
-This closes the only timeframe intentionally omitted from Stage 1. The existing
-`macd_rebound_watch` authority is called directly on the latest 120 completed
-bars. HIGH/MEDIUM candidates only, matching the production payload contract.
+This intentionally removes every new indicator overlay. The signal authority is
+exactly the repository's existing production path:
 
-Variants are frozen from Stage 1:
-- BASELINE
-- ACCEL_POSITIVE_NON_EXTREME: signed_speed > 0 and regime != EXTREME
-- IRON_TOP_VETO: reject Iron Top strength >= 1
+    core.paper_trading.strategy_registry.analyze_for_strategy
 
-No combinations, threshold tuning, symbol selection or new indicator rule.
-Execution is next-bar-open, existing candidate stop/target levels are preserved,
-actual fill geometry is revalidated, one exposure at a time. Fees 0 / 0.5 bp
-per side are hypothetical research stress only; slippage is zero.
+Contract:
+- XRPUSDT / ARBUSDT / DOGEUSDT;
+- 15m + 1h;
+- 2024-08-01 .. 2025-07-31, untouched older year;
+- latest 120 completed bars per decision, matching live public-kline default;
+- only HIGH/MEDIUM candidates, matching run_enabled_strategies payload behavior;
+- signal known after bar close -> next-bar-open execution;
+- existing candidate stop and 2R target preserved;
+- actual next-open geometry revalidated with the existing Shadow risk gate;
+- one exposure at a time per symbol/timeframe;
+- 0 / 0.5 bp per-side hypothetical fee stress, zero slippage;
+- no parameter tuning, symbol selection, indicator filter or production change.
+
+The full-year simulation is authoritative. First/second-half metrics are only
+subsets of those already simulated trades, bucketed by signal time, so no
+artificial half-year boundary truncates an open trade.
 """
 from __future__ import annotations
 
@@ -30,58 +38,40 @@ if str(_REPO_ROOT) not in sys.path:
 
 from core.offline_backtest_metrics_engine import compute_run_metrics
 from core.offline_backtest_trade_simulator import TradeSimulationParams, simulate_trade
-from core.paper_trading.aicoin_indicator_ports import evaluate_iron_top
-from core.paper_trading.indicator_composite_strategy import AccelerationRegime
-from core.paper_trading.market_accelerator_port import (
-    calculate_market_accelerator,
-    classify_accelerator_series,
-)
 from core.paper_trading.strategy_registry import SignalCandidate, analyze_for_strategy
 from core.paper_trading.trade_intent_risk_gate import validate_trade_intent
 from scripts.run_indicator_composite_backtest import _load_historical, _market_bars
 
-START = "2025-08-01"
-END = "2026-07-31"
+START = "2024-08-01"
+SPLIT = "2025-02-01"
+END = "2025-07-31"
 WINDOW_BARS = 120
 MAX_HOLD_BARS = 100
 FEE_BPS_GRID = (0.0, 0.5)
-SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SUIUSDT", "1000PEPEUSDT")
-TIMEFRAME = "5m"
-VARIANTS = ("BASELINE", "ACCEL_POSITIVE_NON_EXTREME", "IRON_TOP_VETO")
+SYMBOLS = ("XRPUSDT", "ARBUSDT", "DOGEUSDT")
+TIMEFRAMES = ("15m", "1h")
 DATA_ROOT = Path("data/existing_strategy_overlay_history")
+
+
+def _epoch(day: str) -> float:
+    return datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+
+
+SPLIT_EPOCH = _epoch(SPLIT)
 
 
 def _candidate_at(bars, index: int) -> SignalCandidate | None:
     if index + 1 < WINDOW_BARS:
         return None
     result = analyze_for_strategy(
-        strategy_id="macd_rebound_watch",
-        strategy_type="macd_rebound_watch",
+        strategy_id="weak_short_watch",
+        strategy_type="weak_short_watch",
         bars=list(bars[index - WINDOW_BARS + 1:index + 1]),
     )
     candidate = result.candidate if result.success else None
     if candidate is None or candidate.priority not in {"HIGH", "MEDIUM"}:
         return None
     return candidate
-
-
-def _iron_strength(bars, index: int) -> int:
-    return evaluate_iron_top(bars[index - WINDOW_BARS + 1:index + 1]).strength
-
-
-def _accepts(variant: str, bars, index: int, accelerator, regimes) -> bool:
-    if variant == "BASELINE":
-        return True
-    if variant == "ACCEL_POSITIVE_NON_EXTREME":
-        signed_speed = accelerator.points[index].signed_speed
-        return (
-            signed_speed is not None
-            and signed_speed > 0
-            and regimes[index].regime != AccelerationRegime.EXTREME
-        )
-    if variant == "IRON_TOP_VETO":
-        return _iron_strength(bars, index) == 0
-    raise ValueError(variant)
 
 
 def _bar_dict(bar) -> dict:
@@ -97,7 +87,7 @@ def _bar_dict(bar) -> dict:
     }
 
 
-def _simulate(symbol: str, bars, candidates, accelerator, regimes, variant: str, fee_bps: float) -> dict:
+def _simulate_series(symbol: str, timeframe: str, bars, candidates, fee_bps: float) -> dict:
     params = TradeSimulationParams(
         fee_pct=fee_bps / 10000.0,
         slippage_pct=0.0,
@@ -105,32 +95,30 @@ def _simulate(symbol: str, bars, candidates, accelerator, regimes, variant: str,
     )
     bar_dicts = [_bar_dict(bar) for bar in bars]
     unavailable_until = -1
-    base_candidates = 0
-    overlay_pass = 0
+    candidate_count = 0
+    blocked_no_next_bar = 0
     blocked_geometry = 0
     blocked_overlap = 0
-    trades = []
+    trades: list[dict] = []
 
     for signal_index, candidate in enumerate(candidates):
         if candidate is None:
             continue
-        base_candidates += 1
-        if not _accepts(variant, bars, signal_index, accelerator, regimes):
-            continue
-        overlay_pass += 1
-
+        candidate_count += 1
         entry_index = signal_index + 1
-        if entry_index >= len(bars) or entry_index <= unavailable_until:
-            if entry_index <= unavailable_until:
-                blocked_overlap += 1
+        if entry_index >= len(bars):
+            blocked_no_next_bar += 1
+            continue
+        if entry_index <= unavailable_until:
+            blocked_overlap += 1
             continue
 
         entry = float(bars[entry_index].open)
         stop = float(candidate.invalidation_level)
         target = float(candidate.take_profit_observation)
-        risk = entry - stop
-        reward = target - entry
-        if entry <= 0 or risk <= 0 or reward <= 0:
+        risk = stop - entry
+        reward = entry - target
+        if entry <= 0 or stop <= 0 or target <= 0 or risk <= 0 or reward <= 0:
             blocked_geometry += 1
             continue
 
@@ -139,7 +127,7 @@ def _simulate(symbol: str, bars, candidates, accelerator, regimes, variant: str,
         actual_rr = reward / risk
         gate = validate_trade_intent({
             "execution_mode": "shadow_only",
-            "side": "LONG",
+            "side": "SHORT",
             "intent_status": "SHADOW_READY",
             "rr_ratio": actual_rr,
             "risk_distance_pct": risk_pct,
@@ -155,7 +143,7 @@ def _simulate(symbol: str, bars, candidates, accelerator, regimes, variant: str,
 
         outcome = simulate_trade(
             {
-                "signal_id": f"macd5m_{symbol}_{variant}_{signal_index}",
+                "signal_id": f"weak_short_holdout_{symbol}_{timeframe}_{signal_index}",
                 "entry_bar_index": entry_index,
                 "entry_execution": "bar_open",
                 "entry_price": entry,
@@ -166,8 +154,13 @@ def _simulate(symbol: str, bars, candidates, accelerator, regimes, variant: str,
             params,
         )
         trades.append({
+            "strategy_type": "weak_short_watch",
             "symbol": symbol,
-            "variant": variant,
+            "timeframe": timeframe,
+            "signal_time": float(bars[signal_index].timestamp),
+            "signal_index": signal_index,
+            "entry_bar_index": outcome.entry_bar_index,
+            "exit_bar_index": outcome.exit_bar_index,
             "realized_r": outcome.realized_r,
             "gross_pnl": outcome.gross_pnl,
             "fees": outcome.fees,
@@ -176,16 +169,19 @@ def _simulate(symbol: str, bars, candidates, accelerator, regimes, variant: str,
             "mfe_r": outcome.mfe_r,
             "mae_r": outcome.mae_r,
             "hold_bars": outcome.hold_bars,
+            "planned_watch_state": candidate.watch_state,
+            "planned_priority": candidate.priority,
+            "planned_rr": candidate.rr_ratio,
+            "actual_rr_at_fill": round(actual_rr, 6),
         })
         unavailable_until = outcome.exit_bar_index
 
     return {
         "symbol": symbol,
-        "variant": variant,
+        "timeframe": timeframe,
         "fee_bps_per_side": fee_bps,
-        "base_candidate_count": base_candidates,
-        "overlay_pass_count": overlay_pass,
-        "coverage": round(overlay_pass / base_candidates, 6) if base_candidates else 0.0,
+        "candidate_count": candidate_count,
+        "blocked_no_next_bar": blocked_no_next_bar,
         "blocked_geometry": blocked_geometry,
         "blocked_overlap": blocked_overlap,
         "trade_count": len(trades),
@@ -194,19 +190,19 @@ def _simulate(symbol: str, bars, candidates, accelerator, regimes, variant: str,
     }
 
 
-def _aggregate(results, variant: str, fee_bps: float) -> dict:
-    selected = [r for r in results if r["variant"] == variant and r["fee_bps_per_side"] == fee_bps]
-    trades = [trade for result in selected for trade in result["trades"]]
+def _phase_trades(trades: list[dict], phase: str) -> list[dict]:
+    if phase == "full":
+        return trades
+    if phase == "first_half":
+        return [trade for trade in trades if trade["signal_time"] < SPLIT_EPOCH]
+    if phase == "second_half":
+        return [trade for trade in trades if trade["signal_time"] >= SPLIT_EPOCH]
+    raise ValueError(phase)
+
+
+def _compact_metrics(trades: list[dict]) -> dict:
     metrics = compute_run_metrics(trades)
-    base = sum(result["base_candidate_count"] for result in selected)
-    passed = sum(result["overlay_pass_count"] for result in selected)
     return {
-        "variant": variant,
-        "fee_bps_per_side": fee_bps,
-        "series_count": len(selected),
-        "base_candidate_count": base,
-        "overlay_pass_count": passed,
-        "coverage": round(passed / base, 6) if base else 0.0,
         "trade_count": len(trades),
         "win_rate": metrics["win_rate"],
         "expectancy_r": metrics["expectancy_r"],
@@ -214,51 +210,97 @@ def _aggregate(results, variant: str, fee_bps: float) -> dict:
         "avg_mfe_r": metrics["avg_mfe_r"],
         "avg_mae_r": metrics["avg_mae_r"],
         "avg_hold_bars": metrics["avg_hold_bars"],
-        "positive_symbols": [
-            result["symbol"] for result in selected
-            if float(result["metrics"]["expectancy_r"]) > 0
-        ],
-        "portfolio_drawdown_not_computed": True,
+        "max_drawdown_r_not_portfolio_valid": metrics["max_drawdown_r"],
     }
+
+
+def _aggregate(results: list[dict], fee_bps: float, phase: str) -> dict:
+    selected = [result for result in results if result["fee_bps_per_side"] == fee_bps]
+    trades = [
+        trade
+        for result in selected
+        for trade in _phase_trades(result["trades"], phase)
+    ]
+    compact = _compact_metrics(trades)
+    positive_series = []
+    for result in selected:
+        phase_series = _phase_trades(result["trades"], phase)
+        series_metrics = compute_run_metrics(phase_series)
+        if phase_series and float(series_metrics["expectancy_r"]) > 0:
+            positive_series.append(f"{result['symbol']}:{result['timeframe']}")
+    compact.update({
+        "fee_bps_per_side": fee_bps,
+        "phase": phase,
+        "series_count": len(selected),
+        "positive_expectancy_series": positive_series,
+        "positive_series_count": len(positive_series),
+        "portfolio_drawdown_not_computed": True,
+    })
+    return compact
 
 
 def main() -> int:
-    results = []
-    for symbol in SYMBOLS:
-        path = DATA_ROOT / symbol / f"{symbol}_{TIMEFRAME}.csv"
-        history = _load_historical(path, symbol, TIMEFRAME, 1000)
-        bars = _market_bars(history)
-        accelerator = calculate_market_accelerator(bars)
-        regimes = classify_accelerator_series(accelerator.points)
-        candidates = [None] * len(bars)
-        for index in range(WINDOW_BARS - 1, len(bars)):
-            candidates[index] = _candidate_at(bars, index)
+    results: list[dict] = []
 
-        for variant in VARIANTS:
+    for symbol in SYMBOLS:
+        for timeframe in TIMEFRAMES:
+            path = DATA_ROOT / symbol / f"{symbol}_{timeframe}.csv"
+            history = _load_historical(path, symbol, timeframe, 1000)
+            bars = _market_bars(history)
+            candidates: list[SignalCandidate | None] = [None] * len(bars)
+            for index in range(WINDOW_BARS - 1, len(bars)):
+                candidates[index] = _candidate_at(bars, index)
+
             for fee_bps in FEE_BPS_GRID:
-                result = _simulate(symbol, bars, candidates, accelerator, regimes, variant, fee_bps)
+                result = _simulate_series(symbol, timeframe, bars, candidates, fee_bps)
                 results.append(result)
-                print(symbol, variant, fee_bps, result["trade_count"], result["metrics"])
+                print(
+                    symbol,
+                    timeframe,
+                    f"fee={fee_bps}bp",
+                    f"candidates={result['candidate_count']}",
+                    f"trades={result['trade_count']}",
+                    f"pf={result['metrics']['profit_factor']}",
+                    f"exp={result['metrics']['expectancy_r']}",
+                )
 
     aggregate = {
-        variant: {
-            str(fee): _aggregate(results, variant, fee)
-            for fee in FEE_BPS_GRID
+        str(fee): {
+            phase: _aggregate(results, fee, phase)
+            for phase in ("full", "first_half", "second_half")
         }
-        for variant in VARIANTS
+        for fee in FEE_BPS_GRID
     }
+    per_series = []
+    for result in results:
+        phases = {
+            phase: _compact_metrics(_phase_trades(result["trades"], phase))
+            for phase in ("full", "first_half", "second_half")
+        }
+        per_series.append({
+            "symbol": result["symbol"],
+            "timeframe": result["timeframe"],
+            "fee_bps_per_side": result["fee_bps_per_side"],
+            "candidate_count": result["candidate_count"],
+            "blocked_no_next_bar": result["blocked_no_next_bar"],
+            "blocked_geometry": result["blocked_geometry"],
+            "blocked_overlap": result["blocked_overlap"],
+            "phases": phases,
+        })
+
     output = {
-        "experiment_id": "existing_macd_5m_indicator_overlays_stage2_v1",
+        "experiment_id": "weak_short_existing_baseline_older_holdout_v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "period": f"{START}..{END}",
-        "strategy_type": "macd_rebound_watch",
-        "timeframe": TIMEFRAME,
+        "split": SPLIT,
+        "strategy_type": "weak_short_watch",
         "symbols": list(SYMBOLS),
+        "timeframes": list(TIMEFRAMES),
         "candidate_authority": "core.paper_trading.strategy_registry.analyze_for_strategy",
         "decision_window_bars": WINDOW_BARS,
-        "variants": list(VARIANTS),
-        "overlay_combinations": False,
-        "threshold_tuning": False,
+        "priority_contract": "HIGH_MEDIUM_ONLY_matches_run_enabled_strategies_payload",
+        "indicator_overlays": False,
+        "parameter_tuning": False,
         "symbol_selection": False,
         "entry_execution": "closed_signal_next_bar_open_v1",
         "existing_candidate_stop_target_preserved": True,
@@ -267,19 +309,30 @@ def main() -> int:
         "fee_grid_status": "hypothetical_research_stress_not_p1_03",
         "slippage_pct": 0.0,
         "aggregate": aggregate,
-        "per_series": [
-            {key: value for key, value in result.items() if key != "trades"}
-            for result in results
+        "per_series": per_series,
+        "safety": [
+            "OFFLINE_RESEARCH_ONLY",
+            "PUBLIC_HISTORY_ONLY",
+            "NO_INDICATOR_OVERLAY",
+            "NO_PRODUCTION_CHANGE",
+            "NO_P1_03_ACTIVATION",
+            "NO_TESTNET",
+            "NO_LIVE",
+            "NO_ORDER",
+            "NO_ACCOUNT",
+            "NO_SECRET",
         ],
-        "safety": ["OFFLINE_RESEARCH_ONLY", "NO_PRODUCTION_CHANGE", "NO_P1_03_ACTIVATION", "NO_TESTNET", "NO_LIVE", "NO_ORDER"],
     }
-    destination = Path("research_results/existing_macd_5m_indicator_overlays_stage2.json")
+
+    destination = Path("research_results/weak_short_existing_baseline_older_holdout.json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(output, indent=2), encoding="utf-8")
+
     print("=== AGGREGATE ===")
-    for variant, fees in aggregate.items():
-        for fee, values in fees.items():
-            print(variant, fee, values)
+    for fee, phases in aggregate.items():
+        print("FEE", fee)
+        for phase, values in phases.items():
+            print(phase, values)
     return 0
 
 
