@@ -1,4 +1,4 @@
-name: Market Accelerator Short Time-Split
+name: Market Accelerator Short Fee Sensitivity
 
 on:
   pull_request:
@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  accelerator-short-timesplit:
+  accelerator-short-fee-sensitivity:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout research merge
         uses: actions/checkout@v4
@@ -25,31 +25,31 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Download verified 8-symbol 15m and 1h history
+      - name: Download verified two-year 8-symbol history
         run: |
           python scripts/prepare_indicator_composite_history.py \
             --symbols BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT \
             --lower-timeframe 15m \
             --higher-timeframe 1h \
-            --start 2025-08-01 \
+            --start 2024-08-01 \
             --end 2026-07-31 \
             --output-dir data/indicator_composite_history \
             --manifest research_results/history_manifest.json
 
-      - name: Run unchanged short variants with six-month split
+      - name: Run frozen candidate across hypothetical fee grid
         env:
           RESEARCH_SYMBOLS: BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT
-          RESEARCH_START: 2025-08-01
-          RESEARCH_SPLIT: 2026-02-01
+          RESEARCH_START: 2024-08-01
+          RESEARCH_SPLIT: 2025-08-01
           RESEARCH_END: 2026-07-31
         run: python scripts/research_indicator_composite_multisymbol.py
 
-      - name: Upload compact time-split results
+      - name: Upload compact fee sensitivity results
         uses: actions/upload-artifact@v4
         with:
-          name: market-accelerator-short-timesplit
+          name: market-accelerator-short-fee-sensitivity
           path: |
             research_results/history_manifest.json
-            research_results/market_accelerator_short_timesplit.json
+            research_results/market_accelerator_short_fee_sensitivity.json
           if-no-files-found: error
           retention-days: 7
