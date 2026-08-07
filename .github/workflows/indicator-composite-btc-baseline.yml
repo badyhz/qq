@@ -1,4 +1,4 @@
-name: Indicator Composite Multi-Symbol Research
+name: Indicator Composite BNB-SUI Holdout
 
 on:
   pull_request:
@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  multisymbol-baseline:
+  bnb-sui-holdout:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - name: Checkout research merge
         uses: actions/checkout@v4
@@ -25,24 +25,29 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Download verified 8-symbol 15m and 1h history
+      - name: Download verified untouched BNB and SUI holdout history
         run: |
           python scripts/prepare_indicator_composite_history.py \
-            --symbols BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT \
+            --symbols BNBUSDT,SUIUSDT \
             --lower-timeframe 15m \
             --higher-timeframe 1h \
-            --start 2025-08-01 \
-            --end 2026-07-31 \
+            --start 2024-08-01 \
+            --end 2025-07-31 \
             --output-dir data/indicator_composite_history \
             --manifest research_results/history_manifest.json
 
-      - name: Run confirmed price-action A/B/C across symbols
+      - name: Run unchanged C strategy on older holdout
+        env:
+          RESEARCH_SYMBOLS: BNBUSDT,SUIUSDT
+          RESEARCH_START: 2024-08-01
+          RESEARCH_SPLIT: 2025-02-01
+          RESEARCH_END: 2025-07-31
         run: python scripts/research_indicator_composite_multisymbol.py
 
-      - name: Upload compact research results
+      - name: Upload compact holdout results
         uses: actions/upload-artifact@v4
         with:
-          name: indicator-composite-multisymbol-baseline
+          name: indicator-composite-bnb-sui-holdout
           path: |
             research_results/history_manifest.json
             research_results/multisymbol_confirmed_price_action.json
