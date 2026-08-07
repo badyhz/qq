@@ -1,24 +1,36 @@
-"""Adapter from INDICATOR_COMPOSITE_V1 decisions to existing shadow schemas.
+"""INDICATOR_COMPOSITE_V1 assembly and existing-pipeline adapter.
 
-This module is intentionally small: it does not calculate the underlying
-indicator formulas and it does not place or simulate orders.  It translates a
-fully-normalized composite state into the existing ``SignalCandidate`` shape so
-that the proven trade-intent/risk-gate/paper-position pipeline can be reused.
+This module owns the thin glue between independently-tested indicator outputs,
+``IndicatorCompositeState`` and the repository's existing ``SignalCandidate``
+contract. It does not place or simulate orders.
+
+Research state builders live here as well so the strategy does not accumulate a
+separate one-file state-builder abstraction. The recovered-v0 builder remains
+explicitly distinct from the future final Bottom Treasure formula.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Sequence
 
 from core.paper_trading.aicoin_indicator_ports import (
     BottomTreasureResult,
     IronTopResult,
+    calculate_recovered_bottom_treasure,
+    evaluate_iron_top,
 )
+from core.paper_trading.data_source import MarketBar
 from core.paper_trading.indicator_composite_strategy import (
     AccelerationRegime,
     HigherTimeframeTrend,
     IndicatorCompositeConfig,
     IndicatorCompositeState,
     evaluate_long_entry,
+)
+from core.paper_trading.market_accelerator_port import (
+    AcceleratorRegimeConfig,
+    MarketAcceleratorConfig,
+    calculate_market_accelerator,
+    classify_accelerator_series,
 )
 from core.paper_trading.strategy_registry import SignalCandidate
 
@@ -48,6 +60,93 @@ def compose_state(
     )
 
 
+def _iron_top_strength_by_index(bars: Sequence[MarketBar]) -> list[int]:
+    strengths: list[int] = []
+    for index in range(len(bars)):
+        try:
+            result = evaluate_iron_top(bars[: index + 1])
+        except ValueError:
+            strengths.append(0)
+        else:
+            strengths.append(result.strength)
+    return strengths
+
+
+def build_recovered_v0_composite_states(
+    bars: Sequence[MarketBar],
+    higher_timeframe_trends: Sequence[HigherTimeframeTrend],
+    *,
+    accelerator_config: MarketAcceleratorConfig | None = None,
+    regime_config: AcceleratorRegimeConfig | None = None,
+) -> tuple[IndicatorCompositeState, ...]:
+    """Build no-lookahead states using recovered-v0 Bottom Treasure research."""
+    if len(bars) != len(higher_timeframe_trends):
+        raise ValueError("bars and higher_timeframe_trends must have the same length")
+    if not bars:
+        return ()
+    if any(
+        not isinstance(value, HigherTimeframeTrend)
+        for value in higher_timeframe_trends
+    ):
+        raise TypeError("all higher_timeframe_trends must be HigherTimeframeTrend")
+
+    bottoms = calculate_recovered_bottom_treasure(bars)
+    accelerator = calculate_market_accelerator(bars, accelerator_config)
+    regimes = classify_accelerator_series(accelerator.points, regime_config)
+    iron_strengths = _iron_top_strength_by_index(bars)
+
+    return tuple(
+        IndicatorCompositeState(
+            bottom_treasure_trigger=bottoms[index].buy_signal,
+            acceleration_regime=regimes[index].regime,
+            higher_timeframe_trend=higher_timeframe_trends[index],
+            iron_top_strength=iron_strengths[index],
+            atr=None,
+        )
+        for index in range(len(bars))
+    )
+
+
+def build_external_bottom_composite_states(
+    bars: Sequence[MarketBar],
+    bottom_triggers: Sequence[bool],
+    higher_timeframe_trends: Sequence[HigherTimeframeTrend],
+    *,
+    accelerator_config: MarketAcceleratorConfig | None = None,
+    regime_config: AcceleratorRegimeConfig | None = None,
+) -> tuple[IndicatorCompositeState, ...]:
+    """Build states from exact externally supplied final Bottom triggers.
+
+    This is the bridge for the later SMMA-based Bottom Treasure formula: once
+    its exact trigger series is recovered, accelerator, Iron Top, backtest and
+    Shadow adapters do not need to change.
+    """
+    if not (len(bars) == len(bottom_triggers) == len(higher_timeframe_trends)):
+        raise ValueError("bars, bottom_triggers and trends must have the same length")
+    if any(not isinstance(value, bool) for value in bottom_triggers):
+        raise TypeError("all bottom_triggers must be bool")
+    if any(
+        not isinstance(value, HigherTimeframeTrend)
+        for value in higher_timeframe_trends
+    ):
+        raise TypeError("all higher_timeframe_trends must be HigherTimeframeTrend")
+
+    accelerator = calculate_market_accelerator(bars, accelerator_config)
+    regimes = classify_accelerator_series(accelerator.points, regime_config)
+    iron_strengths = _iron_top_strength_by_index(bars)
+
+    return tuple(
+        IndicatorCompositeState(
+            bottom_treasure_trigger=bottom_triggers[index],
+            acceleration_regime=regimes[index].regime,
+            higher_timeframe_trend=higher_timeframe_trends[index],
+            iron_top_strength=iron_strengths[index],
+            atr=None,
+        )
+        for index in range(len(bars))
+    )
+
+
 def build_long_signal_candidate(
     *,
     strategy_id: str,
@@ -63,7 +162,7 @@ def build_long_signal_candidate(
     """Return an existing-pipeline candidate, or ``None`` when entry is filtered.
 
     The legacy ``SignalCandidate`` schema contains MACD/RSI fields because it
-    predates this strategy.  For INDICATOR_COMPOSITE_V1 those fields are marked
+    predates this strategy. For INDICATOR_COMPOSITE_V1 those fields are marked
     ``NOT_USED`` rather than populated with misleading synthetic values.
     """
     decision = evaluate_long_entry(
