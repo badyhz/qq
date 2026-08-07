@@ -15,6 +15,12 @@ Evidence-derived policy is frozen for this proposal version:
 - notional boundary: the selected diagnostic band;
 - actual account fee rates are never guessed.
 
+Fee evidence must always be supplied explicitly at runtime with provenance.
+For example, a human-confirmed Binance USD-M regular-user taker schedule can be
+represented as ``--entry-fee-bps 5 --exit-fee-bps 5`` with a descriptive
+``--fee-rate-source`` value. Optional BNB/VIP discounts must never be assumed
+unless they are explicitly confirmed in the fee source used for that run.
+
 No order, account, secret, Testnet, Live, deployment or cohort activation code
 exists here. A candidate can become READY_FOR_HUMAN_ASSUMPTIONS_REVIEW only when
 explicit fee inputs are supplied and the existing net_friction_v1 activation
