@@ -1,4 +1,4 @@
-name: Indicator Composite BNB-SUI Holdout
+name: IronTop Short Multi-Symbol Research
 
 on:
   pull_request:
@@ -13,9 +13,9 @@ permissions:
   contents: read
 
 jobs:
-  bnb-sui-holdout:
+  iron-top-short:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout research merge
         uses: actions/checkout@v4
@@ -25,31 +25,26 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Download verified untouched BNB and SUI holdout history
+      - name: Download verified 8-symbol 15m and 1h history
         run: |
           python scripts/prepare_indicator_composite_history.py \
-            --symbols BNBUSDT,SUIUSDT \
+            --symbols BTCUSDT,ETHUSDT,BNBUSDT,SUIUSDT,1000PEPEUSDT,XRPUSDT,ARBUSDT,DOGEUSDT \
             --lower-timeframe 15m \
             --higher-timeframe 1h \
-            --start 2024-08-01 \
-            --end 2025-07-31 \
+            --start 2025-08-01 \
+            --end 2026-07-31 \
             --output-dir data/indicator_composite_history \
             --manifest research_results/history_manifest.json
 
-      - name: Run unchanged C strategy on older holdout
-        env:
-          RESEARCH_SYMBOLS: BNBUSDT,SUIUSDT
-          RESEARCH_START: 2024-08-01
-          RESEARCH_SPLIT: 2025-02-01
-          RESEARCH_END: 2025-07-31
+      - name: Run exact IronTop SHORT variants
         run: python scripts/research_indicator_composite_multisymbol.py
 
-      - name: Upload compact holdout results
+      - name: Upload compact IronTop results
         uses: actions/upload-artifact@v4
         with:
-          name: indicator-composite-bnb-sui-holdout
+          name: iron-top-short-multisymbol
           path: |
             research_results/history_manifest.json
-            research_results/multisymbol_confirmed_price_action.json
+            research_results/iron_top_short_multisymbol.json
           if-no-files-found: error
           retention-days: 7
