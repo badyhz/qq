@@ -4,7 +4,7 @@
 Offline only. No network, account, secret, order, Testnet or Live access.
 
 The default Bottom Treasure source is the explicitly-versioned
-``bottom_treasure_recovered_v0`` formula.  It exists to make the research chain
+``bottom_treasure_recovered_v0`` formula. It exists to make the research chain
 runnable while the later final SMMA-based AiCoin formula is recovered exactly.
 Results therefore identify the formula version and must not be mixed with a
 future final-formula cohort.
@@ -33,7 +33,9 @@ from core.indicator_composite_backtest import (
     run_indicator_composite_backtest,
 )
 from core.offline_backtest_trade_simulator import TradeSimulationParams
-from core.paper_trading.bottom_treasure_recovered_v0 import FORMULA_VERSION
+from core.paper_trading.aicoin_indicator_ports import (
+    BOTTOM_TREASURE_RECOVERED_VERSION,
+)
 from core.paper_trading.data_source import MarketBar
 from core.paper_trading.higher_timeframe_trend import align_higher_timeframe_trends
 from core.paper_trading.indicator_composite_state_builder import (
@@ -195,7 +197,7 @@ def run_from_csv(
 
     return _json_safe({
         "strategy_id": "indicator_composite_v1",
-        "research_formula_version": FORMULA_VERSION,
+        "research_formula_version": BOTTOM_TREASURE_RECOVERED_VERSION,
         "symbol": symbol,
         "lower_timeframe": lower_timeframe,
         "higher_timeframe": higher_timeframe,
