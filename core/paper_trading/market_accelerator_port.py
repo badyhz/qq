@@ -1,45 +1,46 @@
-"""Recovered Python port of the accepted 疾速500 original-structure replica.
+"""Recovered 疾速500 formula and versioned trading-regime policy.
 
-This is the mathematical line-generation layer recovered from the August 2026
-AiCoin work.  It is intentionally pure: no network, persistence, accounts or
-orders.
+This module keeps the recovered plotting math and the strategy classification
+policy together, while still treating them as two separate contracts:
+
+1. ``calculate_market_accelerator`` reproduces the recovered line formulas.
+2. ``classify_accelerator_*`` maps those line values into trading regimes.
+
+Keeping both in one file avoids creating parallel accelerator modules while the
+separate dataclasses make it explicit that tuning START/FAST/EXTREME thresholds
+does not silently mutate the indicator formula.
 
 Recovered formula contract:
 
-PREV_CLOSE      = ref(close, 1)
-PRICE_CHANGE    = close - PREV_CLOSE
-PRICE_RETURN    = PRICE_CHANGE / max(abs(PREV_CLOSE), EPS)
-ABS_RETURN      = abs(PRICE_RETURN)
-FAST_RETURN     = ema(PRICE_RETURN, FAST_LEN)
-TREND_RETURN    = ema(PRICE_RETURN, TREND_LEN)
-DIRECTION_RETURN= 0.70 * FAST_RETURN + 0.30 * TREND_RETURN
-NORMAL_RETURN   = max(ema(ABS_RETURN, BASE_LEN), EPS)
-NORMALIZED_SPEED= DIRECTION_RETURN / NORMAL_RETURN
+PREV_CLOSE       = ref(close, 1)
+PRICE_CHANGE     = close - PREV_CLOSE
+PRICE_RETURN     = PRICE_CHANGE / max(abs(PREV_CLOSE), EPS)
+ABS_RETURN       = abs(PRICE_RETURN)
+FAST_RETURN      = ema(PRICE_RETURN, FAST_LEN)
+TREND_RETURN     = ema(PRICE_RETURN, TREND_LEN)
+DIRECTION_RETURN = 0.70 * FAST_RETURN + 0.30 * TREND_RETURN
+NORMAL_RETURN    = max(ema(ABS_RETURN, BASE_LEN), EPS)
+NORMALIZED_SPEED = DIRECTION_RETURN / NORMAL_RETURN
 
-TRUE_RANGE      = max(high-low, abs(high-PREV_CLOSE), abs(low-PREV_CLOSE))
-SHORT_RANGE     = ema(TRUE_RANGE, FAST_LEN)
-NORMAL_RANGE    = max(ema(TRUE_RANGE, BASE_LEN), EPS)
-RANGE_RATIO     = min(SHORT_RANGE / NORMAL_RANGE, 2.50)
+TRUE_RANGE       = max(high-low, abs(high-PREV_CLOSE), abs(low-PREV_CLOSE))
+SHORT_RANGE      = ema(TRUE_RANGE, FAST_LEN)
+NORMAL_RANGE     = max(ema(TRUE_RANGE, BASE_LEN), EPS)
+RANGE_RATIO      = min(SHORT_RANGE / NORMAL_RANGE, 2.50)
 
-SHORT_VOLUME    = ema(volume, FAST_LEN)
-NORMAL_VOLUME   = max(ema(volume, BASE_LEN), EPS)
-VOLUME_RATIO    = min(SHORT_VOLUME / NORMAL_VOLUME, 2.50)
+SHORT_VOLUME     = ema(volume, FAST_LEN)
+NORMAL_VOLUME    = max(ema(volume, BASE_LEN), EPS)
+VOLUME_RATIO     = min(SHORT_VOLUME / NORMAL_VOLUME, 2.50)
 
-ACTIVITY        = 0.55 + 0.30 * RANGE_RATIO + 0.15 * VOLUME_RATIO
-SIGNED_RAW      = NORMALIZED_SPEED * ACTIVITY * SCALE
-SIGNED_SPEED    = clamp(SIGNED_RAW, -MAX_LEVEL, MAX_LEVEL)
-ABS_SPEED       = abs(SIGNED_SPEED)
-SLOW_SPEED      = min(ema(ABS_SPEED, SLOW_LEN) * 0.65, MAX_LEVEL)
+ACTIVITY         = 0.55 + 0.30 * RANGE_RATIO + 0.15 * VOLUME_RATIO
+SIGNED_RAW       = NORMALIZED_SPEED * ACTIVITY * SCALE
+SIGNED_SPEED     = clamp(SIGNED_RAW, -MAX_LEVEL, MAX_LEVEL)
+ABS_SPEED        = abs(SIGNED_SPEED)
+SLOW_SPEED       = min(ema(ABS_SPEED, SLOW_LEN) * 0.65, MAX_LEVEL)
 
-The three plotted series are therefore:
+The plotted series are:
 - cyan/activity line: ABS_SPEED
 - blue/directional line: SIGNED_SPEED
 - red/slow line: SLOW_SPEED
-
-The visual indicator's line formulas are kept separate from trading-regime
-classification.  The strategy layer may map these lines into START/FAST/
-EXTREME/DECELERATING using explicitly versioned thresholds, but such mapping is
-not part of the recovered plotting formula itself.
 """
 from __future__ import annotations
 
@@ -48,6 +49,7 @@ import math
 from typing import Optional, Sequence
 
 from core.paper_trading.data_source import MarketBar
+from core.paper_trading.indicator_composite_strategy import AccelerationRegime
 
 
 @dataclass(frozen=True)
@@ -132,6 +134,32 @@ class MarketAcceleratorSeries:
         if not self.points:
             raise ValueError("accelerator series is empty")
         return self.points[-1]
+
+
+@dataclass(frozen=True)
+class AcceleratorRegimeConfig:
+    """V1 policy thresholds for converting speed lines into trading regimes."""
+
+    start_level: float = 20.0
+    fast_level: float = 40.0
+    extreme_level: float = 80.0
+    deceleration_ratio: float = 0.85
+
+    def validate(self) -> None:
+        if not 0 <= self.start_level < self.fast_level < self.extreme_level:
+            raise ValueError("thresholds must satisfy 0 <= start < fast < extreme")
+        if not 0 < self.deceleration_ratio < 1:
+            raise ValueError("deceleration_ratio must be between 0 and 1")
+
+
+@dataclass(frozen=True)
+class AcceleratorRegimePoint:
+    index: int
+    regime: AccelerationRegime
+    abs_speed: Optional[float]
+    signed_speed: Optional[float]
+    slow_speed: Optional[float]
+    reason: str
 
 
 def _ema(values: Sequence[float], period: int) -> list[Optional[float]]:
@@ -280,10 +308,6 @@ def calculate_market_accelerator(
             "activity": activity,
         })
 
-    # The slow line is EMA(abs speed, SLOW_LEN) * 0.65 capped at MAX_LEVEL.
-    # Pre-warm bars with unavailable ABS_SPEED remain zero exactly because no
-    # signed line exists yet; published points still expose slow_speed=None
-    # until all upstream components are available and the slow EMA has seeded.
     slow_raw_series = _ema(abs_values, cfg.slow_len)
 
     points: list[MarketAcceleratorPoint] = []
@@ -317,3 +341,80 @@ def calculate_market_accelerator(
         ))
 
     return MarketAcceleratorSeries(points=tuple(points), config=cfg)
+
+
+def classify_accelerator_point(
+    point: MarketAcceleratorPoint,
+    previous: MarketAcceleratorPoint | None = None,
+    config: AcceleratorRegimeConfig | None = None,
+) -> AcceleratorRegimePoint:
+    """Classify one recovered indicator point into the V1 strategy regime."""
+    cfg = config or AcceleratorRegimeConfig()
+    cfg.validate()
+
+    if point.abs_speed is None or point.signed_speed is None:
+        return AcceleratorRegimePoint(
+            index=point.index,
+            regime=AccelerationRegime.IDLE,
+            abs_speed=point.abs_speed,
+            signed_speed=point.signed_speed,
+            slow_speed=point.slow_speed,
+            reason="PREWARM_OR_UNAVAILABLE",
+        )
+
+    speed = float(point.abs_speed)
+    if speed >= cfg.extreme_level:
+        return AcceleratorRegimePoint(
+            point.index,
+            AccelerationRegime.EXTREME,
+            point.abs_speed,
+            point.signed_speed,
+            point.slow_speed,
+            "ABS_SPEED_EXTREME",
+        )
+
+    if previous is not None and previous.abs_speed is not None:
+        prev_speed = float(previous.abs_speed)
+        if prev_speed >= cfg.start_level and speed < prev_speed * cfg.deceleration_ratio:
+            return AcceleratorRegimePoint(
+                point.index,
+                AccelerationRegime.DECELERATING,
+                point.abs_speed,
+                point.signed_speed,
+                point.slow_speed,
+                "ABS_SPEED_DECELERATING",
+            )
+
+    if speed >= cfg.fast_level:
+        regime = AccelerationRegime.FAST
+        reason = "ABS_SPEED_FAST"
+    elif speed >= cfg.start_level:
+        regime = AccelerationRegime.START
+        reason = "ABS_SPEED_ACTIVE"
+    else:
+        regime = AccelerationRegime.IDLE
+        reason = "ABS_SPEED_BELOW_ACTIVE"
+
+    return AcceleratorRegimePoint(
+        point.index,
+        regime,
+        point.abs_speed,
+        point.signed_speed,
+        point.slow_speed,
+        reason,
+    )
+
+
+def classify_accelerator_series(
+    points: Sequence[MarketAcceleratorPoint],
+    config: AcceleratorRegimeConfig | None = None,
+) -> tuple[AcceleratorRegimePoint, ...]:
+    """Classify an entire speed series without future leakage."""
+    cfg = config or AcceleratorRegimeConfig()
+    cfg.validate()
+    output: list[AcceleratorRegimePoint] = []
+    previous: MarketAcceleratorPoint | None = None
+    for point in points:
+        output.append(classify_accelerator_point(point, previous, cfg))
+        previous = point
+    return tuple(output)
