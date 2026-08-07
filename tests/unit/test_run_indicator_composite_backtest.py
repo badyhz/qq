@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from core.paper_trading.bottom_treasure_recovered_v0 import FORMULA_VERSION
+from core.paper_trading.aicoin_indicator_ports import (
+    BOTTOM_TREASURE_RECOVERED_VERSION,
+)
 from scripts.run_indicator_composite_backtest import main, run_from_csv
 
 
@@ -43,7 +45,7 @@ def test_run_from_csv_executes_complete_offline_chain(tmp_path: Path):
     )
 
     assert result["strategy_id"] == "indicator_composite_v1"
-    assert result["research_formula_version"] == FORMULA_VERSION
+    assert result["research_formula_version"] == BOTTOM_TREASURE_RECOVERED_VERSION
     assert result["lower_bar_count"] == 160
     assert result["higher_bar_count"] == 50
     assert result["quality"]["lower"]["is_clean"] is True
