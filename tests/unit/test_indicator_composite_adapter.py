@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import yaml
+
 from core.paper_trading.aicoin_indicator_ports import (
     BottomTreasureResult,
     IronTopResult,
@@ -39,6 +43,28 @@ def _iron(strength: int = 0) -> IronTopResult:
         speed_extreme=strength > 0,
         weak_close=strength > 0,
     )
+
+
+def test_strategy_config_registers_composite_disabled_by_default():
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = yaml.safe_load((repo_root / "config" / "strategies.yaml").read_text())
+    cfg = payload["strategies"]["indicator_composite_v1"]
+
+    assert cfg["enabled"] is False
+    assert cfg["strategy_type"] == "indicator_composite_v1"
+    assert cfg["mode"] == "paper"
+    assert cfg["alert"]["auto_send"] is False
+    assert cfg["timeframes"] == ["15m", "1h"]
+    assert set(cfg["symbols"]) == {
+        "BTCUSDT",
+        "ETHUSDT",
+        "BNBUSDT",
+        "SUIUSDT",
+        "1000PEPEUSDT",
+        "XRPUSDT",
+        "ARBUSDT",
+        "DOGEUSDT",
+    }
 
 
 def test_compose_state_preserves_independent_indicator_outputs():
