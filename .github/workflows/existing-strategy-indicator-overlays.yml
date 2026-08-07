@@ -1,4 +1,4 @@
-name: Existing MACD 5m Indicator Overlays Stage 2
+name: Weak Short Existing Baseline Older Holdout
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  macd-5m-overlay-stage2:
+  weak-short-older-holdout:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -25,33 +25,35 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Download verified MACD-universe 5m public history
+      - name: Download verified untouched weak-short public history
         run: |
           python - <<'PY'
           from datetime import date
           from pathlib import Path
           from core.binance_public_ohlcv_archive import download_range_to_csv
 
-          symbols = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SUIUSDT", "1000PEPEUSDT")
+          symbols = ("XRPUSDT", "ARBUSDT", "DOGEUSDT")
+          timeframes = ("15m", "1h")
           root = Path("data/existing_strategy_overlay_history")
           for symbol in symbols:
-              result = download_range_to_csv(
-                  symbol=symbol,
-                  interval="5m",
-                  start=date(2025, 8, 1),
-                  end=date(2026, 7, 31),
-                  output_path=root / symbol / f"{symbol}_5m.csv",
-              )
-              print(symbol, result["row_count"], result["archive_count"])
+              for timeframe in timeframes:
+                  result = download_range_to_csv(
+                      symbol=symbol,
+                      interval=timeframe,
+                      start=date(2024, 8, 1),
+                      end=date(2025, 7, 31),
+                      output_path=root / symbol / f"{symbol}_{timeframe}.csv",
+                  )
+                  print(symbol, timeframe, result["row_count"], result["archive_count"])
           PY
 
-      - name: Run unchanged MACD 5m with frozen overlays
+      - name: Run unchanged weak-short baseline holdout
         run: python scripts/research_existing_strategy_indicator_overlays.py
 
-      - name: Upload compact Stage-2 result
+      - name: Upload compact holdout result
         uses: actions/upload-artifact@v4
         with:
-          name: existing-macd-5m-indicator-overlays-stage2
-          path: research_results/existing_macd_5m_indicator_overlays_stage2.json
+          name: weak-short-existing-baseline-older-holdout
+          path: research_results/weak_short_existing_baseline_older_holdout.json
           if-no-files-found: error
           retention-days: 7
