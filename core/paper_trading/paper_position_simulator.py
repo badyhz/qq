@@ -23,6 +23,7 @@ from core.paper_trading.paper_position import (
     exposure_identity, stable_signal_key,
 )
 from core.paper_trading.data_source import MarketBar, format_utc_timestamp, _resolved_close_time
+from core.paper_trading.friction_evidence import attribute_position_funding
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,7 @@ def simulate_with_klines(
     allow_update_newly_opened: bool = False,
     newly_opened_ids: Optional[set[str]] = None,
     existing_signal_keys: Optional[set[str]] = None,
+    adapter: Any = None,
 ) -> SimulationResult:
     """Open positions and update with kline data to check TP/SL.
 
@@ -286,7 +288,7 @@ def simulate_with_klines(
 
         # Reconstruct PaperPosition for update
         pos = dict_to_position(pos_dict)
-        updated = _update_position(pos, future_bars, timeout_bars)
+        updated = _update_position(pos, future_bars, timeout_bars, adapter=adapter)
         result_positions.append(updated)
         updated_count += 1
 
@@ -327,6 +329,7 @@ def simulate_existing_positions_update_only(
     date_str: str,
     timeout_bars: int = 24,
     future_only: bool = True,
+    adapter: Any = None,
 ) -> SimulationResult:
     """Update only existing OPEN positions. Never creates new positions.
 
@@ -377,7 +380,7 @@ def simulate_existing_positions_update_only(
 
         # Reconstruct PaperPosition for update
         pos = dict_to_position(pos_dict)
-        updated = _update_position(pos, future_bars, timeout_bars)
+        updated = _update_position(pos, future_bars, timeout_bars, adapter=adapter)
         result_positions.append(updated)
         updated_count += 1
 
@@ -442,12 +445,90 @@ def _future_bars_after_open(bars: list[MarketBar], opened_bar_time: Any) -> list
     return future_bars
 
 
+def _adapter_events_to_evidence(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert raw adapter funding events to evidence records for attribute_position_funding."""
+    evidence = []
+    for event in records:
+        symbol = event.get("symbol", "")
+        event_at = event.get("funding_event_at", "")
+        evidence.append({
+            "evidence_type": "FUNDING_EVENT",
+            "symbol": symbol,
+            "exchange_event_at": event_at,
+            "signed_funding_rate": event.get("signed_funding_rate"),
+            "mark_price": event.get("mark_price"),
+            "evidence_id": f"adapter:{symbol}:{event_at}",
+        })
+    return evidence
+
+
+def enrich_closed_position_funding(
+    position: dict[str, Any],
+    adapter: Any,
+    lookback_seconds: int = 86400 * 3,
+) -> dict[str, Any]:
+    """Enrich a closed position with funding evidence from the public adapter.
+
+    Reuses attribute_position_funding() for time-window filtering and
+    completeness detection.  If the adapter query fails, the position
+    is marked PARTIAL (fail closed) — never fabricated.
+    """
+    if position.get("status") not in CLOSED_STATUSES:
+        return position
+    symbol = position.get("symbol", "")
+    if not symbol:
+        return position
+    try:
+        raw_events = adapter.get_funding_events(symbol, lookback_seconds)
+        query_succeeded = True
+    except Exception:
+        raw_events = []
+        query_succeeded = False
+    evidence_records = _adapter_events_to_evidence(raw_events if isinstance(raw_events, list) else [])
+    try:
+        attribution = attribute_position_funding(
+            position, evidence_records,
+            query_succeeded=query_succeeded,
+            expected_windows_resolved=query_succeeded,
+        )
+    except (ValueError, TypeError):
+        position["funding_events"] = []
+        position["funding_events_verified_complete"] = False
+        return position
+    events = []
+    for record in evidence_records:
+        if record.get("symbol") != symbol:
+            continue
+        try:
+            from core.paper_trading.friction_evidence import _utc
+            at = _utc(record.get("exchange_event_at"), "funding event")
+            opened = _utc(position.get("opened_at"), "opened_at")
+            closed = _utc(position.get("closed_at"), "closed_at")
+            if opened < at <= closed:
+                events.append({
+                    "symbol": symbol,
+                    "funding_timestamp": record.get("exchange_event_at"),
+                    "signed_funding_rate": record.get("signed_funding_rate"),
+                    "mark_price": record.get("mark_price"),
+                    "source": record.get("evidence_id", "adapter"),
+                })
+        except (ValueError, TypeError):
+            continue
+    position["funding_events"] = events
+    position["funding_events_verified_complete"] = attribution.get("funding_completeness") == "COMPLETE"
+    return position
+
+
 def _update_position(
     pos: PaperPosition,
     bars: list[MarketBar],
     timeout_bars: int,
+    adapter: Any = None,
 ) -> dict[str, Any]:
-    """Update a position with kline data. Returns updated position dict."""
+    """Update a position with kline data. Returns updated position dict.
+
+    If adapter is provided, closed positions are enriched with funding evidence.
+    """
     entry = pos.entry_price
     sl = pos.stop_loss
     tp = pos.take_profit
@@ -476,6 +557,8 @@ def _update_position(
                 "last_checked_at": now,
                 "last_checked_bar_time": bar.timestamp,
             })
+            if adapter:
+                result = enrich_closed_position_funding(result, adapter)
             return result
 
         hit_sl = False
@@ -514,6 +597,8 @@ def _update_position(
                 "gap_execution_reference_price": executable,
                 "gap_execution_evidence_version": "stop_trigger_bar_open_v1",
             })
+            if adapter:
+                result = enrich_closed_position_funding(result, adapter)
             return result
 
         if hit_tp:
@@ -535,6 +620,8 @@ def _update_position(
                 "last_checked_at": now,
                 "last_checked_bar_time": bar.timestamp,
             })
+            if adapter:
+                result = enrich_closed_position_funding(result, adapter)
             return result
 
     # Still open
