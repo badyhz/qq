@@ -38,7 +38,7 @@ from core.paper_trading.aicoin_indicator_ports import (
 )
 from core.paper_trading.data_source import MarketBar
 from core.paper_trading.higher_timeframe_trend import align_higher_timeframe_trends
-from core.paper_trading.indicator_composite_state_builder import (
+from core.paper_trading.indicator_composite_adapter import (
     build_recovered_v0_composite_states,
 )
 
