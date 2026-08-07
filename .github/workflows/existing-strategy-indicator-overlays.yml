@@ -1,0 +1,74 @@
+name: Existing Strategy Indicator Overlays Stage 1
+
+on:
+  pull_request:
+    branches:
+      - agent/indicator-composite-v1
+    paths:
+      - ".github/workflows/existing-strategy-indicator-overlays.yml"
+      - "scripts/research_existing_strategy_indicator_overlays.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  overlay-stage1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout research merge
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download verified 15m and 1h public history
+        run: |
+          python - <<'PY'
+          from datetime import date
+          from pathlib import Path
+          from core.binance_public_ohlcv_archive import download_range_to_csv
+
+          strategy_series = {
+              "macd_rebound_watch": {
+                  "symbols": ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SUIUSDT", "1000PEPEUSDT"),
+                  "timeframes": ("15m", "1h"),
+              },
+              "weak_short_watch": {
+                  "symbols": ("XRPUSDT", "ARBUSDT", "DOGEUSDT"),
+                  "timeframes": ("15m", "1h"),
+              },
+          }
+          root = Path("data/existing_strategy_overlay_history")
+          seen = set()
+          for spec in strategy_series.values():
+              for symbol in spec["symbols"]:
+                  for timeframe in spec["timeframes"]:
+                      key = (symbol, timeframe)
+                      if key in seen:
+                          continue
+                      seen.add(key)
+                      result = download_range_to_csv(
+                          symbol=symbol,
+                          interval=timeframe,
+                          start=date(2025, 8, 1),
+                          end=date(2026, 7, 31),
+                          output_path=root / symbol / f"{symbol}_{timeframe}.csv",
+                      )
+                      print(symbol, timeframe, result["row_count"], result["archive_count"])
+          print("DATASET_COUNT", len(seen))
+          PY
+
+      - name: Run unchanged existing strategies with isolated overlays
+        run: python scripts/research_existing_strategy_indicator_overlays.py
+
+      - name: Upload compact Stage-1 result
+        uses: actions/upload-artifact@v4
+        with:
+          name: existing-strategy-indicator-overlays-stage1
+          path: research_results/existing_strategy_indicator_overlays_stage1.json
+          if-no-files-found: error
+          retention-days: 7
