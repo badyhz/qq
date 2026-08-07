@@ -1,45 +1,39 @@
 #!/usr/bin/env python3
-"""Temporary multi-symbol Market Accelerator entry research.
+"""Temporary time-split validation for Market Accelerator SHORT entries.
 
 Research branch only; do not merge.
 
-This experiment asks one narrow question: can the recovered 疾速500 / Market
-Accelerator work as the primary entry event when used the way the visual
-indicator is intended — *the market starts accelerating* — instead of being
-forced behind Bottom Treasure or IronTop?
+The discovery run found only two zero-friction variants with positive aggregate
+structure, so this validation script freezes those exact definitions and tests
+them without parameter changes:
 
-No accelerator formula or threshold is tuned here.  The existing recovered
-formula and V1 regime policy are used unchanged.  An activation event is:
+C_SHORT_ACCEL      = negative accelerator activation, no HTF filter
+D_SHORT_ACCEL_HTF  = negative accelerator activation + HTF == DOWN
 
+Activation remains unchanged:
     previous regime in {IDLE, DECELERATING}
     current regime in {START, FAST}
+    signed_speed < 0
 
-Direction comes only from the current signed-speed line.
-
-Pre-declared variants on the same 12-month, zero-friction sample:
-
-A_LONG_ACCEL       positive activation, no HTF filter
-B_LONG_ACCEL_HTF   positive activation + HTF == UP
-C_SHORT_ACCEL      negative activation, no HTF filter
-D_SHORT_ACCEL_HTF  negative activation + HTF == DOWN
-E_ALIGNED_BOTH     B or D, one bidirectional exposure stream
-
-Execution is unchanged across variants:
-- signal known only after bar i closes;
-- enter bar i+1 open;
-- LONG stop = signal low - 0.10%; SHORT stop = signal high + 0.10%;
+Execution remains unchanged:
+- fully closed signal bar -> next bar open SHORT;
+- stop = signal high + 0.10%;
 - fixed 2R target;
 - existing Shadow TradeIntent risk gate;
 - existing simulator with entry_execution='bar_open';
-- one exposure at a time per variant;
-- no fees/slippage in this structural test;
-- no parameter optimization, accounts, orders, Testnet or Live.
+- one exposure at a time;
+- zero friction for structural validation;
+- no threshold, stop, target, symbol or timeframe optimization.
+
+Environment variables select only the validation sample:
+RESEARCH_SYMBOLS, RESEARCH_START, RESEARCH_SPLIT, RESEARCH_END.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
-import statistics
 import sys
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -65,8 +59,16 @@ from scripts.prepare_indicator_composite_history import DEFAULT_SYMBOLS
 from scripts.run_indicator_composite_backtest import _load_historical, _market_bars
 
 
-START = "2025-08-01"
-END = "2026-07-31"
+START = os.environ.get("RESEARCH_START", "2025-08-01")
+SPLIT = os.environ.get("RESEARCH_SPLIT", "2026-02-01")
+END = os.environ.get("RESEARCH_END", "2026-07-31")
+SYMBOLS = tuple(
+    value.strip().upper()
+    for value in os.environ.get(
+        "RESEARCH_SYMBOLS", ",".join(DEFAULT_SYMBOLS)
+    ).split(",")
+    if value.strip()
+)
 LOWER_TF = "15m"
 HIGHER_TF = "1h"
 DATA_ROOT = Path("data/indicator_composite_history")
@@ -74,24 +76,24 @@ STOP_BUFFER_PCT = 0.10
 TARGET_R = 2.0
 MAX_RISK_PCT = 0.5
 MAX_HOLD_BARS = 100
-
-VARIANTS = (
-    "A_LONG_ACCEL",
-    "B_LONG_ACCEL_HTF",
-    "C_SHORT_ACCEL",
-    "D_SHORT_ACCEL_HTF",
-    "E_ALIGNED_BOTH",
-)
-
+VARIANTS = ("C_SHORT_ACCEL", "D_SHORT_ACCEL_HTF")
 _ACTIVE = {AccelerationRegime.START, AccelerationRegime.FAST}
 _REARMED = {AccelerationRegime.IDLE, AccelerationRegime.DECELERATING}
+
+
+def _epoch(day: str) -> float:
+    return datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+
+
+def _day_after(day: str) -> float:
+    parsed = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return (parsed + timedelta(days=1)).timestamp()
 
 
 def _entry_events(bars, trends):
     series = calculate_market_accelerator(bars)
     regimes = classify_accelerator_series(series.points)
     events: list[dict | None] = [None] * len(bars)
-
     for index in range(1, len(bars)):
         previous_regime = regimes[index - 1].regime
         current_regime = regimes[index].regime
@@ -100,13 +102,11 @@ def _entry_events(bars, trends):
             previous_regime not in _REARMED
             or current_regime not in _ACTIVE
             or signed_speed is None
-            or signed_speed == 0
+            or signed_speed >= 0
         ):
             continue
         events[index] = {
-            "side": "LONG" if signed_speed > 0 else "SHORT",
             "signed_speed": float(signed_speed),
-            "abs_speed": float(series.points[index].abs_speed or 0.0),
             "regime": current_regime.value,
             "previous_regime": previous_regime.value,
             "htf": trends[index].value,
@@ -115,20 +115,10 @@ def _entry_events(bars, trends):
 
 
 def _variant_accepts(event: dict, trend: HigherTimeframeTrend, variant: str) -> bool:
-    side = event["side"]
-    if variant == "A_LONG_ACCEL":
-        return side == "LONG"
-    if variant == "B_LONG_ACCEL_HTF":
-        return side == "LONG" and trend == HigherTimeframeTrend.UP
     if variant == "C_SHORT_ACCEL":
-        return side == "SHORT"
+        return True
     if variant == "D_SHORT_ACCEL_HTF":
-        return side == "SHORT" and trend == HigherTimeframeTrend.DOWN
-    if variant == "E_ALIGNED_BOTH":
-        return (
-            (side == "LONG" and trend == HigherTimeframeTrend.UP)
-            or (side == "SHORT" and trend == HigherTimeframeTrend.DOWN)
-        )
+        return trend == HigherTimeframeTrend.DOWN
     raise ValueError(f"unknown variant: {variant}")
 
 
@@ -145,11 +135,10 @@ def _bar_dict(bar) -> dict:
     }
 
 
-def _outcome_dict(outcome, side: str) -> dict:
+def _outcome_dict(outcome) -> dict:
     return {
         "trade_id": outcome.trade_id,
         "signal_id": outcome.signal_id,
-        "side": side,
         "entry_bar_index": outcome.entry_bar_index,
         "exit_bar_index": outcome.exit_bar_index,
         "entry_price": outcome.entry_price,
@@ -186,47 +175,30 @@ def _run_variant(bars, trends, events, variant: str) -> dict:
         if event is None or not _variant_accepts(event, trends[signal_index], variant):
             continue
         raw_signal_count += 1
-
         if signal_index + 1 >= len(bars):
             blocked_no_next_bar += 1
             continue
 
-        side = event["side"]
         entry_index = signal_index + 1
         entry_price = float(bars[entry_index].open)
-        if entry_price <= 0:
+        stop_price = float(bars[signal_index].high) * (
+            1.0 + STOP_BUFFER_PCT / 100.0
+        )
+        if entry_price <= 0 or entry_price >= stop_price:
             blocked_invalid_execution += 1
             continue
 
-        if side == "LONG":
-            stop_price = float(bars[signal_index].low) * (
-                1.0 - STOP_BUFFER_PCT / 100.0
-            )
-            if stop_price <= 0 or entry_price <= stop_price:
-                blocked_invalid_execution += 1
-                continue
-            risk = entry_price - stop_price
-            take_profit = entry_price + TARGET_R * risk
-            risk_distance_pct = risk / entry_price * 100.0
-            reward_distance_pct = (take_profit - entry_price) / entry_price * 100.0
-        else:
-            stop_price = float(bars[signal_index].high) * (
-                1.0 + STOP_BUFFER_PCT / 100.0
-            )
-            if entry_price >= stop_price:
-                blocked_invalid_execution += 1
-                continue
-            risk = stop_price - entry_price
-            take_profit = entry_price - TARGET_R * risk
-            if take_profit <= 0:
-                blocked_invalid_execution += 1
-                continue
-            risk_distance_pct = risk / entry_price * 100.0
-            reward_distance_pct = (entry_price - take_profit) / entry_price * 100.0
+        risk = stop_price - entry_price
+        take_profit = entry_price - TARGET_R * risk
+        if take_profit <= 0:
+            blocked_invalid_execution += 1
+            continue
 
+        risk_distance_pct = risk / entry_price * 100.0
+        reward_distance_pct = (entry_price - take_profit) / entry_price * 100.0
         gate = validate_trade_intent({
             "execution_mode": "shadow_only",
-            "side": side,
+            "side": "SHORT",
             "intent_status": "SHADOW_READY",
             "rr_ratio": TARGET_R,
             "risk_distance_pct": risk_distance_pct,
@@ -245,7 +217,7 @@ def _run_variant(bars, trends, events, variant: str) -> dict:
             blocked_overlap += 1
             continue
 
-        signal = {
+        outcome = simulate_trade({
             "signal_id": f"accelerator_{variant}_{signal_index}",
             "signal_bar_index": signal_index,
             "entry_bar_index": entry_index,
@@ -253,9 +225,8 @@ def _run_variant(bars, trends, events, variant: str) -> dict:
             "entry_price": entry_price,
             "stop_price": stop_price,
             "tp_price": take_profit,
-        }
-        outcome = simulate_trade(signal, bar_dicts, params)
-        trades.append(_outcome_dict(outcome, side))
+        }, bar_dicts, params)
+        trades.append(_outcome_dict(outcome))
         unavailable_until = outcome.exit_bar_index
 
     metrics = compute_run_metrics(trades)
@@ -275,14 +246,10 @@ def _run_variant(bars, trends, events, variant: str) -> dict:
 
 def _compact(result: dict) -> dict:
     metrics = result["metrics"]
-    long_trades = sum(1 for trade in result["trades"] if trade["side"] == "LONG")
-    short_trades = sum(1 for trade in result["trades"] if trade["side"] == "SHORT")
     return {
         "raw_signals": result["raw_signal_count"],
         "accepted_signals": result["accepted_signal_count"],
         "trades": result["trade_count"],
-        "long_trades": long_trades,
-        "short_trades": short_trades,
         "win_rate": metrics["win_rate"],
         "expectancy_r": metrics["expectancy_r"],
         "profit_factor": metrics["profit_factor"],
@@ -296,29 +263,36 @@ def _compact(result: dict) -> dict:
     }
 
 
-def _aggregate(per_symbol: list[dict], variant: str) -> dict:
+def _slice_by_time(bars, trends, events, start_epoch: float, end_epoch: float):
+    selected = [
+        (bar, trend, event)
+        for bar, trend, event in zip(bars, trends, events)
+        if start_epoch <= float(bar.timestamp) < end_epoch
+    ]
+    return (
+        tuple(item[0] for item in selected),
+        tuple(item[1] for item in selected),
+        tuple(item[2] for item in selected),
+    )
+
+
+def _aggregate(per_symbol: list[dict], variant: str, phase: str) -> dict:
     all_r: list[float] = []
-    symbol_pfs: list[float] = []
     positive_symbols: list[str] = []
-    total_raw_signals = 0
-    total_long = 0
-    total_short = 0
+    total_trades = 0
     worst_symbol_drawdown = 0.0
 
     for entry in per_symbol:
-        full = entry["_full_results"][variant]
-        compact = entry["variants"][variant]
-        total_raw_signals += compact["raw_signals"]
-        total_long += compact["long_trades"]
-        total_short += compact["short_trades"]
-        symbol_pfs.append(float(compact["profit_factor"]))
+        result = entry["_results"][phase][variant]
+        compact = entry[phase][variant]
+        total_trades += compact["trades"]
         worst_symbol_drawdown = min(
             worst_symbol_drawdown,
             float(compact["max_drawdown_r"]),
         )
         if float(compact["expectancy_r"]) > 0:
             positive_symbols.append(entry["symbol"])
-        all_r.extend(float(trade["realized_r"]) for trade in full["trades"])
+        all_r.extend(float(trade["realized_r"]) for trade in result["trades"])
 
     wins = [value for value in all_r if value > 0]
     losses = [value for value in all_r if value <= 0]
@@ -330,18 +304,12 @@ def _aggregate(per_symbol: list[dict], variant: str) -> dict:
         else (float("inf") if gross_wins > 0 else 0.0)
     )
     return {
+        "phase": phase,
         "variant": variant,
-        "symbol_count": len(per_symbol),
-        "total_raw_signals": total_raw_signals,
-        "total_trades": len(all_r),
-        "total_long_trades": total_long,
-        "total_short_trades": total_short,
+        "total_trades": total_trades,
         "combined_win_rate": round(len(wins) / len(all_r), 6) if all_r else 0.0,
         "combined_expectancy_r": round(sum(all_r) / len(all_r), 6) if all_r else 0.0,
         "combined_profit_factor": round(combined_pf, 6),
-        "median_symbol_profit_factor": round(
-            statistics.median(symbol_pfs), 6
-        ) if symbol_pfs else 0.0,
         "positive_expectancy_symbols": positive_symbols,
         "positive_symbol_count": len(positive_symbols),
         "worst_symbol_drawdown_r": round(worst_symbol_drawdown, 6),
@@ -350,9 +318,16 @@ def _aggregate(per_symbol: list[dict], variant: str) -> dict:
 
 
 def main() -> int:
-    per_symbol: list[dict] = []
+    if not SYMBOLS:
+        raise ValueError("RESEARCH_SYMBOLS produced an empty symbol set")
+    start_epoch = _epoch(START)
+    split_epoch = _epoch(SPLIT)
+    end_epoch = _day_after(END)
+    if not start_epoch < split_epoch < end_epoch:
+        raise ValueError("research dates must satisfy START < SPLIT <= END")
 
-    for symbol in DEFAULT_SYMBOLS:
+    per_symbol: list[dict] = []
+    for symbol in SYMBOLS:
         lower_path = DATA_ROOT / symbol / f"{symbol}_{LOWER_TF}.csv"
         higher_path = DATA_ROOT / symbol / f"{symbol}_{HIGHER_TF}.csv"
         lower_hist = _load_historical(lower_path, symbol, LOWER_TF, 500)
@@ -361,85 +336,89 @@ def main() -> int:
         bars = _market_bars(lower_hist)
         events = _entry_events(bars, trends)
 
-        full_results = {
-            variant: _run_variant(bars, trends, events, variant)
-            for variant in VARIANTS
+        first_bars, first_trends, first_events = _slice_by_time(
+            bars, trends, events, start_epoch, split_epoch
+        )
+        second_bars, second_trends, second_events = _slice_by_time(
+            bars, trends, events, split_epoch, end_epoch
+        )
+
+        results = {
+            "full": {
+                variant: _run_variant(bars, trends, events, variant)
+                for variant in VARIANTS
+            },
+            "first_half": {
+                variant: _run_variant(
+                    first_bars, first_trends, first_events, variant
+                )
+                for variant in VARIANTS
+            },
+            "second_half": {
+                variant: _run_variant(
+                    second_bars, second_trends, second_events, variant
+                )
+                for variant in VARIANTS
+            },
         }
         per_symbol.append({
             "symbol": symbol,
-            "lower_bars": len(lower_hist),
-            "higher_bars": len(higher_hist),
-            "positive_activation_count": sum(
-                event is not None and event["side"] == "LONG"
-                for event in events
-            ),
-            "negative_activation_count": sum(
-                event is not None and event["side"] == "SHORT"
-                for event in events
-            ),
-            "variants": {
-                variant: _compact(result)
-                for variant, result in full_results.items()
+            "full": {
+                variant: _compact(results["full"][variant])
+                for variant in VARIANTS
             },
-            "_full_results": full_results,
+            "first_half": {
+                variant: _compact(results["first_half"][variant])
+                for variant in VARIANTS
+            },
+            "second_half": {
+                variant: _compact(results["second_half"][variant])
+                for variant in VARIANTS
+            },
+            "_results": results,
         })
 
-    aggregates = {
-        variant: _aggregate(per_symbol, variant)
+    aggregate = {
+        variant: {
+            phase: _aggregate(per_symbol, variant, phase)
+            for phase in ("full", "first_half", "second_half")
+        }
         for variant in VARIANTS
     }
     serializable = [
-        {key: value for key, value in entry.items() if key != "_full_results"}
+        {key: value for key, value in entry.items() if key != "_results"}
         for entry in per_symbol
     ]
     output = {
-        "experiment_id": "market_accelerator_activation_multisymbol_v1",
+        "experiment_id": "market_accelerator_short_timesplit_v1",
         "period": f"{START}..{END}",
-        "lower_timeframe": LOWER_TF,
-        "higher_timeframe": HIGHER_TF,
-        "symbols": list(DEFAULT_SYMBOLS),
+        "split": SPLIT,
+        "symbols": list(SYMBOLS),
         "variants": list(VARIANTS),
         "activation_definition": (
-            "previous regime IDLE/DECELERATING -> current START/FAST; "
-            "direction from signed_speed"
+            "previous IDLE/DECELERATING -> current START/FAST; signed_speed<0"
         ),
-        "accelerator_formula_modified": False,
-        "accelerator_regime_thresholds_modified": False,
+        "formula_modified": False,
+        "regime_thresholds_modified": False,
         "stop_buffer_pct": STOP_BUFFER_PCT,
         "target_r": TARGET_R,
-        "max_risk_pct": MAX_RISK_PCT,
-        "max_hold_bars": MAX_HOLD_BARS,
         "friction": "zero",
         "entry_execution": "closed_signal_next_bar_open_v1",
         "parameter_optimization": False,
         "per_symbol": serializable,
-        "aggregate": aggregates,
+        "aggregate": aggregate,
     }
 
-    destination = Path("research_results/market_accelerator_activation_multisymbol.json")
+    destination = Path("research_results/market_accelerator_short_timesplit.json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(output, indent=2), encoding="utf-8")
 
-    print("=== MARKET_ACCELERATOR_ACTIVATION_MULTISYMBOL ===")
-    for entry in serializable:
-        print(
-            entry["symbol"],
-            "positive_activations=", entry["positive_activation_count"],
-            "negative_activations=", entry["negative_activation_count"],
-        )
-        for variant in VARIANTS:
-            values = entry["variants"][variant]
-            print(
-                " ", variant,
-                "trades=", values["trades"],
-                "win=", values["win_rate"],
-                "exp=", values["expectancy_r"],
-                "pf=", values["profit_factor"],
-                "mdd=", values["max_drawdown_r"],
-            )
-    print("=== AGGREGATE ===")
+    print("=== MARKET_ACCELERATOR_SHORT_TIMESPLIT ===")
+    print("PERIOD", START, END, "SPLIT", SPLIT, "SYMBOLS", SYMBOLS)
     for variant in VARIANTS:
-        print(variant, aggregates[variant])
+        print("---", variant, "---")
+        for phase in ("full", "first_half", "second_half"):
+            print(phase, aggregate[variant][phase])
     return 0
 
 
