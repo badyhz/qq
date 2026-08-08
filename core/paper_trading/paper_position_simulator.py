@@ -463,6 +463,71 @@ def _adapter_events_to_evidence(records: list[dict[str, Any]]) -> list[dict[str,
     return evidence
 
 
+def _check_prospective_funding_bracketing(
+    events: list[dict[str, Any]],
+    opened: datetime,
+    closed: datetime,
+) -> bool:
+    """Strict bracketing check for prospective position funding coverage.
+
+    Unlike funding_windows_are_continuous() (used by pipeline evidence
+    collector), this requires TRUE bracketing:
+      1. At least one event_at <= opened_at  (before-or-at open)
+      2. At least one event_at >= closed_at  (after-or-at close)
+      3. Continuous funding windows between the bracket events
+
+    Returns False when:
+      - zero events
+      - events only after close (AFTER_ONLY)
+      - events only before open (BEFORE_ONLY)
+      - bracket exists but windows have gaps
+    """
+    if not events:
+        return False
+
+    from core.paper_trading.friction_evidence import _utc
+
+    def _event_at(item: dict[str, Any]) -> str:
+        return item.get("funding_event_at") or item.get("exchange_event_at") or ""
+
+    def _interval(item: dict[str, Any]) -> int:
+        return int(item.get("funding_interval_seconds") or 0)
+
+    event_times = sorted(_utc(_event_at(item), "funding event") for item in events)
+    intervals = [_interval(item) for item in events]
+    known_intervals = [iv for iv in intervals if iv > 0]
+    interval = min(known_intervals) if known_intervals else 0
+    if interval <= 0:
+        return False
+
+    # 1. Must have at least one event_at <= opened_at
+    has_before = any(t <= opened for t in event_times)
+    if not has_before:
+        return False
+
+    # 2. Must have at least one event_at >= closed_at
+    has_after = any(t >= closed for t in event_times)
+    if not has_after:
+        return False
+
+    # 3. Find bracket boundaries and verify continuity between them
+    bracket_events = [t for t in event_times if opened <= t <= closed]
+    before_events = [t for t in event_times if t <= opened]
+    after_events = [t for t in event_times if t >= closed]
+
+    # The bracket is: last event before/at open → first event after/at close
+    bracket_start = max(before_events)
+    bracket_end = min(after_events)
+
+    # All events between bracket_start and bracket_end (inclusive) must be continuous
+    bracket_span = [t for t in event_times if bracket_start <= t <= bracket_end]
+    for earlier, later in zip(bracket_span, bracket_span[1:]):
+        if (later - earlier).total_seconds() > interval:
+            return False
+
+    return True
+
+
 def enrich_closed_position_funding(
     position: dict[str, Any],
     adapter: Any,
@@ -476,13 +541,14 @@ def enrich_closed_position_funding(
     is marked PARTIAL (fail closed) — never fabricated.
 
     bar_close_time: the bar's close timestamp (ISO).  Used for funding
-    continuity check instead of position['closed_at'] (which is runtime).
+    bracketing check instead of position['closed_at'] (which is runtime).
 
-    Completeness semantics:
+    Completeness semantics (strict bracketing):
     - query failed → verified_complete = False
-    - query succeeded, zero events → verified_complete = True (query covers position lifetime, proves no funding)
-    - query succeeded, events exist, surrounding coverage proves continuity → verified_complete = True
-    - query succeeded, events exist but outside window → verified_complete = False
+    - query succeeded, zero events → verified_complete = False (no bracket proof)
+    - query succeeded, events only after close → verified_complete = False (AFTER_ONLY)
+    - query succeeded, events only before open → verified_complete = False (BEFORE_ONLY)
+    - query succeeded, events bracket position with continuous windows → verified_complete = True
     """
     if position.get("status") not in CLOSED_STATUSES:
         return position
@@ -502,14 +568,15 @@ def enrich_closed_position_funding(
         if rec.get("evidence_type") == "FUNDING_EVENT" and rec.get("symbol") == symbol
     ]
     if query_succeeded:
-        from core.paper_trading.friction_evidence import _utc, funding_windows_are_continuous
+        from core.paper_trading.friction_evidence import _utc
         opened = _utc(position.get("opened_at"), "opened_at")
         close_src = bar_close_time or position.get("closed_at")
         closed = _utc(close_src, "closed_at")
-        # Check continuity using ALL adapter events (not just position-window
-        # filtered).  Zero events inside the position window but continuous
-        # surrounding windows means the position fell in a funding gap — complete.
-        windows_resolved = funding_windows_are_continuous(evidence_records, opened, closed)
+        # Strict bracketing: must have events before/at open AND after/at close,
+        # with continuous windows between brackets.  Uses ALL adapter events.
+        windows_resolved = _check_prospective_funding_bracketing(
+            evidence_records, opened, closed,
+        )
     else:
         windows_resolved = False
     # Override closed_at for attribute_position_funding so it uses the bar's

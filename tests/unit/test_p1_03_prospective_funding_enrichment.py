@@ -169,11 +169,13 @@ def _assumptions() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# CASE A: Funding event within window + TP → COMPLETE
+# CASE A: Bracketing events + event inside window + TP → COMPLETE
 # ---------------------------------------------------------------------------
 def test_case_a_no_funding_tp():
-    event = _funding_event()
-    adapter = MockFundingAdapter(events=[event])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
     pos = _make_position()
     bars = [_tp_bar()]
     result = _update_position(pos, bars, timeout_bars=24, adapter=adapter)
@@ -190,11 +192,13 @@ def test_case_a_no_funding_tp():
 
 
 # ---------------------------------------------------------------------------
-# CASE B: Has funding event + TP → COMPLETE
+# CASE B: Bracketing events + TP → COMPLETE
 # ---------------------------------------------------------------------------
 def test_case_b_funding_tp():
-    event = _funding_event()
-    adapter = MockFundingAdapter(events=[event])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
     pos = _make_position()
     bars = [_tp_bar()]
     result = _update_position(pos, bars, timeout_bars=24, adapter=adapter)
@@ -211,11 +215,13 @@ def test_case_b_funding_tp():
 
 
 # ---------------------------------------------------------------------------
-# CASE C: Normal stop (no gap) + funding → COMPLETE
+# CASE C: Normal stop (no gap) + bracketing → COMPLETE
 # ---------------------------------------------------------------------------
 def test_case_c_normal_stop():
-    event = _funding_event()
-    adapter = MockFundingAdapter(events=[event])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
     pos = _make_position()
     bars = [_sl_bar_no_gap()]
     result = _update_position(pos, bars, timeout_bars=24, adapter=adapter)
@@ -231,11 +237,13 @@ def test_case_c_normal_stop():
 
 
 # ---------------------------------------------------------------------------
-# CASE D: Gap-through stop + funding → COMPLETE
+# CASE D: Gap-through stop + bracketing → COMPLETE
 # ---------------------------------------------------------------------------
 def test_case_d_gap_stop():
-    event = _funding_event()
-    adapter = MockFundingAdapter(events=[event])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
     pos = _make_position()
     bars = [_sl_bar_gap()]
     result = _update_position(pos, bars, timeout_bars=24, adapter=adapter)
@@ -252,11 +260,13 @@ def test_case_d_gap_stop():
 
 
 # ---------------------------------------------------------------------------
-# CASE E: Timeout + funding → COMPLETE
+# CASE E: Timeout + bracketing → COMPLETE
 # ---------------------------------------------------------------------------
 def test_case_e_timeout():
-    event = _funding_event()
-    adapter = MockFundingAdapter(events=[event])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
     pos = _make_position()
     bars = [_timeout_bar()]
     result = _update_position(pos, bars, timeout_bars=0, adapter=adapter)
@@ -305,8 +315,10 @@ def test_no_adapter_backward_compatible():
 # Funding replay idempotency
 # ---------------------------------------------------------------------------
 def test_funding_replay_idempotent():
-    event = _funding_event()
-    adapter = MockFundingAdapter(events=[event])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
 
     pos = _make_position()
     bars = [_tp_bar()]
@@ -361,14 +373,11 @@ def test_empty_adapter_returns_partial():
 
 
 # ---------------------------------------------------------------------------
-# Surrounding windows → COMPLETE (zero events inside window, continuous outside)
+# Surrounding windows → PARTIAL (events only after close, no bracket)
 # ---------------------------------------------------------------------------
 def test_surrounding_windows_complete():
-    """Position lifetime has no funding events, but surrounding windows are
-    continuous and complete → verified_complete=true → COMPLETE_ESTIMATED."""
-    # Position: 00:00–04:00.  Events at 04:30 and 12:30 (after close) with
-    # 8h interval → first event within 1 interval of window_end, continuous.
-    # No events inside position window → funding_events=[].
+    """Position lifetime has no funding events, events only after close.
+    With strict bracketing, this is AFTER_ONLY → PARTIAL."""
     event_after_1 = _funding_event(event_at="2026-07-21T04:30:00+00:00")
     event_after_2 = _funding_event(event_at="2026-07-21T12:30:00+00:00")
     adapter = MockFundingAdapter(events=[event_after_1, event_after_2])
@@ -382,6 +391,81 @@ def test_surrounding_windows_complete():
     }
     result = enrich_closed_position_funding(pos, adapter)
     assert result["funding_events"] == []
+    assert result["funding_events_verified_complete"] is False
+
+    assessment = assess_position_friction(result, _assumptions())
+    assert assessment["friction_model_status"] == "PARTIAL"
+    assert assessment["net_r"] is None
+
+
+# ---------------------------------------------------------------------------
+# CASE 2: AFTER_ONLY → PARTIAL (events only after close, no bracket)
+# ---------------------------------------------------------------------------
+def test_after_only_case():
+    """Position 00:00→04:00, events 04:30/12:30 → AFTER_ONLY → PARTIAL."""
+    event_after_1 = _funding_event(event_at="2026-07-21T04:30:00+00:00")
+    event_after_2 = _funding_event(event_at="2026-07-21T12:30:00+00:00")
+    adapter = MockFundingAdapter(events=[event_after_1, event_after_2])
+    pos = {
+        "position_id": "PP_after_only", "symbol": "XRPUSDT", "side": "SHORT",
+        "entry_price": 2.50, "stop_loss": 2.60, "position_size_preview": 300.0,
+        "opened_at": "2026-07-21T00:00:00+00:00",
+        "closed_at": "2026-07-21T04:00:00+00:00",
+        "status": "TAKE_PROFIT_HIT",
+        "exit_price": 2.40, "realized_pnl": 30.0, "r_multiple": 1.0,
+    }
+    result = enrich_closed_position_funding(pos, adapter)
+    assert result["funding_events"] == []
+    assert result["funding_events_verified_complete"] is False
+
+    assessment = assess_position_friction(result, _assumptions())
+    assert assessment["friction_model_status"] == "PARTIAL"
+    assert assessment["net_r"] is None
+
+
+# ---------------------------------------------------------------------------
+# CASE 3: BEFORE_ONLY → PARTIAL (events only before open, no bracket)
+# ---------------------------------------------------------------------------
+def test_before_only_case():
+    """Position 08:00→12:00, events 00:00/04:00 → BEFORE_ONLY → PARTIAL."""
+    event_before_1 = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_before_2 = _funding_event(event_at="2026-07-21T04:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before_1, event_before_2])
+    pos = {
+        "position_id": "PP_before_only", "symbol": "XRPUSDT", "side": "SHORT",
+        "entry_price": 2.50, "stop_loss": 2.60, "position_size_preview": 300.0,
+        "opened_at": "2026-07-21T08:00:00+00:00",
+        "closed_at": "2026-07-21T12:00:00+00:00",
+        "status": "TAKE_PROFIT_HIT",
+        "exit_price": 2.40, "realized_pnl": 30.0, "r_multiple": 1.0,
+    }
+    result = enrich_closed_position_funding(pos, adapter)
+    assert result["funding_events"] == []
+    assert result["funding_events_verified_complete"] is False
+
+    assessment = assess_position_friction(result, _assumptions())
+    assert assessment["friction_model_status"] == "PARTIAL"
+    assert assessment["net_r"] is None
+
+
+# ---------------------------------------------------------------------------
+# CASE 4: TRUE_SURROUNDING → COMPLETE (events bracket position, continuous)
+# ---------------------------------------------------------------------------
+def test_true_surrounding_case():
+    """Position 01:00→04:00, events 00:00/08:00 → TRUE_SURROUNDING → COMPLETE."""
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_after])
+    pos = {
+        "position_id": "PP_true_surround", "symbol": "XRPUSDT", "side": "SHORT",
+        "entry_price": 2.50, "stop_loss": 2.60, "position_size_preview": 300.0,
+        "opened_at": "2026-07-21T01:00:00+00:00",
+        "closed_at": "2026-07-21T04:00:00+00:00",
+        "status": "TAKE_PROFIT_HIT",
+        "exit_price": 2.40, "realized_pnl": 30.0, "r_multiple": 1.0,
+    }
+    result = enrich_closed_position_funding(pos, adapter)
+    assert result["funding_events"] == []
     assert result["funding_events_verified_complete"] is True
 
     assessment = assess_position_friction(result, _assumptions())
@@ -389,9 +473,40 @@ def test_surrounding_windows_complete():
     assert assessment["net_r"] is not None
 
 
+# ---------------------------------------------------------------------------
+# CASE 5: CROSS_FUNDING → COMPLETE (events bracket + event inside window)
+# ---------------------------------------------------------------------------
+def test_cross_funding_case():
+    """Position 01:00→12:00, events 00:00/08:00/16:00 → CROSS_FUNDING → COMPLETE.
+    The 08:00 event falls inside the position window and is correctly attributed."""
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T16:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
+    pos = {
+        "position_id": "PP_cross_funding", "symbol": "XRPUSDT", "side": "SHORT",
+        "entry_price": 2.50, "stop_loss": 2.60, "position_size_preview": 300.0,
+        "opened_at": "2026-07-21T01:00:00+00:00",
+        "closed_at": "2026-07-21T12:00:00+00:00",
+        "status": "TAKE_PROFIT_HIT",
+        "exit_price": 2.40, "realized_pnl": 30.0, "r_multiple": 1.0,
+    }
+    result = enrich_closed_position_funding(pos, adapter)
+    assert len(result["funding_events"]) == 1
+    assert result["funding_events"][0]["funding_timestamp"] == "2026-07-21T08:00:00+00:00"
+    assert result["funding_events_verified_complete"] is True
+
+    assessment = assess_position_friction(result, _assumptions())
+    assert assessment["friction_model_status"] == "COMPLETE_ESTIMATED"
+    assert assessment["net_r"] is not None
+    assert Decimal(assessment["funding_effect_r"]) != 0
+
+
 def test_enrich_direct_with_events():
-    event = _funding_event()
-    adapter = MockFundingAdapter(events=[event])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
     pos = {
         "position_id": "PP_x", "symbol": "XRPUSDT", "side": "SHORT",
         "entry_price": 2.50, "stop_loss": 2.60, "position_size_preview": 300.0,
@@ -546,7 +661,10 @@ def test_case_h_runner_passes_adapter(monkeypatch):
 # Aggregate: all5 COMPLETE cases together
 # ---------------------------------------------------------------------------
 def test_aggregate_all_complete_cases():
-    adapter = MockFundingAdapter(events=[_funding_event()])
+    event_before = _funding_event(event_at="2026-07-21T00:00:00+00:00")
+    event_inside = _funding_event(event_at="2026-07-21T02:00:00+00:00")
+    event_after = _funding_event(event_at="2026-07-21T08:00:00+00:00")
+    adapter = MockFundingAdapter(events=[event_before, event_inside, event_after])
     assumptions = _assumptions()
     assessments = []
 
