@@ -453,6 +453,7 @@ def main():
                 existing, bars_by_key, date_str,
                 timeout_bars=args.timeout_bars,
                 future_only=args.future_only,
+                adapter=adapter,
             )
         else:
             result = simulate_with_klines(
@@ -463,6 +464,7 @@ def main():
                 timeout_bars=args.timeout_bars,
                 future_only=args.future_only,
                 allow_update_newly_opened=args.allow_update_newly_opened,
+                adapter=adapter,
             )
     elif args.update_existing_only:
         print("Mode: update_existing_only (offline, no klines)")

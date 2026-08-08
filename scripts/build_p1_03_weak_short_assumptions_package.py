@@ -30,8 +30,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any, Iterable
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.paper_trading.net_friction import (
     FRICTION_MODEL_VERSION,

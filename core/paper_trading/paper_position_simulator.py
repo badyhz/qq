@@ -23,6 +23,7 @@ from core.paper_trading.paper_position import (
     exposure_identity, stable_signal_key,
 )
 from core.paper_trading.data_source import MarketBar, format_utc_timestamp, _resolved_close_time
+from core.paper_trading.friction_evidence import attribute_position_funding
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,7 @@ def simulate_with_klines(
     allow_update_newly_opened: bool = False,
     newly_opened_ids: Optional[set[str]] = None,
     existing_signal_keys: Optional[set[str]] = None,
+    adapter: Any = None,
 ) -> SimulationResult:
     """Open positions and update with kline data to check TP/SL.
 
@@ -286,7 +288,7 @@ def simulate_with_klines(
 
         # Reconstruct PaperPosition for update
         pos = dict_to_position(pos_dict)
-        updated = _update_position(pos, future_bars, timeout_bars)
+        updated = _update_position(pos, future_bars, timeout_bars, adapter=adapter)
         result_positions.append(updated)
         updated_count += 1
 
@@ -327,6 +329,7 @@ def simulate_existing_positions_update_only(
     date_str: str,
     timeout_bars: int = 24,
     future_only: bool = True,
+    adapter: Any = None,
 ) -> SimulationResult:
     """Update only existing OPEN positions. Never creates new positions.
 
@@ -377,7 +380,7 @@ def simulate_existing_positions_update_only(
 
         # Reconstruct PaperPosition for update
         pos = dict_to_position(pos_dict)
-        updated = _update_position(pos, future_bars, timeout_bars)
+        updated = _update_position(pos, future_bars, timeout_bars, adapter=adapter)
         result_positions.append(updated)
         updated_count += 1
 
@@ -442,12 +445,190 @@ def _future_bars_after_open(bars: list[MarketBar], opened_bar_time: Any) -> list
     return future_bars
 
 
+def _adapter_events_to_evidence(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert raw adapter funding events to evidence records for attribute_position_funding."""
+    evidence = []
+    for event in records:
+        symbol = event.get("symbol", "")
+        event_at = event.get("funding_event_at", "")
+        evidence.append({
+            "evidence_type": "FUNDING_EVENT",
+            "symbol": symbol,
+            "exchange_event_at": event_at,
+            "signed_funding_rate": event.get("signed_funding_rate"),
+            "mark_price": event.get("mark_price"),
+            "funding_interval_seconds": event.get("funding_interval_seconds"),
+            "evidence_id": f"adapter:{symbol}:{event_at}",
+        })
+    return evidence
+
+
+def _check_prospective_funding_bracketing(
+    events: list[dict[str, Any]],
+    opened: datetime,
+    closed: datetime,
+) -> bool:
+    """Strict bracketing check for prospective position funding coverage.
+
+    Unlike funding_windows_are_continuous() (used by pipeline evidence
+    collector), this requires TRUE bracketing:
+      1. At least one event_at <= opened_at  (before-or-at open)
+      2. At least one event_at >= closed_at  (after-or-at close)
+      3. Continuous funding windows between the bracket events
+
+    Returns False when:
+      - zero events
+      - events only after close (AFTER_ONLY)
+      - events only before open (BEFORE_ONLY)
+      - bracket exists but windows have gaps
+    """
+    if not events:
+        return False
+
+    from core.paper_trading.friction_evidence import _utc
+
+    def _event_at(item: dict[str, Any]) -> str:
+        return item.get("funding_event_at") or item.get("exchange_event_at") or ""
+
+    def _interval(item: dict[str, Any]) -> int:
+        return int(item.get("funding_interval_seconds") or 0)
+
+    event_times = sorted(_utc(_event_at(item), "funding event") for item in events)
+    intervals = [_interval(item) for item in events]
+    known_intervals = [iv for iv in intervals if iv > 0]
+    interval = min(known_intervals) if known_intervals else 0
+    if interval <= 0:
+        return False
+
+    # 1. Must have at least one event_at <= opened_at
+    has_before = any(t <= opened for t in event_times)
+    if not has_before:
+        return False
+
+    # 2. Must have at least one event_at >= closed_at
+    has_after = any(t >= closed for t in event_times)
+    if not has_after:
+        return False
+
+    # 3. Find bracket boundaries and verify continuity between them
+    bracket_events = [t for t in event_times if opened <= t <= closed]
+    before_events = [t for t in event_times if t <= opened]
+    after_events = [t for t in event_times if t >= closed]
+
+    # The bracket is: last event before/at open → first event after/at close
+    bracket_start = max(before_events)
+    bracket_end = min(after_events)
+
+    # All events between bracket_start and bracket_end (inclusive) must be continuous
+    bracket_span = [t for t in event_times if bracket_start <= t <= bracket_end]
+    for earlier, later in zip(bracket_span, bracket_span[1:]):
+        if (later - earlier).total_seconds() > interval:
+            return False
+
+    return True
+
+
+def enrich_closed_position_funding(
+    position: dict[str, Any],
+    adapter: Any,
+    lookback_seconds: int = 86400 * 3,
+    bar_close_time: str | None = None,
+) -> dict[str, Any]:
+    """Enrich a closed position with funding evidence from the public adapter.
+
+    Reuses attribute_position_funding() for time-window filtering and
+    completeness detection.  If the adapter query fails, the position
+    is marked PARTIAL (fail closed) — never fabricated.
+
+    bar_close_time: the bar's close timestamp (ISO).  Used for funding
+    bracketing check instead of position['closed_at'] (which is runtime).
+
+    Completeness semantics (strict bracketing):
+    - query failed → verified_complete = False
+    - query succeeded, zero events → verified_complete = False (no bracket proof)
+    - query succeeded, events only after close → verified_complete = False (AFTER_ONLY)
+    - query succeeded, events only before open → verified_complete = False (BEFORE_ONLY)
+    - query succeeded, events bracket position with continuous windows → verified_complete = True
+    """
+    if position.get("status") not in CLOSED_STATUSES:
+        return position
+    symbol = position.get("symbol", "")
+    if not symbol:
+        return position
+    try:
+        raw_events = adapter.get_funding_events(symbol, lookback_seconds)
+        query_succeeded = True
+    except Exception:
+        raw_events = []
+        query_succeeded = False
+    evidence_records = _adapter_events_to_evidence(raw_events if isinstance(raw_events, list) else [])
+    # Filter to symbol-specific funding events for continuity check.
+    funding_events = [
+        rec for rec in evidence_records
+        if rec.get("evidence_type") == "FUNDING_EVENT" and rec.get("symbol") == symbol
+    ]
+    if query_succeeded:
+        from core.paper_trading.friction_evidence import _utc
+        opened = _utc(position.get("opened_at"), "opened_at")
+        close_src = bar_close_time or position.get("closed_at")
+        closed = _utc(close_src, "closed_at")
+        # Strict bracketing: must have events before/at open AND after/at close,
+        # with continuous windows between brackets.  Uses ALL adapter events.
+        windows_resolved = _check_prospective_funding_bracketing(
+            evidence_records, opened, closed,
+        )
+    else:
+        windows_resolved = False
+    # Override closed_at for attribute_position_funding so it uses the bar's
+    # close time instead of datetime.now() (runtime).
+    enriched_pos = dict(position)
+    if bar_close_time:
+        enriched_pos["closed_at"] = bar_close_time
+    try:
+        attribution = attribute_position_funding(
+            enriched_pos, evidence_records,
+            query_succeeded=query_succeeded,
+            expected_windows_resolved=windows_resolved,
+        )
+    except (ValueError, TypeError):
+        position["funding_events"] = []
+        position["funding_events_verified_complete"] = False
+        return position
+    events = []
+    close_time_src = bar_close_time or position.get("closed_at")
+    for record in evidence_records:
+        if record.get("symbol") != symbol:
+            continue
+        try:
+            from core.paper_trading.friction_evidence import _utc
+            at = _utc(record.get("exchange_event_at"), "funding event")
+            opened = _utc(position.get("opened_at"), "opened_at")
+            closed = _utc(close_time_src, "closed_at")
+            if opened < at <= closed:
+                events.append({
+                    "symbol": symbol,
+                    "funding_timestamp": record.get("exchange_event_at"),
+                    "signed_funding_rate": record.get("signed_funding_rate"),
+                    "mark_price": record.get("mark_price"),
+                    "source": record.get("evidence_id", "adapter"),
+                })
+        except (ValueError, TypeError):
+            continue
+    position["funding_events"] = events
+    position["funding_events_verified_complete"] = attribution.get("funding_completeness") == "COMPLETE"
+    return position
+
+
 def _update_position(
     pos: PaperPosition,
     bars: list[MarketBar],
     timeout_bars: int,
+    adapter: Any = None,
 ) -> dict[str, Any]:
-    """Update a position with kline data. Returns updated position dict."""
+    """Update a position with kline data. Returns updated position dict.
+
+    If adapter is provided, closed positions are enriched with funding evidence.
+    """
     entry = pos.entry_price
     sl = pos.stop_loss
     tp = pos.take_profit
@@ -463,6 +644,7 @@ def _update_position(
             risk_amount = abs(entry - sl) * size
             r_mult = pnl / risk_amount if risk_amount > 0 else 0.0
 
+            bar_close = format_utc_timestamp(_resolved_close_time(bar))
             result = pos.to_dict()
             result.update({
                 "status": "TIMEOUT_EXIT",
@@ -476,6 +658,8 @@ def _update_position(
                 "last_checked_at": now,
                 "last_checked_bar_time": bar.timestamp,
             })
+            if adapter:
+                result = enrich_closed_position_funding(result, adapter, bar_close_time=bar_close)
             return result
 
         hit_sl = False
@@ -514,6 +698,8 @@ def _update_position(
                 "gap_execution_reference_price": executable,
                 "gap_execution_evidence_version": "stop_trigger_bar_open_v1",
             })
+            if adapter:
+                result = enrich_closed_position_funding(result, adapter, bar_close_time=trigger_close_time)
             return result
 
         if hit_tp:
@@ -522,6 +708,7 @@ def _update_position(
             risk_amount = abs(entry - sl) * size
             r_mult = pnl / risk_amount if risk_amount > 0 else 0.0
 
+            bar_close = format_utc_timestamp(_resolved_close_time(bar))
             result = pos.to_dict()
             result.update({
                 "status": "TAKE_PROFIT_HIT",
@@ -535,6 +722,8 @@ def _update_position(
                 "last_checked_at": now,
                 "last_checked_bar_time": bar.timestamp,
             })
+            if adapter:
+                result = enrich_closed_position_funding(result, adapter, bar_close_time=bar_close)
             return result
 
     # Still open
