@@ -501,16 +501,15 @@ def enrich_closed_position_funding(
         rec for rec in evidence_records
         if rec.get("evidence_type") == "FUNDING_EVENT" and rec.get("symbol") == symbol
     ]
-    if query_succeeded and not funding_events:
-        # Zero events from successful query covering position lifetime
-        # proves no funding occurred — complete by construction.
-        windows_resolved = True
-    elif funding_events and query_succeeded:
+    if query_succeeded:
         from core.paper_trading.friction_evidence import _utc, funding_windows_are_continuous
         opened = _utc(position.get("opened_at"), "opened_at")
         close_src = bar_close_time or position.get("closed_at")
         closed = _utc(close_src, "closed_at")
-        windows_resolved = funding_windows_are_continuous(funding_events, opened, closed)
+        # Check continuity using ALL adapter events (not just position-window
+        # filtered).  Zero events inside the position window but continuous
+        # surrounding windows means the position fell in a funding gap — complete.
+        windows_resolved = funding_windows_are_continuous(evidence_records, opened, closed)
     else:
         windows_resolved = False
     # Override closed_at for attribute_position_funding so it uses the bar's

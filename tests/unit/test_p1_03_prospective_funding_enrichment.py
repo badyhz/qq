@@ -323,6 +323,7 @@ def test_funding_replay_idempotent():
 # enrich_closed_position_funding — direct test
 # ---------------------------------------------------------------------------
 def test_enrich_direct_no_events():
+    """Adapter returns [] → no events → continuity cannot be proven → PARTIAL."""
     adapter = MockFundingAdapter(events=[])
     pos = {
         "position_id": "PP_x", "symbol": "XRPUSDT", "side": "SHORT",
@@ -333,7 +334,59 @@ def test_enrich_direct_no_events():
     }
     result = enrich_closed_position_funding(pos, adapter)
     assert result["funding_events"] == []
+    assert result["funding_events_verified_complete"] is False
+
+
+# ---------------------------------------------------------------------------
+# Empty adapter → PARTIAL (no events = no continuity proof)
+# ---------------------------------------------------------------------------
+def test_empty_adapter_returns_partial():
+    """Adapter returns [] → zero events → verified_complete=false → PARTIAL."""
+    adapter = MockFundingAdapter(events=[])
+    pos = {
+        "position_id": "PP_empty", "symbol": "XRPUSDT", "side": "SHORT",
+        "entry_price": 2.50, "stop_loss": 2.60, "position_size_preview": 300.0,
+        "opened_at": "2026-07-21T00:00:00+00:00",
+        "closed_at": "2026-07-21T04:00:00+00:00",
+        "status": "TAKE_PROFIT_HIT",
+        "exit_price": 2.40, "realized_pnl": 30.0, "r_multiple": 1.0,
+    }
+    result = enrich_closed_position_funding(pos, adapter)
+    assert result["funding_events"] == []
+    assert result["funding_events_verified_complete"] is False
+
+    assessment = assess_position_friction(result, _assumptions())
+    assert assessment["friction_model_status"] == "PARTIAL"
+    assert assessment["net_r"] is None
+
+
+# ---------------------------------------------------------------------------
+# Surrounding windows → COMPLETE (zero events inside window, continuous outside)
+# ---------------------------------------------------------------------------
+def test_surrounding_windows_complete():
+    """Position lifetime has no funding events, but surrounding windows are
+    continuous and complete → verified_complete=true → COMPLETE_ESTIMATED."""
+    # Position: 00:00–04:00.  Events at 04:30 and 12:30 (after close) with
+    # 8h interval → first event within 1 interval of window_end, continuous.
+    # No events inside position window → funding_events=[].
+    event_after_1 = _funding_event(event_at="2026-07-21T04:30:00+00:00")
+    event_after_2 = _funding_event(event_at="2026-07-21T12:30:00+00:00")
+    adapter = MockFundingAdapter(events=[event_after_1, event_after_2])
+    pos = {
+        "position_id": "PP_surround", "symbol": "XRPUSDT", "side": "SHORT",
+        "entry_price": 2.50, "stop_loss": 2.60, "position_size_preview": 300.0,
+        "opened_at": "2026-07-21T00:00:00+00:00",
+        "closed_at": "2026-07-21T04:00:00+00:00",
+        "status": "TAKE_PROFIT_HIT",
+        "exit_price": 2.40, "realized_pnl": 30.0, "r_multiple": 1.0,
+    }
+    result = enrich_closed_position_funding(pos, adapter)
+    assert result["funding_events"] == []
     assert result["funding_events_verified_complete"] is True
+
+    assessment = assess_position_friction(result, _assumptions())
+    assert assessment["friction_model_status"] == "COMPLETE_ESTIMATED"
+    assert assessment["net_r"] is not None
 
 
 def test_enrich_direct_with_events():
