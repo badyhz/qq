@@ -19,7 +19,10 @@ from core.paper_trading.data_source import (
     parse_aware_utc,
 )
 from core.paper_trading.paper_position import CLOSED_STATUSES, position_state_fingerprint
-from core.paper_trading.paper_position_simulator import enrich_closed_position_funding
+from core.paper_trading.paper_position_simulator import (
+    FUNDING_CONTINUITY_TOLERANCE_MILLISECONDS,
+    enrich_closed_position_funding,
+)
 
 FUNDING_REPLAY_VERSION = "closed_funding_replay_v1"
 MAX_FUNDING_REPLAY_LOOKBACK_SECONDS = 120 * 86400
@@ -139,7 +142,9 @@ def _reason_for_partial(
         raw_time = event.get("funding_event_at") or event.get("exchange_event_at")
         try:
             at = parse_aware_utc(str(raw_time or ""), "funding_event")
-            interval = int(event.get("funding_interval_seconds") or 0)
+            interval = int(event.get("funding_interval_milliseconds") or 0)
+            if interval <= 0:
+                interval = int(event.get("funding_interval_seconds") or 0) * 1000
         except (TypeError, ValueError):
             continue
         parsed.append((at, interval))
@@ -159,7 +164,8 @@ def _reason_for_partial(
     bracket_end = min(at for at in times if at >= closed)
     span = [at for at in times if bracket_start <= at <= bracket_end]
     if any(
-        (later - earlier).total_seconds() > interval
+        (later - earlier).total_seconds() * 1000
+        > interval + FUNDING_CONTINUITY_TOLERANCE_MILLISECONDS
         for earlier, later in zip(span, span[1:])
     ):
         return "WINDOW_GAP"

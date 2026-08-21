@@ -4,6 +4,7 @@ import copy
 import json
 import sys
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -12,7 +13,13 @@ from core.paper_trading.funding_replay import (
     re_enrich_closed_positions_funding,
     resolve_position_funding_close_boundary,
 )
+from core.paper_trading.data_source import DataSourceConfig
+from core.paper_trading.net_friction import (
+    FRICTION_MODEL_VERSION,
+    assess_position_friction,
+)
 from core.paper_trading.paper_position import select_canonical_position_state
+from core.paper_trading.public_market_adapter import BinancePublicKlineAdapter
 
 
 NOW = datetime(2026, 8, 20, 12, 0, tzinfo=timezone.utc)
@@ -49,14 +56,22 @@ def position(**overrides):
     return base
 
 
-def event(at, rate="0.0001", interval=8 * 3600):
-    return {
+def event(
+    at,
+    rate="0.0001",
+    interval=8 * 3600,
+    interval_milliseconds=None,
+):
+    result = {
         "symbol": "XRPUSDT",
         "funding_event_at": at,
         "signed_funding_rate": rate,
         "mark_price": "1.0",
         "funding_interval_seconds": interval,
     }
+    if interval_milliseconds is not None:
+        result["funding_interval_milliseconds"] = interval_milliseconds
+    return result
 
 
 class Adapter:
@@ -74,6 +89,40 @@ class Adapter:
 
 def replay(p, events):
     return re_enrich_closed_positions_funding([p], Adapter(events), now=NOW)
+
+
+def friction_assumptions():
+    return {
+        "friction_model_version": FRICTION_MODEL_VERSION,
+        "quote_currency": "USDT",
+        "active_symbol_mapping": {
+            "XRPUSDT": {
+                "profile": "DEFAULT",
+                "venue": "binance",
+                "instrument_type": "linear_perpetual",
+            }
+        },
+        "profiles": {
+            "DEFAULT": {
+                "entry_fee_bps": "5",
+                "exit_fee_bps": "5",
+                "entry_fee_liquidity": "TAKER",
+                "exit_fee_liquidity": "TAKER",
+                "fee_rate_source": "test_fixture",
+                "entry_spread_bps": "0.5",
+                "exit_spread_bps": "0.5",
+                "entry_slippage_bps": "0",
+                "exit_slippage_bps": "0",
+                "spread_input_semantics": "ONE_LEG_ADVERSE_BPS",
+                "slippage_source": "CONFIGURED_ESTIMATE",
+                "funding_mode": "OBSERVED_EVENTS",
+                "gap_execution_mode": "OBSERVED_FIRST_EXECUTABLE",
+                "maximum_supported_notional_quote": "1000",
+                "maximum_supported_notional_currency": "USDT",
+                "notional_measurement_version": "entry_exit_max_v1",
+            }
+        },
+    }
 
 
 def test_close_boundary_uses_persisted_then_stop_then_binance_bar_derivation():
@@ -135,6 +184,70 @@ def test_crossed_event_is_attributed_only_inside_position_window():
     assert [item["funding_timestamp"] for item in updates[0]["funding_events"]] == [
         "2026-08-20T08:00:00+00:00"
     ]
+
+
+def test_binance_millisecond_jitter_preserves_precision_and_completes_replay():
+    adapter = BinancePublicKlineAdapter(
+        DataSourceConfig(mode="snapshot", network_enabled=True)
+    )
+    raw = [
+        {
+            "symbol": "XRPUSDT",
+            "fundingTime": 1_787_169_600_000,
+            "fundingRate": "0.0001",
+            "markPrice": "1.0",
+        },
+        {
+            "symbol": "XRPUSDT",
+            "fundingTime": 1_787_198_400_001,
+            "fundingRate": "0.0001",
+            "markPrice": "1.0",
+        },
+        {
+            "symbol": "XRPUSDT",
+            "fundingTime": 1_787_227_200_000,
+            "fundingRate": "0.0001",
+            "markPrice": "1.0",
+        },
+    ]
+    with patch.object(adapter, "_get_public_json", return_value=raw):
+        events = adapter.get_funding_events("XRPUSDT", 86400)
+
+    assert {item["funding_interval_milliseconds"] for item in events} == {
+        28_799_999
+    }
+    assert {item["funding_interval_seconds"] for item in events} == {28_800}
+
+    p = position(
+        opened_at="2026-08-20T01:00:00+00:00",
+        funding_attribution_close_time="2026-08-20T12:00:00+00:00",
+    )
+    updates, stats = replay(p, events)
+    assert len(updates) == 1
+    assert updates[0]["funding_events_verified_complete"] is True
+    assert stats["funding_replay_completed"] == 1
+    assessment = assess_position_friction(updates[0], friction_assumptions())
+    assert assessment["friction_model_status"] == "COMPLETE_ESTIMATED"
+
+
+def test_funding_gap_beyond_two_second_tolerance_remains_partial():
+    p = position(
+        opened_at="2026-08-20T00:00:00+00:00",
+        funding_attribution_close_time="2026-08-20T08:00:03+00:00",
+    )
+    events = [
+        event(
+            "2026-08-20T00:00:00.000+00:00",
+            interval_milliseconds=28_800_000,
+        ),
+        event(
+            "2026-08-20T08:00:03.000+00:00",
+            interval_milliseconds=28_800_000,
+        ),
+    ]
+    updates, stats = replay(p, events)
+    assert updates == []
+    assert stats["funding_replay_reason_breakdown"]["WINDOW_GAP"] == 1
 
 
 @pytest.mark.parametrize(
