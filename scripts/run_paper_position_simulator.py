@@ -32,6 +32,10 @@ from core.paper_trading.paper_position_simulator import (
 )
 from core.paper_trading.data_source import DataSourceConfig
 from core.paper_trading.public_market_adapter import BinancePublicKlineAdapter
+from core.paper_trading.funding_replay import (
+    funding_replay_record_fingerprint,
+    re_enrich_closed_positions_funding,
+)
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPORT_DIR = os.path.join(REPO_ROOT, "reports", "strategies")
@@ -483,6 +487,15 @@ def main():
         )
 
     result_dict = result.to_dict()
+
+    funding_replay_updates: list[dict] = []
+    funding_replay_stats: dict = {}
+    if args.allow_public_http and args.update_with_klines and not args.entry_only:
+        funding_replay_updates, funding_replay_stats = re_enrich_closed_positions_funding(
+            canonical_positions, adapter
+        )
+        result_dict.setdefault("lifecycle_stats", {}).update(funding_replay_stats)
+
     os.makedirs(args.output_dir, exist_ok=True)
 
     # JSON
@@ -519,6 +532,8 @@ def main():
 
     appended = 0
     skipped = 0
+    funding_replay_appended = 0
+    funding_replay_skipped = 0
     with open(ledger_path, "a") as f:
         for pos in result_dict.get("positions", []):
             record = dict(pos)
@@ -531,7 +546,26 @@ def main():
             f.write(json.dumps(record) + "\n")
             existing_fingerprints.add(fp)
             appended += 1
+
+        for pos in funding_replay_updates:
+            record = dict(pos)
+            record["recorded_at"] = now_iso
+            fp = funding_replay_record_fingerprint(record)
+            if fp in existing_fingerprints:
+                funding_replay_skipped += 1
+                continue
+            record["_fp"] = fp
+            f.write(json.dumps(record) + "\n")
+            existing_fingerprints.add(fp)
+            funding_replay_appended += 1
     print(f"Ledger: {ledger_path} (appended={appended}, skipped={skipped})")
+    if funding_replay_stats:
+        print(
+            "Funding replay: "
+            f"completed={funding_replay_stats.get('funding_replay_completed', 0)}, "
+            f"still_partial={funding_replay_stats.get('funding_replay_still_partial', 0)}, "
+            f"appended={funding_replay_appended}, skipped={funding_replay_skipped}"
+        )
 
     # Summary
     lc = result_dict.get("lifecycle_stats", {})

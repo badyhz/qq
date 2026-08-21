@@ -357,7 +357,7 @@ def select_canonical_position_state(
     - OPEN → OPEN: newer timestamp wins
     - OPEN → CLOSED: select CLOSED
     - CLOSED → OPEN: keep CLOSED (terminal irreversible)
-    - CLOSED → same CLOSED: keep old if only observation fields differ
+    - CLOSED → same CLOSED: funding evidence may mature, terminal facts may not
     - CLOSED → different CLOSED: conflict (terminal state changed)
     """
     old_status = old.get("status")
@@ -383,6 +383,16 @@ def select_canonical_position_state(
 
     # Both terminal
     if old_status == new_status:
+        old_funding_complete = old.get("funding_events_verified_complete") is True
+        new_funding_complete = new.get("funding_events_verified_complete") is True
+        if old_funding_complete != new_funding_complete:
+            if _terminal_funding_fact_view(old) != _terminal_funding_fact_view(new):
+                return PositionSelection(old, "keep_old", True, "terminal_field_change")
+            if new_funding_complete:
+                return PositionSelection(new, "use_new", False, None)
+            # Funding evidence can mature but can never regress.
+            return PositionSelection(old, "keep_old", False, None)
+
         # Same terminal status: check if only observation fields changed
         if position_state_fingerprint(old) == position_state_fingerprint(new):
             return PositionSelection(old, "keep_old", False, None)
@@ -394,6 +404,27 @@ def select_canonical_position_state(
         old, "conflict_terminal", True,
         f"terminal_conflict: {old_status} vs {new_status}",
     )
+
+
+_FUNDING_REPLAY_OBSERVATION_FIELDS = frozenset({
+    "funding_events",
+    "funding_events_verified_complete",
+    "funding_attribution_close_time",
+    "funding_attribution_close_source",
+    "funding_replay_version",
+    "recorded_at",
+    "_fp",
+})
+
+
+def _terminal_funding_fact_view(record: dict[str, Any]) -> dict[str, Any]:
+    """Strip only funding/ledger observations before terminal-fact comparison."""
+    return {
+        key: value
+        for key, value in record.items()
+        if key not in _FUNDING_REPLAY_OBSERVATION_FIELDS
+    }
+
 
 # Source whitelist — only these are eligible for canonical counting
 ELIGIBLE_SOURCES = frozenset({

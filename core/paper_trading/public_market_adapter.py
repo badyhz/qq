@@ -185,12 +185,14 @@ class BinancePublicKlineAdapter(DataSource):
         ordered = sorted((item for item in raw if isinstance(item, dict)), key=lambda item: int(item.get("fundingTime", 0)))
         times = [int(item.get("fundingTime", 0)) for item in ordered]
         intervals = [later - earlier for earlier, later in zip(times, times[1:]) if later > earlier]
-        interval_seconds = min(intervals) // 1000 if intervals else 0
+        interval_milliseconds = min(intervals) if intervals else 0
+        interval_seconds = round(interval_milliseconds / 1000)
         return [{
             "symbol": item.get("symbol"),
             "funding_event_at": self._event_at(item.get("fundingTime")),
             "signed_funding_rate": item.get("fundingRate"),
             "mark_price": item.get("markPrice"),
+            "funding_interval_milliseconds": interval_milliseconds,
             "funding_interval_seconds": interval_seconds,
             "source": "binance_usdm_public",
             "source_event_identity": f"{item.get('symbol')}:{item.get('fundingTime')}",

@@ -457,10 +457,16 @@ def _adapter_events_to_evidence(records: list[dict[str, Any]]) -> list[dict[str,
             "exchange_event_at": event_at,
             "signed_funding_rate": event.get("signed_funding_rate"),
             "mark_price": event.get("mark_price"),
+            "funding_interval_milliseconds": event.get(
+                "funding_interval_milliseconds"
+            ),
             "funding_interval_seconds": event.get("funding_interval_seconds"),
             "evidence_id": f"adapter:{symbol}:{event_at}",
         })
     return evidence
+
+
+FUNDING_CONTINUITY_TOLERANCE_MILLISECONDS = 2000
 
 
 def _check_prospective_funding_bracketing(
@@ -490,14 +496,17 @@ def _check_prospective_funding_bracketing(
     def _event_at(item: dict[str, Any]) -> str:
         return item.get("funding_event_at") or item.get("exchange_event_at") or ""
 
-    def _interval(item: dict[str, Any]) -> int:
-        return int(item.get("funding_interval_seconds") or 0)
+    def _interval_milliseconds(item: dict[str, Any]) -> int:
+        milliseconds = int(item.get("funding_interval_milliseconds") or 0)
+        if milliseconds > 0:
+            return milliseconds
+        return int(item.get("funding_interval_seconds") or 0) * 1000
 
     event_times = sorted(_utc(_event_at(item), "funding event") for item in events)
-    intervals = [_interval(item) for item in events]
+    intervals = [_interval_milliseconds(item) for item in events]
     known_intervals = [iv for iv in intervals if iv > 0]
-    interval = min(known_intervals) if known_intervals else 0
-    if interval <= 0:
+    expected_interval_ms = min(known_intervals) if known_intervals else 0
+    if expected_interval_ms <= 0:
         return False
 
     # 1. Must have at least one event_at <= opened_at
@@ -522,7 +531,11 @@ def _check_prospective_funding_bracketing(
     # All events between bracket_start and bracket_end (inclusive) must be continuous
     bracket_span = [t for t in event_times if bracket_start <= t <= bracket_end]
     for earlier, later in zip(bracket_span, bracket_span[1:]):
-        if (later - earlier).total_seconds() > interval:
+        gap_ms = (later - earlier).total_seconds() * 1000
+        if (
+            gap_ms
+            > expected_interval_ms + FUNDING_CONTINUITY_TOLERANCE_MILLISECONDS
+        ):
             return False
 
     return True
