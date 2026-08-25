@@ -1,0 +1,839 @@
+"""Guarded USD-M execution adapter and orchestration for ``zec_4h_live_v1``.
+
+The real adapter is inert unless constructed with ``live_enabled=True``.  Unit
+tests use protocol-compatible fakes; this module never reads credentials from
+disk and never enables itself.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Any, Optional, Protocol
+
+from core.binance_http import (
+    build_public_request,
+    build_signed_request,
+    send_binance_request,
+)
+from core.order_normalizer import normalize_order_params
+from core.zec_4h_live import (
+    LiveAction,
+    LiveExecutionLedger,
+    STRATEGY_ID,
+    STARTING_EQUITY,
+    SYMBOL,
+    TIMEFRAME,
+    StrategyDecision,
+    StrategyPhase,
+    StrategyState,
+    Zec4hStrategy,
+    safe_initial_notional,
+)
+
+
+ORDER_STATUSES = {
+    "NEW",
+    "PARTIALLY_FILLED",
+    "FILLED",
+    "CANCELED",
+    "REJECTED",
+    "EXPIRED",
+    "EXPIRED_IN_MATCH",
+}
+TERMINAL_ORDER_STATUSES = {"FILLED", "CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}
+UNKNOWN_STATUS = "UNKNOWN_RECONCILIATION_REQUIRED"
+
+
+class ExecutionAdapter(Protocol):
+    def get_account(self) -> dict[str, Any]: ...
+    def get_balance(self) -> list[dict[str, Any]]: ...
+    def get_position(self, symbol: str = SYMBOL) -> dict[str, Any]: ...
+    def get_open_orders(self, symbol: str = SYMBOL) -> list[dict[str, Any]]: ...
+    def get_exchange_info(self) -> dict[str, Any]: ...
+    def get_server_time(self) -> dict[str, Any]: ...
+    def get_position_mode(self) -> dict[str, Any]: ...
+    def get_api_restrictions(self) -> dict[str, Any]: ...
+    def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]: ...
+    def set_margin_type(self, margin_type: str, symbol: str = SYMBOL) -> dict[str, Any]: ...
+    def submit_market_order(
+        self,
+        *,
+        side: str,
+        quantity: float,
+        client_order_id: str,
+        reduce_only: bool,
+        symbol: str = SYMBOL,
+    ) -> dict[str, Any]: ...
+    def query_order(
+        self,
+        *,
+        client_order_id: str,
+        exchange_order_id: str = "",
+        symbol: str = SYMBOL,
+    ) -> Optional[dict[str, Any]]: ...
+    def cancel_order(
+        self,
+        *,
+        client_order_id: str = "",
+        exchange_order_id: str = "",
+        symbol: str = SYMBOL,
+    ) -> dict[str, Any]: ...
+    def get_fills(self, symbol: str = SYMBOL, order_id: str = "") -> list[dict[str, Any]]: ...
+    def get_income(self, symbol: str = SYMBOL, income_type: str = "FUNDING_FEE") -> list[dict[str, Any]]: ...
+
+
+class BinanceUsdMExecutionAdapter:
+    """Minimal HMAC USD-M adapter matching current Binance REST response shapes."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        api_secret: str,
+        live_enabled: bool = False,
+        transport: Any = None,
+        timestamp_ms: Optional[int] = None,
+    ):
+        self._api_key = str(api_key or "").strip()
+        self._api_secret = str(api_secret or "").strip()
+        self._live_enabled = bool(live_enabled)
+        self._transport = transport
+        self._timestamp_ms = timestamp_ms
+
+    def _signed(
+        self,
+        method: str,
+        path: str,
+        params: Optional[dict[str, Any]] = None,
+        *,
+        market_type: str = "futures",
+    ) -> Any:
+        if not self._api_key or not self._api_secret:
+            raise RuntimeError("BINANCE_LIVE_CREDENTIALS_MISSING")
+        request = build_signed_request(
+            method=method,
+            path=path,
+            environment="live",
+            market_type=market_type,
+            api_key=self._api_key,
+            api_secret=self._api_secret,
+            params=params or {},
+            timestamp_ms=self._timestamp_ms,
+        )
+        result = send_binance_request(request, transport=self._transport)
+        if result.get("ok") is not True:
+            code = (
+                result.get("binance_code") or result.get("exchange_code")
+                or result.get("error_code") or result.get("error") or "UNKNOWN"
+            )
+            raise RuntimeError(f"BINANCE_API_ERROR:{code}")
+        return result.get("data", result.get("response_json", result.get("response")))
+
+    def _public(self, path: str, params: Optional[dict[str, Any]] = None) -> Any:
+        request = build_public_request(
+            method="GET",
+            path=path,
+            environment="live",
+            market_type="futures",
+            params=params or {},
+        )
+        result = send_binance_request(request, transport=self._transport)
+        if result.get("ok") is not True:
+            raise RuntimeError("BINANCE_PUBLIC_API_ERROR")
+        return result.get("data", result.get("response_json", result.get("response")))
+
+    def _assert_live_write(self) -> None:
+        if not self._live_enabled:
+            raise RuntimeError("ZEC_4H_LIVE_WRITE_DISABLED")
+
+    def get_account(self) -> dict[str, Any]:
+        value = self._signed("GET", "/fapi/v3/account")
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_ACCOUNT_RESPONSE")
+        return value
+
+    def get_balance(self) -> list[dict[str, Any]]:
+        value = self._signed("GET", "/fapi/v3/balance")
+        if not isinstance(value, list):
+            raise RuntimeError("MALFORMED_BALANCE_RESPONSE")
+        return [dict(item) for item in value if isinstance(item, dict)]
+
+    def get_position(self, symbol: str = SYMBOL) -> dict[str, Any]:
+        value = self._signed("GET", "/fapi/v3/positionRisk", {"symbol": symbol})
+        if isinstance(value, list):
+            matches = [item for item in value if isinstance(item, dict) and item.get("symbol") == symbol]
+            if len(matches) == 1:
+                return dict(matches[0])
+        if isinstance(value, dict) and value.get("symbol") == symbol:
+            return dict(value)
+        raise RuntimeError("MALFORMED_POSITION_RESPONSE")
+
+    def get_open_orders(self, symbol: str = SYMBOL) -> list[dict[str, Any]]:
+        value = self._signed("GET", "/fapi/v1/openOrders", {"symbol": symbol})
+        if not isinstance(value, list):
+            raise RuntimeError("MALFORMED_OPEN_ORDERS_RESPONSE")
+        return [dict(item) for item in value if isinstance(item, dict)]
+
+    def get_exchange_info(self) -> dict[str, Any]:
+        value = self._public("/fapi/v1/exchangeInfo")
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_EXCHANGE_INFO_RESPONSE")
+        return value
+
+    def get_server_time(self) -> dict[str, Any]:
+        value = self._public("/fapi/v1/time")
+        if not isinstance(value, dict) or "serverTime" not in value:
+            raise RuntimeError("MALFORMED_SERVER_TIME_RESPONSE")
+        return value
+
+    def get_position_mode(self) -> dict[str, Any]:
+        value = self._signed("GET", "/fapi/v1/positionSide/dual")
+        if not isinstance(value, dict) or "dualSidePosition" not in value:
+            raise RuntimeError("MALFORMED_POSITION_MODE_RESPONSE")
+        return value
+
+    def get_api_restrictions(self) -> dict[str, Any]:
+        value = self._signed(
+            "GET",
+            "/sapi/v1/account/apiRestrictions",
+            market_type="spot",
+        )
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_API_RESTRICTIONS_RESPONSE")
+        return value
+
+    def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]:
+        self._assert_live_write()
+        value = self._signed("POST", "/fapi/v1/leverage", {"symbol": symbol, "leverage": int(leverage)})
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_LEVERAGE_RESPONSE")
+        return value
+
+    def set_margin_type(self, margin_type: str, symbol: str = SYMBOL) -> dict[str, Any]:
+        self._assert_live_write()
+        normalized = str(margin_type).upper()
+        if normalized != "ISOLATED":
+            raise ValueError("zec_4h_live_v1 only permits ISOLATED margin")
+        value = self._signed("POST", "/fapi/v1/marginType", {"symbol": symbol, "marginType": normalized})
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_MARGIN_TYPE_RESPONSE")
+        return value
+
+    def submit_market_order(
+        self,
+        *,
+        side: str,
+        quantity: float,
+        client_order_id: str,
+        reduce_only: bool,
+        symbol: str = SYMBOL,
+    ) -> dict[str, Any]:
+        self._assert_live_write()
+        params = {
+            "symbol": symbol,
+            "side": str(side).upper(),
+            "type": "MARKET",
+            "quantity": _decimal_text(quantity),
+            "newClientOrderId": str(client_order_id)[:35],
+            "newOrderRespType": "RESULT",
+            "reduceOnly": bool(reduce_only),
+        }
+        value = self._signed("POST", "/fapi/v1/order", params)
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_ORDER_RESPONSE")
+        return value
+
+    def query_order(
+        self,
+        *,
+        client_order_id: str,
+        exchange_order_id: str = "",
+        symbol: str = SYMBOL,
+    ) -> Optional[dict[str, Any]]:
+        params: dict[str, Any] = {"symbol": symbol}
+        if exchange_order_id:
+            params["orderId"] = exchange_order_id
+        else:
+            params["origClientOrderId"] = client_order_id
+        try:
+            value = self._signed("GET", "/fapi/v1/order", params)
+        except RuntimeError as exc:
+            if "-2013" in str(exc):
+                return None
+            raise
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_QUERY_ORDER_RESPONSE")
+        return value
+
+    def cancel_order(
+        self,
+        *,
+        client_order_id: str = "",
+        exchange_order_id: str = "",
+        symbol: str = SYMBOL,
+    ) -> dict[str, Any]:
+        self._assert_live_write()
+        params: dict[str, Any] = {"symbol": symbol}
+        if exchange_order_id:
+            params["orderId"] = exchange_order_id
+        elif client_order_id:
+            params["origClientOrderId"] = client_order_id
+        else:
+            raise ValueError("order identity required")
+        value = self._signed("DELETE", "/fapi/v1/order", params)
+        if not isinstance(value, dict):
+            raise RuntimeError("MALFORMED_CANCEL_RESPONSE")
+        return value
+
+    def get_fills(self, symbol: str = SYMBOL, order_id: str = "") -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"symbol": symbol, "limit": 1000}
+        if order_id:
+            params["orderId"] = order_id
+        value = self._signed("GET", "/fapi/v1/userTrades", params)
+        if not isinstance(value, list):
+            raise RuntimeError("MALFORMED_FILLS_RESPONSE")
+        return [dict(item) for item in value if isinstance(item, dict)]
+
+    def get_income(self, symbol: str = SYMBOL, income_type: str = "FUNDING_FEE") -> list[dict[str, Any]]:
+        value = self._signed(
+            "GET",
+            "/fapi/v1/income",
+            {"symbol": symbol, "incomeType": income_type, "limit": 1000},
+        )
+        if not isinstance(value, list):
+            raise RuntimeError("MALFORMED_INCOME_RESPONSE")
+        return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def _decimal_text(value: Any) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
+
+
+def position_quantity(position: dict[str, Any]) -> float:
+    return float(position.get("positionAmt", position.get("quantity", 0.0)) or 0.0)
+
+
+def account_equity(account: dict[str, Any]) -> float:
+    if "totalMarginBalance" in account:
+        return float(account.get("totalMarginBalance") or 0.0)
+    wallet = float(account.get("totalWalletBalance", account.get("walletBalance", 0.0)) or 0.0)
+    unrealized = float(account.get("totalUnrealizedProfit", account.get("unrealizedProfit", 0.0)) or 0.0)
+    return wallet + unrealized
+
+
+def usdt_available_balance(rows: list[dict[str, Any]]) -> float:
+    matches = [row for row in rows if str(row.get("asset", "")).upper() == "USDT"]
+    if len(matches) != 1:
+        raise ValueError("USDT balance unavailable")
+    row = matches[0]
+    return float(row.get("availableBalance", row.get("balance", 0.0)) or 0.0)
+
+
+def strategy_equity_from_evidence(
+    records: list[dict[str, Any]],
+    position: dict[str, Any],
+) -> float:
+    """Exclude deposits or unrelated account funds from strategy allocation."""
+    latest: dict[str, dict[str, Any]] = {}
+    for row in records:
+        if row.get("signal_key"):
+            latest[str(row["signal_key"])] = row
+    fills = [row for row in latest.values() if row.get("status") == "FILLED"]
+    funding = [row for row in latest.values() if row.get("status") == "ACCOUNT_INCOME"]
+    realized = sum(float(row.get("realized_pnl", 0.0) or 0.0) for row in fills)
+    fees = sum(float(row.get("fee", 0.0) or 0.0) for row in fills)
+    funding_total = sum(float(row.get("funding", 0.0) or 0.0) for row in funding)
+    unrealized = float(
+        position.get("unRealizedProfit", position.get("unrealizedProfit", 0.0)) or 0.0
+    )
+    return STARTING_EQUITY + realized - fees + funding_total + unrealized
+
+
+def verify_dedicated_account_boundary(
+    *,
+    exchange_equity: float,
+    strategy_equity: float,
+    tolerance: float = 0.50,
+) -> dict[str, Any]:
+    difference = float(exchange_equity) - float(strategy_equity)
+    return {
+        "ok": abs(difference) <= tolerance,
+        "difference": difference,
+        "reason": "" if abs(difference) <= tolerance else "EXTERNAL_ACCOUNT_EQUITY_DETECTED",
+    }
+
+
+def extract_symbol_rules(exchange_info: dict[str, Any], symbol: str = SYMBOL) -> dict[str, Any]:
+    symbols = [item for item in exchange_info.get("symbols", []) if isinstance(item, dict)]
+    matches = [item for item in symbols if item.get("symbol") == symbol]
+    if len(matches) != 1:
+        raise ValueError("ZECUSDT exchange rules unavailable")
+    row = matches[0]
+    filters = {item.get("filterType"): item for item in row.get("filters", []) if isinstance(item, dict)}
+    lot = filters.get("MARKET_LOT_SIZE") or filters.get("LOT_SIZE") or {}
+    notional = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL") or {}
+    price_filter = filters.get("PRICE_FILTER") or {}
+    return {
+        "symbol": symbol,
+        "status": row.get("status"),
+        "contract_type": row.get("contractType"),
+        "price_precision": int(row.get("pricePrecision", -1)),
+        "qty_precision": int(row.get("quantityPrecision", -1)),
+        "tick_size": float(price_filter.get("tickSize", 0.0) or 0.0),
+        "step_size": float(lot.get("stepSize", 0.0) or 0.0),
+        "min_qty": float(lot.get("minQty", 0.0) or 0.0),
+        "min_notional": float(notional.get("notional", notional.get("minNotional", 0.0)) or 0.0),
+    }
+
+
+def run_live_preflight(
+    adapter: ExecutionAdapter,
+    *,
+    expected_budget: float = 50.0,
+    withdrawal_disabled_verified: bool = False,
+    maximum_clock_skew_ms: int = 1000,
+    local_time_ms: Optional[int] = None,
+) -> dict[str, Any]:
+    """Authenticated no-order preflight.  It does not change leverage/margin."""
+    checks: dict[str, Any] = {}
+    try:
+        rules = extract_symbol_rules(adapter.get_exchange_info())
+        checks["symbol_tradeable"] = rules["status"] == "TRADING" and rules["contract_type"] == "PERPETUAL"
+        checks["symbol_rules"] = rules
+        server_time = int(adapter.get_server_time().get("serverTime", 0))
+        local_ms = int(local_time_ms if local_time_ms is not None else datetime.now(timezone.utc).timestamp() * 1000)
+        checks["clock_skew_ms"] = abs(local_ms - server_time)
+        checks["clock_ok"] = checks["clock_skew_ms"] <= maximum_clock_skew_ms
+        account = adapter.get_account()
+        checks["api_read"] = True
+        restrictions = adapter.get_api_restrictions()
+        checks["api_trade"] = _to_bool(account.get("canTrade")) and _to_bool(restrictions.get("enableFutures"))
+        checks["withdrawal_disabled_verified"] = not _to_bool(restrictions.get("enableWithdrawals"))
+        checks["ip_restricted"] = _to_bool(restrictions.get("ipRestrict"))
+        checks["account_equity"] = account_equity(account)
+        checks["available_balance"] = usdt_available_balance(adapter.get_balance())
+        checks["available_buffer_ok"] = checks["available_balance"] >= expected_budget * 0.96
+        budget_tolerance = max(1.0, expected_budget * 0.02)
+        checks["strategy_budget_ok"] = abs(checks["account_equity"] - expected_budget) <= budget_tolerance
+        position = adapter.get_position()
+        checks["position_zero"] = abs(position_quantity(position)) <= 1e-12
+        checks["isolated"] = _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated"
+        checks["leverage_1x"] = int(float(position.get("leverage", 0) or 0)) == 1
+        checks["one_way_mode"] = not _to_bool(adapter.get_position_mode().get("dualSidePosition"))
+        checks["open_orders_zero"] = len(adapter.get_open_orders()) == 0
+        if withdrawal_disabled_verified:
+            checks["withdrawal_disabled_verified"] = checks["withdrawal_disabled_verified"] is True
+    except Exception as exc:
+        checks["error"] = exc.__class__.__name__
+        checks["preflight_pass"] = False
+        return checks
+    required = [
+        "symbol_tradeable", "clock_ok", "api_read", "api_trade", "strategy_budget_ok", "available_buffer_ok",
+        "position_zero", "isolated", "leverage_1x", "one_way_mode", "open_orders_zero",
+        "withdrawal_disabled_verified", "ip_restricted",
+    ]
+    checks["preflight_pass"] = all(checks.get(key) is True for key in required)
+    return checks
+
+
+def reconcile_startup(
+    state: StrategyState,
+    ledger: LiveExecutionLedger,
+    adapter: ExecutionAdapter,
+    *,
+    tolerance: float = 1e-9,
+) -> dict[str, Any]:
+    """Fail closed when local ledger/state and exchange truth disagree."""
+    position = adapter.get_position()
+    exchange_qty = position_quantity(position)
+    open_orders = adapter.get_open_orders()
+    if exchange_qty < -tolerance:
+        return {"ok": False, "reason": "SHORT_POSITION_FORBIDDEN", "exchange_qty": exchange_qty}
+
+    records = ledger.read()
+    latest: dict[str, dict[str, Any]] = {}
+    for row in records:
+        if row.get("signal_key"):
+            latest[str(row["signal_key"])] = row
+    pending = [row for row in latest.values() if row.get("status") in {"SIGNAL_CONFIRMED", "SUBMITTING", "NEW", "PARTIALLY_FILLED", UNKNOWN_STATUS}]
+    known_clients = {str(row.get("client_order_id", "")) for row in pending}
+    unknown_exchange_orders = [
+        item for item in open_orders
+        if str(item.get("clientOrderId", item.get("client_order_id", ""))) not in known_clients
+    ]
+    if unknown_exchange_orders:
+        return {"ok": False, "reason": "UNRECOGNIZED_EXCHANGE_OPEN_ORDER"}
+
+    expected_qty = float(state.actual_position_qty)
+    if abs(exchange_qty - expected_qty) > tolerance and not pending:
+        return {
+            "ok": False,
+            "reason": "LOCAL_EXCHANGE_POSITION_MISMATCH",
+            "local_qty": expected_qty,
+            "exchange_qty": exchange_qty,
+        }
+    if state.phase in {StrategyPhase.FLAT.value, StrategyPhase.HARD_STOP.value, StrategyPhase.TARGET_REACHED_PAUSED.value} and exchange_qty > tolerance and not pending:
+        return {"ok": False, "reason": "EXCHANGE_POSITION_WHILE_LOCAL_FLAT"}
+    return {
+        "ok": True,
+        "exchange_qty": exchange_qty,
+        "open_order_count": len(open_orders),
+        "pending_local_order_count": len(pending),
+        "position": position,
+        "open_orders": open_orders,
+    }
+
+
+class LiveExecutionEngine:
+    """Order idempotency and exchange-status reconciliation boundary."""
+
+    def __init__(self, adapter: ExecutionAdapter, ledger: LiveExecutionLedger):
+        self.adapter = adapter
+        self.ledger = ledger
+
+    def execute(
+        self,
+        decision: StrategyDecision,
+        state: StrategyState,
+        *,
+        strategy_equity: float,
+        mark_price: float,
+        symbol_rules: dict[str, Any],
+        exchange_available_balance: Optional[float] = None,
+    ) -> dict[str, Any]:
+        if not decision.action:
+            return {"ok": True, "submitted": False, "reason": "NO_ACTION"}
+        previous = self.ledger.latest_by_signal_key(decision.signal_key)
+        retry_requested_qty: Optional[float] = None
+        if previous and previous.get("status") != UNKNOWN_STATUS:
+            return {
+                "ok": True,
+                "submitted": False,
+                "duplicate_blocked": True,
+                "status": previous.get("status"),
+            }
+        if previous and previous.get("status") == UNKNOWN_STATUS:
+            recovered = self.adapter.query_order(
+                client_order_id=decision.client_order_id,
+                exchange_order_id=str(previous.get("exchange_order_id", "")),
+            )
+            if recovered is not None:
+                return self._record_exchange_status(
+                    decision, state, recovered,
+                    requested_qty=float(previous.get("requested_qty", 0.0) or 0.0),
+                    strategy_equity_before=strategy_equity,
+                )
+            # A retry is allowed only after the exchange explicitly reports the
+            # client order id absent.  The same id is reused.
+            retry_requested_qty = float(previous.get("requested_qty", 0.0) or 0.0)
+
+        requested_qty = retry_requested_qty or self._requested_qty(
+            decision.action,
+            state,
+            strategy_equity=strategy_equity,
+            exchange_available_balance=exchange_available_balance,
+            mark_price=mark_price,
+            symbol_rules=symbol_rules,
+        )
+        if requested_qty <= 0:
+            return {"ok": False, "submitted": False, "reason": "INVALID_OR_ZERO_QUANTITY"}
+
+        base = self._base_record(
+            decision,
+            requested_qty=requested_qty,
+            strategy_equity_before=strategy_equity,
+        )
+        self.ledger.append({**base, "status": "SIGNAL_CONFIRMED"})
+        self.ledger.append({**base, "status": "SUBMITTING"})
+        side = "BUY" if decision.action in {LiveAction.OPEN.value, LiveAction.ADD_50.value} else "SELL"
+        reduce_only = decision.action not in {LiveAction.OPEN.value, LiveAction.ADD_50.value}
+        try:
+            response = self.adapter.submit_market_order(
+                side=side,
+                quantity=requested_qty,
+                client_order_id=decision.client_order_id,
+                reduce_only=reduce_only,
+            )
+        except (TimeoutError, ConnectionError, OSError):
+            recovered = self.adapter.query_order(client_order_id=decision.client_order_id)
+            if recovered is None:
+                self.ledger.append({**base, "status": UNKNOWN_STATUS})
+                return {"ok": False, "submitted": True, "status": UNKNOWN_STATUS}
+            response = recovered
+        return self._record_exchange_status(
+            decision,
+            state,
+            response,
+            requested_qty=requested_qty,
+            strategy_equity_before=strategy_equity,
+        )
+
+    def reconcile_order(
+        self,
+        decision: StrategyDecision,
+        state: StrategyState,
+        *,
+        strategy_equity: float,
+    ) -> dict[str, Any]:
+        previous = self.ledger.latest_by_signal_key(decision.signal_key)
+        if previous is None:
+            return {"ok": False, "reason": "LOCAL_ORDER_NOT_FOUND"}
+        response = self.adapter.query_order(
+            client_order_id=decision.client_order_id,
+            exchange_order_id=str(previous.get("exchange_order_id", "")),
+        )
+        if response is None:
+            unknown = dict(previous)
+            unknown["status"] = UNKNOWN_STATUS
+            unknown["recorded_at"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            self.ledger.append(unknown)
+            return {"ok": False, "status": UNKNOWN_STATUS}
+        return self._record_exchange_status(
+            decision,
+            state,
+            response,
+            requested_qty=float(previous.get("requested_qty", 0.0) or 0.0),
+            strategy_equity_before=strategy_equity,
+        )
+
+    def sync_funding_income(self) -> dict[str, Any]:
+        """Append each exchange funding income event exactly once."""
+        existing = {
+            str(row.get("signal_key", ""))
+            for row in self.ledger.read()
+            if row.get("status") == "ACCOUNT_INCOME"
+        }
+        appended = 0
+        for row in self.adapter.get_income(income_type="FUNDING_FEE"):
+            event_id = str(row.get("tranId", "") or f"{row.get('time','')}:{row.get('income','')}")
+            signal_key = f"{STRATEGY_ID}:{SYMBOL}:FUNDING:{event_id}"
+            if signal_key in existing:
+                continue
+            epoch_ms = int(float(row.get("time", 0) or 0))
+            recorded_at = (
+                datetime.fromtimestamp(epoch_ms / 1000.0, timezone.utc).isoformat(timespec="milliseconds")
+                if epoch_ms > 0 else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            )
+            self.ledger.append({
+                "strategy_id": STRATEGY_ID,
+                "signal_key": signal_key,
+                "symbol": SYMBOL,
+                "timeframe": TIMEFRAME,
+                "bar_close_time": recorded_at,
+                "action": "FUNDING_PAYMENT",
+                "status": "ACCOUNT_INCOME",
+                "requested_qty": 0.0,
+                "filled_qty": 0.0,
+                "average_fill_price": 0.0,
+                "client_order_id": "",
+                "exchange_order_id": "",
+                "fee": 0.0,
+                "fee_asset": str(row.get("asset", "USDT")),
+                "funding": float(row.get("income", 0.0) or 0.0),
+                "realized_pnl": 0.0,
+                "net_realized_pnl": float(row.get("income", 0.0) or 0.0),
+                "realized_slippage": 0.0,
+                "strategy_equity_before": 0.0,
+                "strategy_equity_after": 0.0,
+                "exchange_snapshot": _sanitize_exchange_snapshot(row),
+                "recorded_at": recorded_at,
+            })
+            existing.add(signal_key)
+            appended += 1
+        return {"ok": True, "appended": appended}
+
+    @staticmethod
+    def _requested_qty(
+        action: str,
+        state: StrategyState,
+        *,
+        strategy_equity: float,
+        exchange_available_balance: Optional[float],
+        mark_price: float,
+        symbol_rules: dict[str, Any],
+    ) -> float:
+        if mark_price <= 0:
+            return 0.0
+        if action == LiveAction.OPEN.value:
+            permitted_equity = min(
+                strategy_equity,
+                float(exchange_available_balance) if exchange_available_balance is not None else strategy_equity,
+            )
+            raw_qty = safe_initial_notional(permitted_equity) / mark_price
+        elif action == LiveAction.REDUCE_50.value:
+            raw_qty = state.actual_position_qty * 0.5
+        elif action == LiveAction.ADD_50.value:
+            raw_qty = min(
+                max(state.reduced_qty, 0.0),
+                max(state.full_position_qty - state.actual_position_qty, 0.0),
+            )
+        elif action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}:
+            raw_qty = state.actual_position_qty
+        else:
+            return 0.0
+        resolved_rules = dict(symbol_rules)
+        if action in {
+            LiveAction.REDUCE_50.value,
+            LiveAction.STOP_CLOSE.value,
+            LiveAction.HARD_STOP_CLOSE.value,
+        }:
+            # Closing/reducing an existing position must not be blocked by the
+            # entry notional gate. Quantity precision and minQty still apply.
+            resolved_rules["min_notional"] = 0.0
+        normalized = normalize_order_params(price=mark_price, qty=raw_qty, rules=resolved_rules)
+        return float(normalized["normalized_qty"]) if normalized["is_valid"] else 0.0
+
+    @staticmethod
+    def _base_record(
+        decision: StrategyDecision,
+        *,
+        requested_qty: float,
+        strategy_equity_before: float,
+    ) -> dict[str, Any]:
+        return {
+            "strategy_id": STRATEGY_ID,
+            "signal_key": decision.signal_key,
+            "symbol": SYMBOL,
+            "timeframe": TIMEFRAME,
+            "bar_close_time": decision.bar_close_time,
+            "action": decision.action,
+            "signal_price": decision.signal_price,
+            "entry_low": decision.entry_low,
+            "reason": decision.reason,
+            "requested_qty": requested_qty,
+            "filled_qty": 0.0,
+            "average_fill_price": 0.0,
+            "client_order_id": decision.client_order_id,
+            "exchange_order_id": "",
+            "fee": 0.0,
+            "fee_asset": "",
+            "funding": 0.0,
+            "realized_pnl": 0.0,
+            "net_realized_pnl": 0.0,
+            "realized_slippage": 0.0,
+            "strategy_equity_before": float(strategy_equity_before),
+            "strategy_equity_after": float(strategy_equity_before),
+            "exchange_snapshot": {},
+            "recorded_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+        }
+
+    def _record_exchange_status(
+        self,
+        decision: StrategyDecision,
+        state: StrategyState,
+        response: dict[str, Any],
+        *,
+        requested_qty: float,
+        strategy_equity_before: float,
+    ) -> dict[str, Any]:
+        status = str(response.get("status", "")).upper()
+        if status not in ORDER_STATUSES:
+            status = UNKNOWN_STATUS
+        filled_qty = float(response.get("executedQty", response.get("filled_qty", 0.0)) or 0.0)
+        average_price = float(response.get("avgPrice", response.get("average_fill_price", 0.0)) or 0.0)
+        exchange_order_id = str(response.get("orderId", response.get("exchange_order_id", "")) or "")
+        evidence = self._fill_evidence(exchange_order_id) if filled_qty > 0 else {}
+        fee = float(evidence.get("fee", 0.0))
+        realized_pnl = float(evidence.get("realized_pnl", 0.0))
+        equity_after = strategy_equity_before
+        try:
+            equity_after = account_equity(self.adapter.get_account())
+        except Exception:
+            pass
+        record = {
+            **self._base_record(
+                decision,
+                requested_qty=requested_qty,
+                strategy_equity_before=strategy_equity_before,
+            ),
+            "status": status,
+            "filled_qty": filled_qty,
+            "average_fill_price": average_price,
+            "exchange_order_id": exchange_order_id,
+            "fee": fee,
+            "fee_asset": evidence.get("fee_asset", ""),
+            "realized_pnl": realized_pnl,
+            "net_realized_pnl": realized_pnl - fee,
+            "realized_slippage": _realized_slippage(
+                action=str(decision.action),
+                signal_price=float(decision.signal_price),
+                average_fill_price=average_price,
+                filled_qty=filled_qty,
+            ),
+            "strategy_equity_after": equity_after,
+            "exchange_snapshot": _sanitize_exchange_snapshot(response),
+        }
+        previous = self.ledger.latest_by_signal_key(decision.signal_key)
+        if (
+            previous
+            and previous.get("status") == status
+            and float(previous.get("filled_qty", 0.0) or 0.0) == filled_qty
+            and str(previous.get("exchange_order_id", "")) == exchange_order_id
+        ):
+            return {
+                "ok": status in {"NEW", "PARTIALLY_FILLED", "FILLED"},
+                "submitted": False,
+                "status": status,
+                "filled_qty": filled_qty,
+                "exchange_order_id": exchange_order_id,
+                "unchanged": True,
+            }
+        self.ledger.append(record)
+        if status == "FILLED":
+            Zec4hStrategy.apply_filled_action(state, decision, filled_qty=filled_qty)
+        elif status in {"CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}:
+            state.pending_action = ""
+            if filled_qty > 0:
+                if decision.action in {LiveAction.OPEN.value, LiveAction.ADD_50.value}:
+                    state.actual_position_qty += filled_qty
+                    state.full_position_qty = max(state.full_position_qty, state.actual_position_qty)
+                else:
+                    state.actual_position_qty = max(0.0, state.actual_position_qty - filled_qty)
+            state.phase = StrategyPhase.HARD_STOP.value
+            state.hard_stop_reason = f"ORDER_{status}"
+        return {
+            "ok": status in {"NEW", "PARTIALLY_FILLED", "FILLED"},
+            "submitted": True,
+            "status": status,
+            "filled_qty": filled_qty,
+            "exchange_order_id": exchange_order_id,
+        }
+
+    def _fill_evidence(self, exchange_order_id: str) -> dict[str, Any]:
+        if not exchange_order_id:
+            return {}
+        try:
+            fills = self.adapter.get_fills(order_id=exchange_order_id)
+        except Exception:
+            return {}
+        matching = [row for row in fills if str(row.get("orderId", "")) == exchange_order_id]
+        fee = sum(float(row.get("commission", 0.0) or 0.0) for row in matching)
+        realized = sum(float(row.get("realizedPnl", 0.0) or 0.0) for row in matching)
+        assets = {str(row.get("commissionAsset", "")) for row in matching if row.get("commissionAsset")}
+        return {
+            "fee": fee,
+            "fee_asset": next(iter(assets)) if len(assets) == 1 else ("MULTIPLE" if assets else ""),
+            "realized_pnl": realized,
+        }
+
+
+def _sanitize_exchange_snapshot(response: dict[str, Any]) -> dict[str, Any]:
+    blocked = {"signature", "apikey", "api_key", "api_secret", "secret"}
+    return {key: value for key, value in response.items() if str(key).lower() not in blocked}
+
+
+def _realized_slippage(*, action: str, signal_price: float, average_fill_price: float, filled_qty: float) -> float:
+    if min(signal_price, average_fill_price, filled_qty) <= 0:
+        return 0.0
+    if action in {LiveAction.OPEN.value, LiveAction.ADD_50.value}:
+        return (average_fill_price - signal_price) * filled_qty
+    return (signal_price - average_fill_price) * filled_qty
+
+
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
