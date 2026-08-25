@@ -29,6 +29,8 @@ from core.zec_4h_live import (
     StrategyPhase,
     StrategyState,
     Zec4hStrategy,
+    build_client_order_id,
+    build_signal_key,
     safe_initial_notional,
 )
 
@@ -476,7 +478,7 @@ def reconcile_startup(
             "local_qty": expected_qty,
             "exchange_qty": exchange_qty,
         }
-    if state.phase in {StrategyPhase.FLAT.value, StrategyPhase.HARD_STOP.value, StrategyPhase.TARGET_REACHED_PAUSED.value} and exchange_qty > tolerance and not pending:
+    if state.phase in {StrategyPhase.FLAT.value, StrategyPhase.TARGET_REACHED_PAUSED.value} and exchange_qty > tolerance and not pending:
         return {"ok": False, "reason": "EXCHANGE_POSITION_WHILE_LOCAL_FLAT"}
     return {
         "ok": True,
@@ -485,6 +487,153 @@ def reconcile_startup(
         "pending_local_order_count": len(pending),
         "position": position,
         "open_orders": open_orders,
+    }
+
+
+def _decision_from_ledger_record(row: dict[str, Any]) -> StrategyDecision:
+    return StrategyDecision(
+        action=str(row.get("action", "")),
+        signal_key=str(row.get("signal_key", "")),
+        client_order_id=str(row.get("client_order_id", "")),
+        bar_close_time=str(row.get("bar_close_time", "")),
+        signal_price=float(row.get("signal_price", 0.0) or 0.0),
+        entry_low=(float(row["entry_low"]) if row.get("entry_low") is not None else None),
+        reason=str(row.get("reason", "RECOVERED_FROM_LEDGER")),
+    )
+
+
+def _partial_terminal_safety_decision(
+    original: StrategyDecision,
+    *,
+    status: str,
+) -> StrategyDecision:
+    action = LiveAction.HARD_STOP_CLOSE.value
+    signal_key = f"{original.signal_key}:RESIDUAL:{status}"
+    return StrategyDecision(
+        action=action,
+        signal_key=signal_key,
+        client_order_id=build_client_order_id(signal_key, action, original.bar_close_time),
+        bar_close_time=original.bar_close_time,
+        signal_price=original.signal_price,
+        entry_low=None,
+        reason=f"PARTIAL_TERMINAL_{status}",
+        diagnostics={"partial_terminal_source_signal_key": original.signal_key},
+    )
+
+
+def _apply_partial_terminal_transition(
+    state: StrategyState,
+    decision: StrategyDecision,
+    *,
+    status: str,
+    filled_qty: float,
+) -> None:
+    if decision.signal_key in state.applied_fill_signal_keys:
+        return
+    qty = max(0.0, float(filled_qty))
+    if decision.action in {LiveAction.OPEN.value, LiveAction.ADD_50.value}:
+        state.actual_position_qty += qty
+        state.full_position_qty = max(state.full_position_qty, state.actual_position_qty)
+        if decision.action == LiveAction.OPEN.value and decision.entry_low is not None:
+            state.entry_low = float(decision.entry_low)
+    else:
+        state.actual_position_qty = max(0.0, state.actual_position_qty - qty)
+    state.applied_fill_signal_keys.append(decision.signal_key)
+    state.pending_action = ""
+    state.pending_decision = {}
+    state.phase = StrategyPhase.HARD_STOP.value
+    state.hard_stop_reason = f"ORDER_{status}_WITH_PARTIAL_FILL"
+    if state.actual_position_qty > 1e-12:
+        close_decision = _partial_terminal_safety_decision(decision, status=status)
+        state.pending_action = LiveAction.HARD_STOP_CLOSE.value
+        state.recovery_status = "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED"
+        state.recovery_decision = asdict(close_decision)
+    else:
+        state.recovery_status = ""
+        state.recovery_decision = {}
+
+
+def recover_unapplied_filled_transitions(
+    state: StrategyState,
+    ledger: LiveExecutionLedger,
+    adapter: ExecutionAdapter,
+    *,
+    tolerance: float = 1e-9,
+) -> dict[str, Any]:
+    """Apply ledgered exchange fills exactly once before startup reconciliation."""
+    latest: dict[str, dict[str, Any]] = {}
+    for row in ledger.read():
+        signal_key = str(row.get("signal_key", ""))
+        if signal_key:
+            latest[signal_key] = dict(row)
+    recovered_terminal = 0
+    pending_signal_key = str(state.pending_decision.get("signal_key", ""))
+    pending_terminal = latest.get(pending_signal_key) if pending_signal_key else None
+    if pending_terminal is not None:
+        pending_status = str(pending_terminal.get("status", "")).upper()
+        pending_filled = float(pending_terminal.get("filled_qty", 0.0) or 0.0)
+        if pending_status in TERMINAL_ORDER_STATUSES and pending_filled <= 0:
+            state.pending_action = ""
+            state.pending_decision = {}
+            state.recovery_status = ""
+            state.recovery_decision = {}
+            state.phase = StrategyPhase.HARD_STOP.value
+            state.hard_stop_reason = f"ORDER_{pending_status}"
+            recovered_terminal = 1
+    # Only decisions persisted as in-flight before submission are eligible.
+    # Existing ledgers predate ``applied_fill_signal_keys``; scanning every
+    # historical FILLED row on upgrade would double-apply settled exposure.
+    recoverable_signal_keys = {
+        str(payload.get("signal_key", ""))
+        for payload in (state.pending_decision, state.recovery_decision)
+        if payload
+    }
+    recoverable_signal_keys.discard("")
+    candidates = [
+        row for row in latest.values()
+        if str(row.get("signal_key", "")) in recoverable_signal_keys
+        and str(row.get("signal_key", "")) not in state.applied_fill_signal_keys
+        and float(row.get("filled_qty", 0.0) or 0.0) > 0
+        and (
+            str(row.get("status", "")).upper() == "FILLED"
+            or str(row.get("status", "")).upper() in {"CANCELED", "EXPIRED", "EXPIRED_IN_MATCH"}
+        )
+    ]
+    if not candidates:
+        return {"ok": True, "recovered": recovered_terminal}
+    candidates.sort(key=lambda row: str(row.get("recorded_at", "")))
+    projected = StrategyState.from_dict(state.to_dict())
+    for row in candidates:
+        decision = _decision_from_ledger_record(row)
+        status = str(row.get("status", "")).upper()
+        filled_qty = float(row.get("filled_qty", 0.0) or 0.0)
+        if status == "FILLED":
+            Zec4hStrategy.apply_filled_action(
+                projected,
+                decision,
+                filled_qty=filled_qty,
+            )
+        else:
+            _apply_partial_terminal_transition(
+                projected,
+                decision,
+                status=status,
+                filled_qty=filled_qty,
+            )
+    exchange_qty = position_quantity(adapter.get_position())
+    if abs(projected.actual_position_qty - exchange_qty) > tolerance:
+        return {
+            "ok": False,
+            "reason": "FILLED_LEDGER_EXCHANGE_MISMATCH",
+            "projected_qty": projected.actual_position_qty,
+            "exchange_qty": exchange_qty,
+        }
+    for name in StrategyState.__dataclass_fields__:
+        setattr(state, name, getattr(projected, name))
+    return {
+        "ok": True,
+        "recovered": len(candidates) + recovered_terminal,
+        "recovered_signal_keys": [str(row.get("signal_key", "")) for row in candidates],
     }
 
 
@@ -530,6 +679,18 @@ class LiveExecutionEngine:
             # A retry is allowed only after the exchange explicitly reports the
             # client order id absent.  The same id is reused.
             retry_requested_qty = float(previous.get("requested_qty", 0.0) or 0.0)
+
+        invariants = self._runtime_order_invariants(
+            state,
+            strategy_equity=strategy_equity,
+        )
+        if invariants.get("ok") is not True:
+            return {
+                "ok": False,
+                "submitted": False,
+                "reason": "RUNTIME_INVARIANT_BLOCKED",
+                "invariants": invariants,
+            }
 
         requested_qty = retry_requested_qty or self._requested_qty(
             decision.action,
@@ -665,7 +826,10 @@ class LiveExecutionEngine:
             )
             raw_qty = safe_initial_notional(permitted_equity) / mark_price
         elif action == LiveAction.REDUCE_50.value:
-            raw_qty = state.actual_position_qty * 0.5
+            raw_qty = max(
+                0.0,
+                state.actual_position_qty - state.full_position_qty * 0.5,
+            )
         elif action == LiveAction.ADD_50.value:
             raw_qty = min(
                 max(state.reduced_qty, 0.0),
@@ -685,7 +849,42 @@ class LiveExecutionEngine:
             # entry notional gate. Quantity precision and minQty still apply.
             resolved_rules["min_notional"] = 0.0
         normalized = normalize_order_params(price=mark_price, qty=raw_qty, rules=resolved_rules)
-        return float(normalized["normalized_qty"]) if normalized["is_valid"] else 0.0
+        normalized_qty = float(normalized["normalized_qty"]) if normalized["is_valid"] else 0.0
+        if action == LiveAction.REDUCE_50.value and normalized_qty > 0:
+            half_target = state.full_position_qty * 0.5
+            expected_remaining = state.actual_position_qty - normalized_qty
+            step_size = float(resolved_rules.get("step_size", 0.0) or 0.0)
+            tolerance = max(1e-12, step_size * 1e-9)
+            if expected_remaining < half_target - tolerance:
+                return 0.0
+        return normalized_qty
+
+    def _runtime_order_invariants(
+        self,
+        state: StrategyState,
+        *,
+        strategy_equity: float,
+    ) -> dict[str, Any]:
+        reconciliation = reconcile_startup(state, self.ledger, self.adapter)
+        if reconciliation.get("ok") is not True:
+            return {"ok": False, "reason": reconciliation.get("reason", "RECONCILIATION_FAILED")}
+        position = reconciliation.get("position") or {}
+        isolated = _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated"
+        leverage_1x = int(float(position.get("leverage", 0) or 0)) == 1
+        one_way = not _to_bool(self.adapter.get_position_mode().get("dualSidePosition"))
+        boundary = verify_dedicated_account_boundary(
+            exchange_equity=account_equity(self.adapter.get_account()),
+            strategy_equity=strategy_equity,
+        )
+        checks = {
+            "reconciliation": True,
+            "one_way_mode": one_way,
+            "isolated": isolated,
+            "leverage_1x": leverage_1x,
+            "dedicated_account_boundary": boundary.get("ok") is True,
+            "no_unrecognized_open_orders": True,
+        }
+        return {"ok": all(checks.values()), "checks": checks}
 
     @staticmethod
     def _base_record(
@@ -788,22 +987,26 @@ class LiveExecutionEngine:
             Zec4hStrategy.apply_filled_action(state, decision, filled_qty=filled_qty)
         elif status in {"CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}:
             state.pending_action = ""
+            state.pending_decision = {}
             state.recovery_status = ""
             state.recovery_decision = {}
             if filled_qty > 0:
-                if decision.action in {LiveAction.OPEN.value, LiveAction.ADD_50.value}:
-                    state.actual_position_qty += filled_qty
-                    state.full_position_qty = max(state.full_position_qty, state.actual_position_qty)
-                else:
-                    state.actual_position_qty = max(0.0, state.actual_position_qty - filled_qty)
-            state.phase = StrategyPhase.HARD_STOP.value
-            state.hard_stop_reason = f"ORDER_{status}"
+                _apply_partial_terminal_transition(
+                    state,
+                    decision,
+                    status=status,
+                    filled_qty=filled_qty,
+                )
+            else:
+                state.phase = StrategyPhase.HARD_STOP.value
+                state.hard_stop_reason = f"ORDER_{status}"
         return {
             "ok": status in {"NEW", "PARTIALLY_FILLED", "FILLED"},
             "submitted": True,
             "status": status,
             "filled_qty": filled_qty,
             "exchange_order_id": exchange_order_id,
+            "safety_exit_required": state.recovery_status == "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED",
         }
 
     def _fill_evidence(self, exchange_order_id: str) -> dict[str, Any]:

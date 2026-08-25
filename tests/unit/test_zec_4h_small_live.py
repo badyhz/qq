@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import scripts.run_zec_4h_small_live as live_runner
 
 from core.paper_trading.data_source import MarketBar
 from core.zec_4h_live import (
@@ -26,11 +27,16 @@ from core.zec_4h_live_execution import (
     UNKNOWN_STATUS,
     extract_symbol_rules,
     reconcile_startup,
+    recover_unapplied_filled_transitions,
     run_live_preflight,
     strategy_equity_from_evidence,
     verify_dedicated_account_boundary,
 )
-from scripts.run_zec_4h_small_live import _recover_persisted_recovery_outcome
+from scripts.run_zec_4h_small_live import (
+    _decision_from_record,
+    _execute_with_immediate_safety_exit,
+    _recover_persisted_recovery_outcome,
+)
 
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -110,6 +116,7 @@ class FakeAdapter:
             "orderId": "1001", "clientOrderId": "fake",
         }
         self.submit_error: Exception | None = None
+        self.submit_responses = []
         self.query_response = None
         self.position = {"symbol": "ZECUSDT", "positionAmt": "0", "isolated": True, "leverage": "1"}
         self.open_orders = []
@@ -122,6 +129,7 @@ class FakeAdapter:
         self.fills = []
         self.income = []
         self.submitted = []
+        self.dual_side_position = False
 
     def get_account(self): return dict(self.account)
     def get_balance(self): return [{"asset": "USDT", "balance": "50"}]
@@ -129,7 +137,7 @@ class FakeAdapter:
     def get_open_orders(self, symbol="ZECUSDT"): return [dict(row) for row in self.open_orders]
     def get_exchange_info(self): return exchange_info_fixture()
     def get_server_time(self): return {"serverTime": int(BASE.timestamp() * 1000)}
-    def get_position_mode(self): return {"dualSidePosition": False}
+    def get_position_mode(self): return {"dualSidePosition": self.dual_side_position}
     def get_api_restrictions(self):
         return {"enableFutures": True, "enableWithdrawals": False, "ipRestrict": True}
     def set_leverage(self, leverage, symbol="ZECUSDT"): return {"leverage": leverage, "symbol": symbol}
@@ -140,8 +148,16 @@ class FakeAdapter:
         self.submitted.append(dict(kwargs))
         if self.submit_error:
             raise self.submit_error
-        row = dict(self.submit_response)
+        row = dict(self.submit_responses.pop(0) if self.submit_responses else self.submit_response)
         row["clientOrderId"] = kwargs["client_order_id"]
+        filled_qty = float(row.get("executedQty", 0.0) or 0.0)
+        if filled_qty > 0:
+            current_qty = float(self.position.get("positionAmt", 0.0) or 0.0)
+            if kwargs["side"] == "BUY":
+                current_qty += filled_qty
+            else:
+                current_qty = max(0.0, current_qty - filled_qty)
+            self.position["positionAmt"] = str(current_qty)
         return row
 
     def query_order(self, **kwargs): return None if self.query_response is None else dict(self.query_response)
@@ -545,6 +561,39 @@ def test_two_hundred_bar_warmup_initializes_without_order():
     assert state.last_processed_bar_close_time == bars[-1].close_time.isoformat(timespec="milliseconds")
     assert state.pending_action == ""
     assert state.actual_position_qty == 0.0
+    assert state.attack_open == pytest.approx(bars[-1].open)
+    assert state.attack_close == pytest.approx(bars[-1].close)
+    assert state.wait_attack_reduce is True
+
+
+def test_bootstrap_rebuilds_last_buy_and_blocks_same_direction_new_edge():
+    history = bars_from_closes([100.0] * (WARMUP_BARS - 1) + [106.0])
+    state = StrategyState()
+    Zec4hStrategy().initialize_baseline(history, state)
+    assert state.last_signal == "BUY"
+    assert state.last_signal_open == pytest.approx(history[-1].open)
+    assert state.buy_condition_active is True
+    assert state.pending_action == ""
+    assert state.actual_position_qty == 0.0
+
+    # The next real bar makes BUY false without producing a valid SELL.
+    false_bar_history = bars_from_closes(
+        [100.0] * (WARMUP_BARS - 1) + [106.0, 101.0]
+    )
+    first = Zec4hStrategy().evaluate(false_bar_history, state, strategy_equity=50)
+    assert first.action is None
+    assert state.last_signal == "BUY"
+    assert state.buy_condition_active is False
+    assert state.sell_condition_active is False
+
+    # A subsequent false->true BUY edge is rejected by rebuilt last_signal.
+    next_bars = bars_from_closes(
+        [100.0] * (WARMUP_BARS - 1) + [106.0, 101.0, 112.0]
+    )
+    result = Zec4hStrategy().evaluate(next_bars, state, strategy_equity=50)
+    assert result.action is None
+    assert state.last_signal == "BUY"
+    assert state.phase == StrategyPhase.FLAT.value
 
 
 def test_multibar_replay_updates_add_signal_and_attack_state_in_order():
@@ -630,6 +679,7 @@ def test_historical_missed_stop_with_live_long_requires_safety_exit(tmp_path: Pa
     assert recovered.recovery_status == "SAFETY_EXIT_REQUIRED"
     assert recovered.recovery_decision["signal_key"] == replay.risk_reduction_decision.signal_key
     adapter = FakeAdapter()
+    adapter.position["positionAmt"] = "1"
     adapter.submit_response.update(executedQty="1", avgPrice="89")
     ledger = LiveExecutionLedger(tmp_path / "recovery.jsonl")
     engine = LiveExecutionEngine(adapter, ledger)
@@ -712,9 +762,11 @@ def test_duplicate_actions_are_blocked(tmp_path: Path, action: str):
     adapter = FakeAdapter()
     if action in {LiveAction.REDUCE_50.value, LiveAction.STOP_CLOSE.value}:
         adapter.submit_response["executedQty"] = "0.5" if action == LiveAction.REDUCE_50.value else "1"
+        adapter.position["positionAmt"] = "1"
         state = StrategyState(phase=StrategyPhase.LONG_FULL.value, actual_position_qty=1, full_position_qty=1)
     elif action == LiveAction.ADD_50.value:
         adapter.submit_response["executedQty"] = "0.5"
+        adapter.position["positionAmt"] = "0.5"
         state = StrategyState(
             phase=StrategyPhase.WAITING_READD.value, actual_position_qty=0.5,
             full_position_qty=1, reduced_qty=0.5,
@@ -828,12 +880,175 @@ def test_expired_partial_fill_tracks_exchange_exposure_and_hard_stops(tmp_path: 
     assert state.phase == StrategyPhase.HARD_STOP.value
 
 
+@pytest.mark.parametrize("terminal_status", ["CANCELED", "EXPIRED", "EXPIRED_IN_MATCH"])
+def test_partial_terminal_immediately_submits_hard_stop_close(tmp_path: Path, terminal_status: str):
+    adapter = FakeAdapter()
+    adapter.submit_responses = [
+        {"status": terminal_status, "executedQty": "0.2", "avgPrice": "100", "orderId": "p1"},
+        {"status": "FILLED", "executedQty": "0.2", "avgPrice": "99", "orderId": "p2"},
+    ]
+    state = StrategyState()
+    engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
+    result = _execute_with_immediate_safety_exit(
+        engine,
+        decision(LiveAction.OPEN.value),
+        state,
+        strategy_equity=50,
+        mark_price=100,
+        symbol_rules=RULES,
+    )
+    assert result["immediate_safety_exit"] is True
+    assert result["primary"]["status"] == terminal_status
+    assert result["safety_exit"]["status"] == "FILLED"
+    assert adapter.submit_count == 2
+    assert float(adapter.position["positionAmt"]) == pytest.approx(0.0)
+    assert state.phase == StrategyPhase.HARD_STOP.value
+    assert state.actual_position_qty == 0.0
+
+
+def test_partial_terminal_crash_recovers_then_closes_without_waiting_for_bar(tmp_path: Path):
+    ledger = LiveExecutionLedger(tmp_path / "live.jsonl")
+    item = decision(LiveAction.OPEN.value)
+    ledger.append({
+        "strategy_id": "zec_4h_live_v1",
+        "signal_key": item.signal_key,
+        "bar_close_time": item.bar_close_time,
+        "action": item.action,
+        "status": "EXPIRED",
+        "requested_qty": 0.48,
+        "filled_qty": 0.2,
+        "average_fill_price": 100.0,
+        "client_order_id": item.client_order_id,
+        "exchange_order_id": "partial-crash",
+        "signal_price": item.signal_price,
+        "entry_low": item.entry_low,
+        "recorded_at": "2026-08-24T16:00:01.000+00:00",
+    })
+    adapter = FakeAdapter()
+    adapter.position["positionAmt"] = "0.2"
+    state = StrategyState(
+        pending_action=item.action,
+        pending_decision=dict(item.__dict__),
+    )
+    recovered = recover_unapplied_filled_transitions(state, ledger, adapter)
+    assert recovered["ok"] is True
+    assert recovered["recovered"] == 1
+    assert state.recovery_status == "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED"
+    assert state.actual_position_qty == pytest.approx(0.2)
+
+    adapter.submit_response.update(status="FILLED", executedQty="0.2", avgPrice="99")
+    engine = LiveExecutionEngine(adapter, ledger)
+    safety = _execute_with_immediate_safety_exit(
+        engine,
+        _decision_from_record(state.recovery_decision),
+        state,
+        strategy_equity=50,
+        mark_price=99,
+        symbol_rules=RULES,
+    )
+    assert safety["status"] == "FILLED"
+    assert adapter.submit_count == 1
+    assert state.actual_position_qty == 0.0
+
+
 def test_restart_reconciliation_passes_matching_position(tmp_path: Path):
     adapter = FakeAdapter()
     adapter.position["positionAmt"] = "1"
     state = StrategyState(phase=StrategyPhase.LONG_FULL.value, actual_position_qty=1, full_position_qty=1)
     result = reconcile_startup(state, LiveExecutionLedger(tmp_path / "live.jsonl"), adapter)
     assert result["ok"] is True
+
+
+@pytest.mark.parametrize(
+    "action,before_qty,filled_qty,after_qty,before_phase",
+    [
+        (LiveAction.OPEN.value, 0.0, 1.0, 1.0, StrategyPhase.FLAT.value),
+        (LiveAction.REDUCE_50.value, 1.0, 0.5, 0.5, StrategyPhase.LONG_FULL.value),
+        (LiveAction.ADD_50.value, 0.5, 0.5, 1.0, StrategyPhase.WAITING_READD.value),
+        (LiveAction.STOP_CLOSE.value, 1.0, 1.0, 0.0, StrategyPhase.LONG_FULL.value),
+        (LiveAction.HARD_STOP_CLOSE.value, 1.0, 1.0, 0.0, StrategyPhase.LONG_FULL.value),
+    ],
+)
+def test_generic_filled_crash_recovery_applies_exactly_once(
+    tmp_path: Path,
+    action: str,
+    before_qty: float,
+    filled_qty: float,
+    after_qty: float,
+    before_phase: str,
+):
+    state = StrategyState(
+        phase=before_phase,
+        actual_position_qty=before_qty,
+        full_position_qty=1.0 if before_qty else 0.0,
+        reduced_qty=0.5 if action == LiveAction.ADD_50.value else 0.0,
+        entry_low=80.0 if before_qty else None,
+    )
+    item = decision(action, entry_low=95.0)
+    state.pending_action = action
+    state.pending_decision = dict(item.__dict__)
+    ledger = LiveExecutionLedger(tmp_path / "live.jsonl")
+    ledger.append({
+        "strategy_id": "zec_4h_live_v1",
+        "signal_key": item.signal_key,
+        "bar_close_time": item.bar_close_time,
+        "action": action,
+        "status": "FILLED",
+        "requested_qty": filled_qty,
+        "filled_qty": filled_qty,
+        "average_fill_price": 100.0,
+        "client_order_id": item.client_order_id,
+        "exchange_order_id": f"filled-{action}",
+        "signal_price": item.signal_price,
+        "entry_low": item.entry_low,
+        "recorded_at": "2026-08-24T16:00:01.000+00:00",
+    })
+    adapter = FakeAdapter()
+    adapter.position["positionAmt"] = str(after_qty)
+    first = recover_unapplied_filled_transitions(state, ledger, adapter)
+    snapshot = state.to_dict()
+    second = recover_unapplied_filled_transitions(state, ledger, adapter)
+    assert first["ok"] is True
+    assert first["recovered"] == 1
+    assert second == {"ok": True, "recovered": 0}
+    assert state.to_dict() == snapshot
+    assert state.actual_position_qty == pytest.approx(after_qty)
+    assert state.applied_fill_signal_keys == [item.signal_key]
+    assert state.pending_decision == {}
+    assert adapter.submit_count == 0
+    assert reconcile_startup(state, ledger, adapter)["ok"] is True
+
+
+def test_generic_fill_recovery_does_not_replay_pre_upgrade_history(tmp_path: Path):
+    state = StrategyState(
+        phase=StrategyPhase.LONG_FULL.value,
+        actual_position_qty=1.0,
+        full_position_qty=1.0,
+        entry_low=90.0,
+    )
+    historical = decision(LiveAction.OPEN.value)
+    ledger = LiveExecutionLedger(tmp_path / "live.jsonl")
+    ledger.append({
+        "strategy_id": "zec_4h_live_v1",
+        "signal_key": historical.signal_key,
+        "bar_close_time": historical.bar_close_time,
+        "action": historical.action,
+        "status": "FILLED",
+        "requested_qty": 1.0,
+        "filled_qty": 1.0,
+        "average_fill_price": 100.0,
+        "client_order_id": historical.client_order_id,
+        "exchange_order_id": "historical-fill",
+        "signal_price": historical.signal_price,
+        "entry_low": historical.entry_low,
+        "recorded_at": "2026-08-20T16:00:01.000+00:00",
+    })
+    adapter = FakeAdapter()
+    adapter.position["positionAmt"] = "1.0"
+    before = state.to_dict()
+    recovered = recover_unapplied_filled_transitions(state, ledger, adapter)
+    assert recovered == {"ok": True, "recovered": 0}
+    assert state.to_dict() == before
 
 
 def test_exchange_local_disagreement_fails_closed(tmp_path: Path):
@@ -860,6 +1075,52 @@ def test_initial_order_reserves_buffer_and_never_exceeds_50(tmp_path: Path):
     assert adapter.submit_count == 1
     latest = engine.ledger.read()[-1]
     assert latest["requested_qty"] * 100 <= 48.0 + 1e-9
+
+
+def test_reduce_quantity_never_crosses_original_half_target():
+    state = StrategyState(
+        phase=StrategyPhase.LONG_FULL.value,
+        actual_position_qty=0.6,
+        full_position_qty=1.0,
+    )
+    qty = LiveExecutionEngine._requested_qty(
+        LiveAction.REDUCE_50.value,
+        state,
+        strategy_equity=50,
+        exchange_available_balance=50,
+        mark_price=100,
+        symbol_rules=RULES,
+    )
+    assert qty <= 0.1 + 1e-12
+    assert state.actual_position_qty - qty >= 0.5 - 1e-12
+
+
+@pytest.mark.parametrize(
+    "actual_qty,step_size,expected_qty",
+    [
+        (0.6004, 0.001, 0.100),
+        (0.6004, 0.01, 0.10),
+        (0.5004, 0.001, 0.0),
+        (0.61, 0.07, 0.07),
+    ],
+)
+def test_reduce_step_rounding_preserves_half_floor(actual_qty, step_size, expected_qty):
+    rules = {**RULES, "step_size": step_size, "min_qty": step_size}
+    state = StrategyState(
+        phase=StrategyPhase.LONG_FULL.value,
+        actual_position_qty=actual_qty,
+        full_position_qty=1.0,
+    )
+    qty = LiveExecutionEngine._requested_qty(
+        LiveAction.REDUCE_50.value,
+        state,
+        strategy_equity=50,
+        exchange_available_balance=50,
+        mark_price=100,
+        symbol_rules=rules,
+    )
+    assert qty == pytest.approx(expected_qty)
+    assert actual_qty - qty >= 0.5 - 1e-12
 
 
 def test_strategy_equity_excludes_unrelated_account_deposits():
@@ -890,6 +1151,92 @@ def test_hard_floor_remains_active_between_bar_transitions():
     state.last_processed_bar_close_time = bars[-1].close_time.isoformat(timespec="milliseconds")
     result = Zec4hStrategy().evaluate(bars, state, strategy_equity=29.99)
     assert result.action == LiveAction.HARD_STOP_CLOSE.value
+
+
+def test_runner_hard_floor_closes_on_poll_without_new_closed_bar(tmp_path: Path, monkeypatch):
+    bars = bars_from_closes([100.0] * WARMUP_BARS)
+    state = StrategyState()
+    Zec4hStrategy().initialize_baseline(bars, state)
+    state.phase = StrategyPhase.LONG_FULL.value
+    state.actual_position_qty = 1.0
+    state.full_position_qty = 1.0
+    state.entry_low = 80.0
+    state_path = tmp_path / "state.json"
+    ledger_path = tmp_path / "live.jsonl"
+    scorecard_path = tmp_path / "scorecard.json"
+    save_strategy_state(state_path, state)
+
+    adapter = FakeAdapter()
+    adapter.position.update(positionAmt="1", unRealizedProfit="-20")
+    adapter.account.update(
+        totalMarginBalance="30",
+        totalWalletBalance="30",
+        totalUnrealizedProfit="-20",
+    )
+    adapter.submit_response.update(status="FILLED", executedQty="1", avgPrice="100")
+
+    class PublicSource:
+        def get_bars(self, symbol, timeframe, limit):
+            assert limit >= WARMUP_BARS
+            return list(bars)
+
+    monkeypatch.setattr(live_runner, "_assert_activation", lambda: None)
+    monkeypatch.setattr(live_runner, "_adapter", lambda live_enabled: adapter)
+    monkeypatch.setattr(live_runner, "run_live_preflight", lambda *args, **kwargs: {"preflight_pass": True})
+    monkeypatch.setattr(live_runner, "BinancePublicKlineAdapter", lambda config: PublicSource())
+    before_boundary = state.last_processed_bar_close_time
+    result = live_runner.run_cycle(
+        state_path=state_path,
+        ledger_path=ledger_path,
+        scorecard_path=scorecard_path,
+    )
+    persisted = load_strategy_state(state_path)
+    assert result["result"]["status"] == "FILLED"
+    assert adapter.submit_count == 1
+    assert adapter.submitted[0]["side"] == "SELL"
+    assert adapter.submitted[0]["reduce_only"] is True
+    assert persisted.phase == StrategyPhase.HARD_STOP.value
+    assert persisted.actual_position_qty == 0.0
+    assert persisted.last_processed_bar_close_time == before_boundary
+
+
+def test_runner_partial_terminal_executes_safety_exit_in_same_cycle(tmp_path: Path, monkeypatch):
+    baseline = bars_from_closes([100.0] * WARMUP_BARS)
+    all_bars = bars_from_closes([100.0] * WARMUP_BARS + [106.0])
+    state = StrategyState()
+    Zec4hStrategy().initialize_baseline(baseline, state)
+    state_path = tmp_path / "state.json"
+    ledger_path = tmp_path / "live.jsonl"
+    scorecard_path = tmp_path / "scorecard.json"
+    save_strategy_state(state_path, state)
+
+    adapter = FakeAdapter()
+    adapter.submit_responses = [
+        {"status": "EXPIRED", "executedQty": "0.2", "avgPrice": "106", "orderId": "runner-p1"},
+        {"status": "FILLED", "executedQty": "0.2", "avgPrice": "105", "orderId": "runner-p2"},
+    ]
+
+    class PublicSource:
+        def get_bars(self, symbol, timeframe, limit):
+            return list(all_bars)
+
+    monkeypatch.setattr(live_runner, "_assert_activation", lambda: None)
+    monkeypatch.setattr(live_runner, "_adapter", lambda live_enabled: adapter)
+    monkeypatch.setattr(live_runner, "run_live_preflight", lambda *args, **kwargs: {"preflight_pass": True})
+    monkeypatch.setattr(live_runner, "BinancePublicKlineAdapter", lambda config: PublicSource())
+    result = live_runner.run_cycle(
+        state_path=state_path,
+        ledger_path=ledger_path,
+        scorecard_path=scorecard_path,
+    )
+    persisted = load_strategy_state(state_path)
+    assert result["result"]["immediate_safety_exit"] is True
+    assert result["result"]["primary"]["status"] == "EXPIRED"
+    assert result["result"]["safety_exit"]["status"] == "FILLED"
+    assert adapter.submit_count == 2
+    assert float(adapter.position["positionAmt"]) == 0.0
+    assert persisted.phase == StrategyPhase.HARD_STOP.value
+    assert persisted.actual_position_qty == 0.0
 
 
 def test_target_equity_pauses_new_entries():
@@ -997,3 +1344,27 @@ def test_preflight_requires_every_safety_check():
     )
     assert blocked["preflight_pass"] is False
     assert blocked["strategy_budget_ok"] is False
+
+
+@pytest.mark.parametrize("drift", ["LEVERAGE_10X", "CROSS_MARGIN", "HEDGE_MODE"])
+def test_runtime_invariant_drift_blocks_every_new_order(tmp_path: Path, drift: str):
+    adapter = FakeAdapter()
+    if drift == "LEVERAGE_10X":
+        adapter.position["leverage"] = "10"
+    elif drift == "CROSS_MARGIN":
+        adapter.position["isolated"] = False
+        adapter.position["marginType"] = "cross"
+    else:
+        adapter.dual_side_position = True
+    engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
+    result = engine.execute(
+        decision(LiveAction.OPEN.value),
+        StrategyState(),
+        strategy_equity=50,
+        mark_price=100,
+        symbol_rules=RULES,
+    )
+    assert result["ok"] is False
+    assert result["submitted"] is False
+    assert result["reason"] == "RUNTIME_INVARIANT_BLOCKED"
+    assert adapter.submit_count == 0

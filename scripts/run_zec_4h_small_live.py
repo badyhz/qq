@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -37,6 +38,7 @@ from core.zec_4h_live_execution import (
     account_equity,
     extract_symbol_rules,
     reconcile_startup,
+    recover_unapplied_filled_transitions,
     run_live_preflight,
     strategy_equity_from_evidence,
     usdt_available_balance,
@@ -172,6 +174,45 @@ def _recover_persisted_recovery_outcome(
     return False
 
 
+def _execute_with_immediate_safety_exit(
+    engine: LiveExecutionEngine,
+    decision: StrategyDecision,
+    state: StrategyState,
+    *,
+    strategy_equity: float,
+    mark_price: float,
+    symbol_rules: dict,
+) -> dict:
+    primary = engine.execute(
+        decision,
+        state,
+        strategy_equity=strategy_equity,
+        exchange_available_balance=usdt_available_balance(engine.adapter.get_balance()),
+        mark_price=mark_price,
+        symbol_rules=symbol_rules,
+    )
+    if (
+        state.recovery_status == "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED"
+        and state.recovery_decision
+    ):
+        safety_decision = _decision_from_record(state.recovery_decision)
+        safety_exit = engine.execute(
+            safety_decision,
+            state,
+            strategy_equity=strategy_equity,
+            exchange_available_balance=usdt_available_balance(engine.adapter.get_balance()),
+            mark_price=safety_decision.signal_price or mark_price,
+            symbol_rules=symbol_rules,
+        )
+        return {
+            "ok": safety_exit.get("ok") is True,
+            "primary": primary,
+            "safety_exit": safety_exit,
+            "immediate_safety_exit": True,
+        }
+    return primary
+
+
 def run_cycle(
     *,
     state_path: Path,
@@ -184,6 +225,11 @@ def run_cycle(
     state = load_strategy_state(state_path)
     engine = LiveExecutionEngine(adapter, ledger)
 
+    fill_recovery = recover_unapplied_filled_transitions(state, ledger, adapter)
+    if fill_recovery.get("ok") is not True:
+        raise RuntimeError(f"FILLED_CRASH_RECOVERY_BLOCKED:{fill_recovery.get('reason')}")
+    if int(fill_recovery.get("recovered", 0) or 0) > 0:
+        save_strategy_state(state_path, state)
     if _recover_persisted_recovery_outcome(state, ledger):
         save_strategy_state(state_path, state)
 
@@ -213,12 +259,12 @@ def run_cycle(
     if pending is not None:
         recovered_decision = _decision_from_record(pending)
         if pending.get("status") == UNKNOWN_STATUS:
-            result = engine.execute(
+            result = _execute_with_immediate_safety_exit(
+                engine,
                 recovered_decision,
                 state,
-                    strategy_equity=equity,
-                    exchange_available_balance=usdt_available_balance(adapter.get_balance()),
-                    mark_price=float(pending.get("signal_price", 0.0) or 0.0),
+                strategy_equity=equity,
+                mark_price=float(pending.get("signal_price", 0.0) or 0.0),
                 symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
             )
         else:
@@ -227,15 +273,46 @@ def run_cycle(
                 state,
                 strategy_equity=equity,
             )
+            if (
+                state.recovery_status == "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED"
+                and state.recovery_decision
+            ):
+                primary = result
+                safety_decision = _decision_from_record(state.recovery_decision)
+                safety_exit = _execute_with_immediate_safety_exit(
+                    engine,
+                    safety_decision,
+                    state,
+                    strategy_equity=equity,
+                    mark_price=safety_decision.signal_price,
+                    symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
+                )
+                result = {
+                    "ok": safety_exit.get("ok") is True,
+                    "primary": primary,
+                    "safety_exit": safety_exit,
+                    "immediate_safety_exit": True,
+                }
         save_strategy_state(state_path, state)
     elif state.recovery_decision:
         recovered_risk_decision = _decision_from_record(state.recovery_decision)
-        result = engine.execute(
+        result = _execute_with_immediate_safety_exit(
+            engine,
             recovered_risk_decision,
             state,
             strategy_equity=equity,
-            exchange_available_balance=usdt_available_balance(adapter.get_balance()),
             mark_price=recovered_risk_decision.signal_price,
+            symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
+        )
+        save_strategy_state(state_path, state)
+    elif state.pending_decision:
+        persisted_decision = _decision_from_record(state.pending_decision)
+        result = _execute_with_immediate_safety_exit(
+            engine,
+            persisted_decision,
+            state,
+            strategy_equity=equity,
+            mark_price=persisted_decision.signal_price,
             symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
         )
         save_strategy_state(state_path, state)
@@ -313,15 +390,28 @@ def run_cycle(
                         "live_safety_deviation": "NO_REDUCTION_BELOW_HALF_TARGET",
                     })
             else:
-                result = {"ok": True, "submitted": False, "reason": "NO_NEW_CLOSED_BAR"}
+                if equity <= 30.0:
+                    # Capital risk is polled continuously; technical indicators
+                    # remain closed-bar-only because evaluate short-circuits the
+                    # already-processed bar into the hard-floor circuit breaker.
+                    decision = strategy.evaluate(
+                        selected.bars,
+                        state,
+                        strategy_equity=equity,
+                        actual_position_qty=actual_qty,
+                    )
+                else:
+                    result = {"ok": True, "submitted": False, "reason": "NO_NEW_CLOSED_BAR"}
 
             if decision is not None and decision.action:
+                state.pending_decision = asdict(decision)
+                save_strategy_state(state_path, state)
                 rules = extract_symbol_rules(adapter.get_exchange_info())
-                result = engine.execute(
+                result = _execute_with_immediate_safety_exit(
+                    engine,
                     decision,
                     state,
                     strategy_equity=equity,
-                    exchange_available_balance=usdt_available_balance(adapter.get_balance()),
                     mark_price=decision.signal_price,
                     symbol_rules=rules,
                 )

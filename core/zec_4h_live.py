@@ -77,6 +77,7 @@ class StrategyState:
     actual_position_qty: float = 0.0
     reduced_qty: float = 0.0
     pending_action: str = ""
+    pending_decision: dict[str, Any] = field(default_factory=dict)
     target_reached: bool = False
     hard_stop_reason: str = ""
     last_hm_bar_close_time: Optional[str] = None
@@ -85,6 +86,7 @@ class StrategyState:
     warmup_bar_count: int = 0
     recovery_status: str = ""
     recovery_decision: dict[str, Any] = field(default_factory=dict)
+    applied_fill_signal_keys: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -269,15 +271,133 @@ class Zec4hStrategy:
         for bar in bars:
             _bar_close_time(bar)
         closes = [float(bar.close) for bar in bars]
-        ma = _sma(closes, 27)
+        ma_values = _sma(closes, 27)
         dif, _dea = _macd_lines(closes)
-        index = len(bars) - 1
-        current_ma = ma[index]
-        if current_ma is None:
-            raise ValueError("SMA27 unavailable")
-        state.buy_condition_active = closes[index] > current_ma and dif[index] > dif[index - 1]
-        state.sell_condition_active = closes[index] < current_ma and dif[index] < dif[index - 1]
-        state.last_processed_bar_close_time = _bar_close_time(bars[index])
+        state.last_signal = ""
+        state.last_signal_open = None
+        state.bars_since_signal = 0
+        state.buy_condition_active = False
+        state.sell_condition_active = False
+        state.attack_open = None
+        state.attack_close = None
+        state.attack_gain_rate = None
+        state.attack_bar_close_time = None
+        state.wait_attack_reduce = False
+        state.wait_add_position = False
+        state.pullback_seen = False
+        state.bars_after_touch = 0
+        state.last_hm_bar_close_time = None
+        state.hm_observation_count = 0
+
+        for index, bar in enumerate(bars):
+            close_time = _bar_close_time(bar)
+            if index >= 2 and _is_black_horse(bars[index - 2 : index + 1]):
+                state.last_hm_bar_close_time = close_time
+                state.hm_observation_count += 1
+
+            attack_condition = False
+            if index >= 19:
+                window = bars[index - 19 : index + 1]
+                attack_condition = bar.close > bar.open and bar.close == max(item.close for item in window)
+                if attack_condition:
+                    state.attack_open = float(bar.open)
+                    state.attack_close = float(bar.close)
+                    state.attack_gain_rate = (bar.close - bar.open) / bar.open
+                    state.attack_bar_close_time = close_time
+                    state.wait_attack_reduce = True
+
+            reduce_signal = False
+            if (
+                not attack_condition
+                and index >= 1
+                and state.wait_attack_reduce
+                and state.attack_open is not None
+                and state.attack_gain_rate is not None
+            ):
+                previous = bars[index - 1]
+                rule_a = bar.close < state.attack_open and previous.close >= state.attack_open
+                bearish_rate = (bar.open - bar.close) / bar.open if bar.close < bar.open else 0.0
+                rule_b = (
+                    state.attack_gain_rate > 0.05
+                    and bar.close < bar.open
+                    and bearish_rate >= state.attack_gain_rate * 0.5
+                )
+                if rule_a or rule_b:
+                    reduce_signal = True
+                    state.wait_attack_reduce = False
+                    state.wait_add_position = True
+                    state.pullback_seen = False
+                    state.bars_after_touch = 0
+
+            current_ma = ma_values[index]
+            buy_signal = False
+            if current_ma is not None and index >= 1:
+                buy_condition = bar.close > current_ma and dif[index] > dif[index - 1]
+                sell_condition = bar.close < current_ma and dif[index] < dif[index - 1]
+                buy_candidate = buy_condition and not state.buy_condition_active
+                sell_candidate = sell_condition and not state.sell_condition_active
+                if state.last_signal:
+                    state.bars_since_signal += 1
+                if buy_candidate and state.last_signal != "BUY":
+                    allowed = not (
+                        state.last_signal == "SELL"
+                        and state.bars_since_signal <= 5
+                        and state.last_signal_open is not None
+                        and bar.close <= state.last_signal_open
+                    )
+                    if allowed:
+                        buy_signal = True
+                        state.last_signal = "BUY"
+                        state.last_signal_open = float(bar.open)
+                        state.bars_since_signal = 0
+                if sell_candidate and state.last_signal != "SELL":
+                    allowed = not (
+                        state.last_signal == "BUY"
+                        and state.bars_since_signal <= 5
+                        and state.last_signal_open is not None
+                        and bar.close >= state.last_signal_open
+                    )
+                    if allowed:
+                        state.last_signal = "SELL"
+                        state.last_signal_open = float(bar.open)
+                        state.bars_since_signal = 0
+                state.buy_condition_active = bool(buy_condition)
+                state.sell_condition_active = bool(sell_condition)
+
+                if state.wait_add_position and not reduce_signal:
+                    previous_ma = ma_values[index - 1]
+                    if buy_signal or bar.close < current_ma * 0.98:
+                        self._clear_readd_state(state)
+                    elif previous_ma is not None:
+                        touch = (
+                            current_ma >= previous_ma
+                            and bar.low <= current_ma * 1.01
+                            and bar.close >= current_ma * 0.99
+                        )
+                        if touch:
+                            state.pullback_seen = True
+                            state.bars_after_touch = 0
+                        rebound = (
+                            state.pullback_seen
+                            and bar.close > bar.open
+                            and bar.close > current_ma
+                            and bar.close > bars[index - 1].close
+                        )
+                        if rebound and state.bars_after_touch <= 5:
+                            self._clear_readd_state(state)
+                        elif state.pullback_seen:
+                            state.bars_after_touch += 1
+                            if state.bars_after_touch > 5:
+                                state.pullback_seen = False
+                                state.bars_after_touch = 0
+            state.last_processed_bar_close_time = close_time
+
+        state.phase = StrategyPhase.FLAT.value
+        state.pending_action = ""
+        state.entry_low = None
+        state.actual_position_qty = 0.0
+        state.full_position_qty = 0.0
+        state.reduced_qty = 0.0
         state.warmup_complete = True
         state.warmup_bar_count = len(bars)
 
@@ -612,11 +732,14 @@ class Zec4hStrategy:
         decision: StrategyDecision,
         *,
         filled_qty: float,
+        record_applied_fill: bool = True,
     ) -> None:
         """Advance strategy state only after the exchange reports FILLED."""
         qty = float(filled_qty)
         if qty <= 0 or not decision.action:
             raise ValueError("a positive filled quantity and action are required")
+        if record_applied_fill and decision.signal_key in state.applied_fill_signal_keys:
+            return
         action = decision.action
         if action == LiveAction.OPEN.value:
             state.full_position_qty = qty
@@ -656,8 +779,11 @@ class Zec4hStrategy:
         else:
             raise ValueError("unknown filled action")
         state.pending_action = ""
+        state.pending_decision = {}
         state.recovery_status = ""
         state.recovery_decision = {}
+        if record_applied_fill:
+            state.applied_fill_signal_keys.append(decision.signal_key)
 
 
 def replay_missed_closed_bars(
@@ -739,7 +865,12 @@ def replay_missed_closed_bars(
                 max(projected.full_position_qty - projected.actual_position_qty, 0.0),
             )
             if add_qty > 1e-12:
-                Zec4hStrategy.apply_filled_action(projected, decision, filled_qty=add_qty)
+                Zec4hStrategy.apply_filled_action(
+                    projected,
+                    decision,
+                    filled_qty=add_qty,
+                    record_applied_fill=False,
+                )
             else:
                 projected.pending_action = ""
             evidence.append({
@@ -752,7 +883,12 @@ def replay_missed_closed_bars(
         elif decision.action == LiveAction.REDUCE_50.value:
             reduce_qty = projected.actual_position_qty * 0.5
             if reduce_qty > 1e-12:
-                Zec4hStrategy.apply_filled_action(projected, decision, filled_qty=reduce_qty)
+                Zec4hStrategy.apply_filled_action(
+                    projected,
+                    decision,
+                    filled_qty=reduce_qty,
+                    record_applied_fill=False,
+                )
                 last_reduce = decision
             evidence.append({
                 "status": "MISSED_RISK_REDUCTION",
@@ -764,7 +900,12 @@ def replay_missed_closed_bars(
         elif decision.action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}:
             close_qty = projected.actual_position_qty
             if close_qty > 1e-12:
-                Zec4hStrategy.apply_filled_action(projected, decision, filled_qty=close_qty)
+                Zec4hStrategy.apply_filled_action(
+                    projected,
+                    decision,
+                    filled_qty=close_qty,
+                    record_applied_fill=False,
+                )
                 last_stop = decision
             evidence.append({
                 "status": "MISSED_STOP_CLOSE",
