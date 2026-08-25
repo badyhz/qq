@@ -7,15 +7,18 @@ import pytest
 
 from core.paper_trading.data_source import MarketBar
 from core.zec_4h_live import (
+    APPROVED_LIVE_SAFETY_DEVIATIONS,
     LiveAction,
     LiveExecutionLedger,
     StrategyDecision,
     StrategyPhase,
     StrategyState,
     Zec4hStrategy,
+    WARMUP_BARS,
     build_live_scorecard,
     load_strategy_state,
     save_strategy_state,
+    replay_missed_closed_bars,
 )
 from core.zec_4h_live_execution import (
     BinanceUsdMExecutionAdapter,
@@ -27,6 +30,7 @@ from core.zec_4h_live_execution import (
     strategy_equity_from_evidence,
     verify_dedicated_account_boundary,
 )
+from scripts.run_zec_4h_small_live import _recover_persisted_recovery_outcome
 
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -259,6 +263,86 @@ def test_reduce_fill_transitions_once_to_waiting_readd():
     assert state.wait_attack_reduce is False
 
 
+@pytest.mark.parametrize("phase,qty", [
+    (StrategyPhase.FLAT.value, 0.0),
+    (StrategyPhase.LONG_FULL.value, 1.0),
+    (StrategyPhase.LONG_REDUCED.value, 0.5),
+    (StrategyPhase.WAITING_READD.value, 0.5),
+])
+def test_attack_reference_updates_in_every_strategy_phase(phase, qty):
+    bars = rising_signal_bars()
+    state = state_before_latest(
+        phase=phase,
+        actual_position_qty=qty,
+        full_position_qty=1.0 if qty else 0.0,
+        reduced_qty=0.5 if qty == 0.5 else 0.0,
+        entry_low=80.0 if qty else None,
+        last_signal="BUY",
+        buy_condition_active=True,
+    )
+    result = Zec4hStrategy().evaluate(bars, state, strategy_equity=50)
+    assert result.action is None
+    assert state.attack_open == pytest.approx(bars[-1].open)
+    assert state.attack_close == pytest.approx(bars[-1].close)
+    assert state.wait_attack_reduce is True
+
+
+def test_second_reduce_signal_at_half_is_recorded_but_has_no_order():
+    bars = bars_from_closes([100.0] * 26 + [101.0, 99.0])
+    state = StrategyState(
+        phase=StrategyPhase.WAITING_READD.value,
+        actual_position_qty=0.5,
+        full_position_qty=1.0,
+        reduced_qty=0.5,
+        entry_low=80.0,
+        last_processed_bar_close_time=bars[-2].close_time.isoformat(timespec="milliseconds"),
+        buy_condition_active=True,
+        attack_open=100.0,
+        attack_close=104.0,
+        attack_gain_rate=0.04,
+        wait_attack_reduce=True,
+    )
+    result = Zec4hStrategy().evaluate(bars, state, strategy_equity=50)
+    assert result.action is None
+    assert result.reason == "REDUCE_SIGNAL_BLOCKED_HALF_TARGET"
+    assert result.diagnostics["source_reduce_signal"] is True
+    assert result.diagnostics["live_safety_deviation"] == "NO_REDUCTION_BELOW_HALF_TARGET"
+    assert state.wait_add_position is True
+    assert state.wait_attack_reduce is False
+    assert state.actual_position_qty == pytest.approx(0.5)
+
+
+def test_add_to_full_reenables_a_later_attack_reduce_cycle():
+    state = StrategyState(
+        phase=StrategyPhase.WAITING_READD.value,
+        actual_position_qty=0.5,
+        full_position_qty=1.0,
+        reduced_qty=0.5,
+        entry_low=80.0,
+    )
+    Zec4hStrategy.apply_filled_action(
+        state,
+        decision(LiveAction.ADD_50.value, entry_low=95.0),
+        filled_qty=0.5,
+    )
+    assert state.phase == StrategyPhase.LONG_FULL.value
+
+    attack_bars = rising_signal_bars()
+    state.last_processed_bar_close_time = attack_bars[-2].close_time.isoformat(timespec="milliseconds")
+    state.buy_condition_active = True
+    state.last_signal = "BUY"
+    assert Zec4hStrategy().evaluate(attack_bars, state, strategy_equity=50).action is None
+    attack_open = state.attack_open
+
+    break_bars = bars_from_closes(
+        [110.0] * 26 + [110.0, attack_open - 1.0],
+        start_index=28,
+    )
+    state.last_processed_bar_close_time = break_bars[-2].close_time.isoformat(timespec="milliseconds")
+    result = Zec4hStrategy().evaluate(break_bars, state, strategy_equity=50)
+    assert result.action == LiveAction.REDUCE_50.value
+
+
 def readd_bars(*, current_close=101.0, current_open=100.2, current_low=99.8):
     closes = [100.0] * 27 + [current_close]
     opens = [99.8] * 27 + [current_open]
@@ -289,13 +373,15 @@ def test_add_after_valid_ma_pullback_and_rebound():
     assert result.entry_low == pytest.approx(99.8)
 
 
-def test_add_wait_expires_after_five_bars():
+def test_retouch_resets_window_and_timeout_keeps_waiting():
     bars = readd_bars(current_close=100.0, current_open=100.2, current_low=99.9)
     state = waiting_state(bars, pullback_seen=True, bars_after_touch=4)
     result = Zec4hStrategy().evaluate(bars, state, strategy_equity=50)
     assert result.action is None
-    assert state.wait_add_position is False
-    assert state.phase == StrategyPhase.LONG_REDUCED.value
+    assert state.wait_add_position is True
+    assert state.pullback_seen is True
+    # Source resets to zero on touch, then increments after no same-bar add.
+    assert state.bars_after_touch == 1
 
 
 def test_ma_breakdown_cancels_add_wait():
@@ -314,6 +400,65 @@ def test_new_buy_signal_cancels_add_wait_without_adding():
     assert state.wait_add_position is False
 
 
+def test_same_direction_buy_edge_after_stop_stays_flat_until_valid_sell():
+    strategy = Zec4hStrategy()
+    state = state_before_latest(last_signal="BUY", last_signal_open=99.0, bars_since_signal=9)
+    result = strategy.evaluate(rising_signal_bars(), state, strategy_equity=50)
+    assert result.action is None
+    assert state.phase == StrategyPhase.FLAT.value
+    assert state.last_signal == "BUY"
+
+    sell_bars = bars_from_closes(
+        [100.0] * 27 + [94.0],
+        opens=[99.8] * 27 + [110.0],
+        start_index=28,
+    )
+    state.last_processed_bar_close_time = sell_bars[-2].close_time.isoformat(timespec="milliseconds")
+    state.sell_condition_active = False
+    result = strategy.evaluate(sell_bars, state, strategy_equity=50)
+    assert result.action is None
+    assert state.last_signal == "SELL"
+
+    buy_bars = bars_from_closes([100.0] * 27 + [112.0], start_index=56)
+    state.last_processed_bar_close_time = buy_bars[-2].close_time.isoformat(timespec="milliseconds")
+    state.buy_condition_active = False
+    result = strategy.evaluate(buy_bars, state, strategy_equity=50)
+    assert result.action == LiveAction.OPEN.value
+
+
+def test_rebound_on_fifth_bar_after_touch_adds():
+    closes = [100.0] * 27 + [102.0]
+    opens = [99.8] * 27 + [101.2]
+    lows = [99.0] * 27 + [101.1]
+    bars = bars_from_closes(closes, opens=opens, lows=lows)
+    state = waiting_state(bars, pullback_seen=True, bars_after_touch=5)
+    result = Zec4hStrategy().evaluate(bars, state, strategy_equity=50)
+    assert result.action == LiveAction.ADD_50.value
+
+
+def test_sixth_bar_rebound_does_not_add_but_next_touch_can_restart_window():
+    closes = [100.0] * 27 + [101.2]
+    opens = [99.8] * 27 + [102.0]
+    lows = [99.0] * 27 + [101.1]
+    bars = bars_from_closes(closes, opens=opens, lows=lows)
+    state = waiting_state(bars, pullback_seen=True, bars_after_touch=5)
+    first = Zec4hStrategy().evaluate(bars, state, strategy_equity=50)
+    assert first.action is None
+    assert state.wait_add_position is True
+    assert state.pullback_seen is False
+    assert state.bars_after_touch == 0
+
+    next_bars = bars_from_closes(
+        [100.0] * 27 + [101.0],
+        opens=[99.8] * 27 + [100.2],
+        lows=[99.0] * 27 + [99.8],
+        start_index=28,
+    )
+    state.last_processed_bar_close_time = next_bars[-2].close_time.isoformat(timespec="milliseconds")
+    second = Zec4hStrategy().evaluate(next_bars, state, strategy_equity=50)
+    assert second.action == LiveAction.ADD_50.value
+
+
 def test_stop_uses_close_not_wick():
     closes = [100.0] * 27 + [91.0]
     lows = [99.0] * 27 + [80.0]
@@ -330,6 +475,30 @@ def test_closed_bar_below_entry_low_stops():
     assert result.action == LiveAction.STOP_CLOSE.value
 
 
+def test_filled_stop_clears_attack_state_at_position_boundary():
+    state = StrategyState(
+        phase=StrategyPhase.LONG_FULL.value,
+        actual_position_qty=1.0,
+        full_position_qty=1.0,
+        entry_low=90.0,
+        attack_open=100.0,
+        attack_close=106.0,
+        attack_gain_rate=0.06,
+        wait_attack_reduce=True,
+    )
+    Zec4hStrategy.apply_filled_action(
+        state,
+        decision(LiveAction.STOP_CLOSE.value),
+        filled_qty=1.0,
+    )
+    assert state.phase == StrategyPhase.FLAT.value
+    assert state.attack_open is None
+    assert state.attack_close is None
+    assert state.attack_gain_rate is None
+    assert state.wait_attack_reduce is False
+    assert "CLEAR_ATTACK_STATE_ACROSS_POSITION_BOUNDARY" in APPROVED_LIVE_SAFETY_DEVIATIONS
+
+
 def test_stop_overrides_reduce_on_same_bar():
     bars = bars_from_closes([100.0] * 26 + [101.0, 89.0])
     state = full_long_state(
@@ -344,10 +513,14 @@ def test_add_fill_updates_entry_low():
     state = StrategyState(
         phase=StrategyPhase.WAITING_READD.value, actual_position_qty=0.5,
         full_position_qty=1.0, reduced_qty=0.5, entry_low=80.0,
+        attack_open=90.0, attack_close=96.0, attack_gain_rate=0.06,
+        wait_attack_reduce=True,
     )
     Zec4hStrategy.apply_filled_action(state, decision(LiveAction.ADD_50.value, entry_low=95.0), filled_qty=0.5)
     assert state.entry_low == 95.0
     assert state.phase == StrategyPhase.LONG_FULL.value
+    assert state.attack_open == 90.0
+    assert state.wait_attack_reduce is True
 
 
 def test_provider_forming_bar_is_rejected():
@@ -356,6 +529,177 @@ def test_provider_forming_bar_is_rejected():
     bars[-1] = MarketBar(**{**last.__dict__, "provider_closed": False})
     with pytest.raises(ValueError, match="closed"):
         Zec4hStrategy().evaluate(bars, state_before_latest(), strategy_equity=50)
+
+
+def warmup_state_and_bars() -> tuple[StrategyState, list[MarketBar]]:
+    bars = bars_from_closes([100.0] * WARMUP_BARS)
+    state = StrategyState()
+    Zec4hStrategy().initialize_baseline(bars, state)
+    return state, bars
+
+
+def test_two_hundred_bar_warmup_initializes_without_order():
+    state, bars = warmup_state_and_bars()
+    assert state.warmup_complete is True
+    assert state.warmup_bar_count == WARMUP_BARS
+    assert state.last_processed_bar_close_time == bars[-1].close_time.isoformat(timespec="milliseconds")
+    assert state.pending_action == ""
+    assert state.actual_position_qty == 0.0
+
+
+def test_multibar_replay_updates_add_signal_and_attack_state_in_order():
+    state, _ = warmup_state_and_bars()
+    state.phase = StrategyPhase.WAITING_READD.value
+    state.actual_position_qty = 0.5
+    state.full_position_qty = 1.0
+    state.reduced_qty = 0.5
+    state.entry_low = 80.0
+    state.wait_add_position = True
+    state.last_signal = "BUY"
+    closes = [100.0] * WARMUP_BARS + [100.0, 102.0, 110.0]
+    opens = [99.8] * WARMUP_BARS + [100.2, 100.5, 103.0]
+    lows = [99.0] * WARMUP_BARS + [99.9, 100.4, 102.5]
+    bars = bars_from_closes(closes, opens=opens, lows=lows)
+    replay = replay_missed_closed_bars(
+        bars,
+        state,
+        strategy_equity=50,
+        actual_position_qty=0.5,
+    )
+    assert replay.processed_bars == 3
+    assert replay.recovery_status == "STALE_ADD_BLOCKED"
+    assert any(row["status"] == "STALE_ADD_BLOCKED" for row in replay.evidence)
+    assert state.actual_position_qty == pytest.approx(0.5)
+    assert state.phase == StrategyPhase.LONG_REDUCED.value
+    assert state.attack_open == pytest.approx(103.0)
+    assert state.attack_close == pytest.approx(110.0)
+    assert state.last_processed_bar_close_time == bars[-1].close_time.isoformat(timespec="milliseconds")
+
+
+def test_historical_missed_open_is_evidence_only_and_stays_flat():
+    state, _ = warmup_state_and_bars()
+    bars = bars_from_closes([100.0] * WARMUP_BARS + [106.0, 105.0, 104.0])
+    replay = replay_missed_closed_bars(
+        bars,
+        state,
+        strategy_equity=50,
+        actual_position_qty=0.0,
+    )
+    assert replay.recovery_status == "MISSED_STALE_ENTRY"
+    assert replay.risk_reduction_decision is None
+    assert any(row["status"] == "MISSED_STALE_ENTRY" for row in replay.evidence)
+    assert state.phase == StrategyPhase.FLAT.value
+    assert state.actual_position_qty == 0.0
+    assert state.pending_action == ""
+
+
+def test_multibar_replay_fails_closed_when_a_closed_bar_is_missing():
+    state, _ = warmup_state_and_bars()
+    bars = bars_from_closes([100.0] * WARMUP_BARS + [106.0, 105.0, 104.0])
+    bars.pop(WARMUP_BARS)
+    with pytest.raises(ValueError, match="gap"):
+        replay_missed_closed_bars(
+            bars,
+            state,
+            strategy_equity=50,
+            actual_position_qty=0.0,
+        )
+
+
+def test_historical_missed_stop_with_live_long_requires_safety_exit(tmp_path: Path):
+    state, _ = warmup_state_and_bars()
+    state.phase = StrategyPhase.LONG_FULL.value
+    state.actual_position_qty = 1.0
+    state.full_position_qty = 1.0
+    state.entry_low = 95.0
+    bars = bars_from_closes([100.0] * WARMUP_BARS + [90.0, 89.0])
+    replay = replay_missed_closed_bars(
+        bars,
+        state,
+        strategy_equity=50,
+        actual_position_qty=1.0,
+    )
+    assert replay.recovery_status == "SAFETY_EXIT_REQUIRED"
+    assert replay.risk_reduction_decision is not None
+    assert replay.risk_reduction_decision.action == LiveAction.STOP_CLOSE.value
+    assert state.phase == StrategyPhase.SAFETY_EXIT_REQUIRED.value
+    assert state.actual_position_qty == pytest.approx(1.0)
+    assert state.recovery_decision["action"] == LiveAction.STOP_CLOSE.value
+    save_strategy_state(tmp_path / "state.json", state)
+    recovered = load_strategy_state(tmp_path / "state.json")
+    assert recovered.recovery_status == "SAFETY_EXIT_REQUIRED"
+    assert recovered.recovery_decision["signal_key"] == replay.risk_reduction_decision.signal_key
+    adapter = FakeAdapter()
+    adapter.submit_response.update(executedQty="1", avgPrice="89")
+    ledger = LiveExecutionLedger(tmp_path / "recovery.jsonl")
+    engine = LiveExecutionEngine(adapter, ledger)
+    persisted_before_submit = StrategyState.from_dict(recovered.to_dict())
+    result = engine.execute(
+        replay.risk_reduction_decision,
+        recovered,
+        strategy_equity=50,
+        mark_price=89,
+        symbol_rules=RULES,
+    )
+    assert result["status"] == "FILLED"
+    assert recovered.phase == StrategyPhase.FLAT.value
+    assert recovered.recovery_status == ""
+    assert recovered.recovery_decision == {}
+    # Simulate a crash after the FILLED ledger append but before state save.
+    assert _recover_persisted_recovery_outcome(persisted_before_submit, ledger) is True
+    assert persisted_before_submit.phase == StrategyPhase.FLAT.value
+    assert persisted_before_submit.actual_position_qty == 0.0
+    assert persisted_before_submit.recovery_decision == {}
+
+
+def test_historical_missed_add_never_increases_half_position():
+    state, _ = warmup_state_and_bars()
+    state.phase = StrategyPhase.WAITING_READD.value
+    state.actual_position_qty = 0.5
+    state.full_position_qty = 1.0
+    state.reduced_qty = 0.5
+    state.entry_low = 80.0
+    state.wait_add_position = True
+    state.last_signal = "BUY"
+    closes = [100.0] * WARMUP_BARS + [100.0, 102.0]
+    opens = [99.8] * WARMUP_BARS + [100.2, 100.5]
+    lows = [99.0] * WARMUP_BARS + [99.9, 100.4]
+    bars = bars_from_closes(closes, opens=opens, lows=lows)
+    replay = replay_missed_closed_bars(
+        bars,
+        state,
+        strategy_equity=50,
+        actual_position_qty=0.5,
+    )
+    assert replay.recovery_status == "STALE_ADD_BLOCKED"
+    assert replay.risk_reduction_decision is None
+    assert state.actual_position_qty == pytest.approx(0.5)
+    assert state.phase == StrategyPhase.LONG_REDUCED.value
+
+
+def test_historical_missed_reduce_can_only_return_controlled_risk_reduction():
+    state, _ = warmup_state_and_bars()
+    state.phase = StrategyPhase.LONG_FULL.value
+    state.actual_position_qty = 1.0
+    state.full_position_qty = 1.0
+    state.entry_low = 80.0
+    state.attack_open = 100.0
+    state.attack_close = 104.0
+    state.attack_gain_rate = 0.04
+    state.wait_attack_reduce = True
+    closes = [100.0] * (WARMUP_BARS - 1) + [101.0, 99.0, 98.5]
+    bars = bars_from_closes(closes)
+    replay = replay_missed_closed_bars(
+        bars,
+        state,
+        strategy_equity=50,
+        actual_position_qty=1.0,
+    )
+    assert replay.recovery_status == "CONTROLLED_REDUCE_REQUIRED"
+    assert replay.risk_reduction_decision is not None
+    assert replay.risk_reduction_decision.action == LiveAction.REDUCE_50.value
+    assert replay.desired_position_qty == pytest.approx(0.5)
+    assert state.actual_position_qty == pytest.approx(1.0)
 
 
 @pytest.mark.parametrize("action", [

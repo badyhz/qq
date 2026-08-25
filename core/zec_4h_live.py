@@ -7,7 +7,7 @@ guarded adapter in :mod:`core.zec_4h_live_execution`.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import hashlib
 import json
@@ -26,6 +26,11 @@ STARTING_EQUITY = 50.0
 TARGET_EQUITY = 150.0
 HARD_EQUITY_FLOOR = 30.0
 INITIAL_NOTIONAL_BUFFER = 0.96
+WARMUP_BARS = 200
+APPROVED_LIVE_SAFETY_DEVIATIONS = (
+    "NO_REDUCTION_BELOW_HALF_TARGET",
+    "CLEAR_ATTACK_STATE_ACROSS_POSITION_BOUNDARY",
+)
 
 
 class StrategyPhase(str, Enum):
@@ -35,6 +40,8 @@ class StrategyPhase(str, Enum):
     WAITING_READD = "WAITING_READD"
     HARD_STOP = "HARD_STOP"
     TARGET_REACHED_PAUSED = "TARGET_REACHED_PAUSED"
+    SAFETY_EXIT_REQUIRED = "SAFETY_EXIT_REQUIRED"
+    RECOVERY_REDUCE_REQUIRED = "RECOVERY_REDUCE_REQUIRED"
 
 
 class LiveAction(str, Enum):
@@ -74,6 +81,10 @@ class StrategyState:
     hard_stop_reason: str = ""
     last_hm_bar_close_time: Optional[str] = None
     hm_observation_count: int = 0
+    warmup_complete: bool = False
+    warmup_bar_count: int = 0
+    recovery_status: str = ""
+    recovery_decision: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -101,6 +112,16 @@ class StrategyDecision:
     reason: str
     hm_detected: bool = False
     diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class StateReplayResult:
+    processed_bars: int
+    evidence: tuple[dict[str, Any], ...]
+    risk_reduction_decision: Optional[StrategyDecision]
+    recovery_status: str
+    desired_position_qty: float
+    actual_position_qty: float
 
 
 def load_strategy_state(path: Path) -> StrategyState:
@@ -243,8 +264,8 @@ class Zec4hStrategy:
     """Closed-bar-only LONG strategy with no exchange side effects."""
 
     def initialize_baseline(self, bars: Sequence[MarketBar], state: StrategyState) -> None:
-        if len(bars) < 28:
-            raise ValueError("at least 28 closed bars are required")
+        if len(bars) < WARMUP_BARS:
+            raise ValueError(f"at least {WARMUP_BARS} closed bars are required for warmup")
         for bar in bars:
             _bar_close_time(bar)
         closes = [float(bar.close) for bar in bars]
@@ -257,6 +278,8 @@ class Zec4hStrategy:
         state.buy_condition_active = closes[index] > current_ma and dif[index] > dif[index - 1]
         state.sell_condition_active = closes[index] < current_ma and dif[index] < dif[index - 1]
         state.last_processed_bar_close_time = _bar_close_time(bars[index])
+        state.warmup_complete = True
+        state.warmup_bar_count = len(bars)
 
     def evaluate(
         self,
@@ -279,23 +302,11 @@ class Zec4hStrategy:
         state.actual_position_qty = max(qty, 0.0)
         has_position = state.actual_position_qty > 1e-12
 
-        # The 30 USDT capital floor is an account risk circuit-breaker, not a
-        # trading signal.  It must remain active between 4H bar transitions.
-        if strategy_equity <= HARD_EQUITY_FLOOR:
-            state.target_reached = False
-            state.hard_stop_reason = "STRATEGY_EQUITY_AT_OR_BELOW_30"
-            if has_position:
-                state.pending_action = LiveAction.HARD_STOP_CLOSE.value
-                return _decision(
-                    action=LiveAction.HARD_STOP_CLOSE.value,
-                    bar=current,
-                    reason=state.hard_stop_reason,
-                )
-            state.phase = StrategyPhase.HARD_STOP.value
-            self._clear_scaling_state(state)
-            return _decision(action=None, bar=current, reason="HARD_STOP")
-
         if state.last_processed_bar_close_time and close_time <= state.last_processed_bar_close_time:
+            # The capital floor remains active between 4H transitions.  No
+            # technical state is reprocessed for an already-consumed bar.
+            if strategy_equity <= HARD_EQUITY_FLOOR:
+                return self._hard_floor_decision(state, current, has_position)
             return _decision(action=None, bar=current, reason="BAR_ALREADY_PROCESSED")
 
         closes = [float(bar.close) for bar in bars]
@@ -318,7 +329,7 @@ class Zec4hStrategy:
             state.bars_since_signal += 1
 
         buy_signal = False
-        if buy_candidate:
+        if buy_candidate and state.last_signal != "BUY":
             buy_signal = not (
                 state.last_signal == "SELL"
                 and state.bars_since_signal <= 5
@@ -330,7 +341,8 @@ class Zec4hStrategy:
                 state.last_signal_open = float(current.open)
                 state.bars_since_signal = 0
 
-        if sell_candidate:
+        sell_signal = False
+        if sell_candidate and state.last_signal != "SELL":
             allowed_sell_marker = not (
                 state.last_signal == "BUY"
                 and state.bars_since_signal <= 5
@@ -338,6 +350,7 @@ class Zec4hStrategy:
                 and current.close >= state.last_signal_open
             )
             if allowed_sell_marker:
+                sell_signal = True
                 state.last_signal = "SELL"
                 state.last_signal_open = float(current.open)
                 state.bars_since_signal = 0
@@ -345,6 +358,15 @@ class Zec4hStrategy:
         state.buy_condition_active = bool(buy_condition)
         state.sell_condition_active = bool(sell_condition)
         state.last_processed_bar_close_time = close_time
+
+        window = bars[-20:]
+        attack_condition = current.close > current.open and current.close == max(item.close for item in window)
+        if attack_condition:
+            state.attack_open = float(current.open)
+            state.attack_close = float(current.close)
+            state.attack_gain_rate = (current.close - current.open) / current.open
+            state.attack_bar_close_time = close_time
+            state.wait_attack_reduce = True
 
         diagnostics = {
             "ma": ma,
@@ -355,9 +377,20 @@ class Zec4hStrategy:
             "buy_condition": buy_condition,
             "buy_candidate": buy_candidate,
             "buy_signal": buy_signal,
-            "sell_marker": sell_candidate,
+            "sell_candidate": sell_candidate,
+            "sell_signal": sell_signal,
             "hm_detected": hm_detected,
+            "attack_condition": attack_condition,
         }
+
+        if strategy_equity <= HARD_EQUITY_FLOOR:
+            return self._hard_floor_decision(
+                state,
+                current,
+                has_position,
+                hm_detected=hm_detected,
+                diagnostics=diagnostics,
+            )
 
         if state.phase == StrategyPhase.HARD_STOP.value:
             if has_position:
@@ -399,9 +432,27 @@ class Zec4hStrategy:
             if has_position:
                 state.phase = StrategyPhase.LONG_REDUCED.value
 
-        if has_position and state.phase == StrategyPhase.LONG_FULL.value:
-            reduce_reason = self._reduce_reason(bars, state)
-            if reduce_reason:
+        reduce_reason = "" if attack_condition else self._reduce_reason(bars, state)
+        if reduce_reason:
+            # This is the AiCoin source signal transition.  It is preserved in
+            # every phase even when the live exposure guard blocks an order.
+            state.wait_attack_reduce = False
+            state.wait_add_position = True
+            state.pullback_seen = False
+            state.bars_after_touch = 0
+            half_target = state.full_position_qty * 0.5
+            reduce_order_allowed = (
+                has_position
+                and state.full_position_qty > 1e-12
+                and state.actual_position_qty > half_target + 1e-12
+            )
+            diagnostics = {
+                **diagnostics,
+                "source_reduce_signal": True,
+                "live_safety_deviation": "NO_REDUCTION_BELOW_HALF_TARGET",
+                "reduce_order_allowed": reduce_order_allowed,
+            }
+            if reduce_order_allowed:
                 state.pending_action = LiveAction.REDUCE_50.value
                 return _decision(
                     action=LiveAction.REDUCE_50.value,
@@ -410,6 +461,13 @@ class Zec4hStrategy:
                     hm_detected=hm_detected,
                     diagnostics=diagnostics,
                 )
+            return _decision(
+                action=None,
+                bar=current,
+                reason="REDUCE_SIGNAL_BLOCKED_HALF_TARGET" if has_position else "REDUCE_SIGNAL_OBSERVED_FLAT",
+                hm_detected=hm_detected,
+                diagnostics=diagnostics,
+            )
 
         if has_position and state.wait_add_position and not state.target_reached:
             add_decision = self._evaluate_readd(
@@ -423,16 +481,6 @@ class Zec4hStrategy:
             )
             if add_decision is not None:
                 return add_decision
-
-        # Capture the newest attack candle only after stop/reduce decisions.
-        if has_position and state.phase == StrategyPhase.LONG_FULL.value:
-            window = bars[-20:]
-            if current.close > current.open and current.close == max(item.close for item in window):
-                state.attack_open = float(current.open)
-                state.attack_close = float(current.close)
-                state.attack_gain_rate = (current.close - current.open) / current.open
-                state.attack_bar_close_time = close_time
-                state.wait_attack_reduce = True
 
         if (
             buy_signal
@@ -489,12 +537,11 @@ class Zec4hStrategy:
             return None
 
         touch = ma >= previous_ma and current.low <= ma * 1.01 and current.close >= ma * 0.99
-        if touch and not state.pullback_seen:
+        if touch:
             state.pullback_seen = True
             state.bars_after_touch = 0
 
         if state.pullback_seen:
-            state.bars_after_touch += 1
             rebound = current.close > current.open and current.close > ma and current.close > previous.close
             if rebound and state.bars_after_touch <= 5:
                 state.pending_action = LiveAction.ADD_50.value
@@ -506,10 +553,42 @@ class Zec4hStrategy:
                     hm_detected=hm_detected,
                     diagnostics={**diagnostics, "touch_ma": touch, "rebound_confirm": rebound},
                 )
-            if state.bars_after_touch >= 5:
-                self._clear_readd_state(state)
-                state.phase = StrategyPhase.LONG_REDUCED.value
+            state.bars_after_touch += 1
+            if state.bars_after_touch > 5:
+                state.pullback_seen = False
+                state.bars_after_touch = 0
         return None
+
+    @classmethod
+    def _hard_floor_decision(
+        cls,
+        state: StrategyState,
+        current: MarketBar,
+        has_position: bool,
+        *,
+        hm_detected: bool = False,
+        diagnostics: Optional[dict[str, Any]] = None,
+    ) -> StrategyDecision:
+        state.target_reached = False
+        state.hard_stop_reason = "STRATEGY_EQUITY_AT_OR_BELOW_30"
+        if has_position:
+            state.pending_action = LiveAction.HARD_STOP_CLOSE.value
+            return _decision(
+                action=LiveAction.HARD_STOP_CLOSE.value,
+                bar=current,
+                reason=state.hard_stop_reason,
+                hm_detected=hm_detected,
+                diagnostics=diagnostics,
+            )
+        state.phase = StrategyPhase.HARD_STOP.value
+        cls._clear_scaling_state(state)
+        return _decision(
+            action=None,
+            bar=current,
+            reason="HARD_STOP",
+            hm_detected=hm_detected,
+            diagnostics=diagnostics,
+        )
 
     @staticmethod
     def _clear_readd_state(state: StrategyState) -> None:
@@ -559,7 +638,9 @@ class Zec4hStrategy:
             state.reduced_qty = 0.0
             state.entry_low = float(decision.entry_low) if decision.entry_low is not None else state.entry_low
             state.phase = StrategyPhase.LONG_FULL.value
-            cls._clear_scaling_state(state)
+            # AiCoin keeps the newest attack reference across an ADD.  Only a
+            # confirmed full position close uses the approved boundary clear.
+            cls._clear_readd_state(state)
         elif action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}:
             state.actual_position_qty = 0.0
             state.full_position_qty = 0.0
@@ -575,6 +656,169 @@ class Zec4hStrategy:
         else:
             raise ValueError("unknown filled action")
         state.pending_action = ""
+        state.recovery_status = ""
+        state.recovery_decision = {}
+
+
+def replay_missed_closed_bars(
+    bars: Sequence[MarketBar],
+    state: StrategyState,
+    *,
+    strategy_equity: float,
+    actual_position_qty: float,
+) -> StateReplayResult:
+    """Replay two or more stale closed bars without increasing live risk.
+
+    A projected state follows every AiCoin bar transition.  Only after that
+    projection is complete is it compared with the exchange position.  Stale
+    entries and adds are evidence-only; a stale stop or reduce may return one
+    idempotent risk-reduction decision for the caller to reconcile and execute.
+    """
+    if len(bars) < WARMUP_BARS:
+        raise ValueError(f"at least {WARMUP_BARS} closed bars are required for replay")
+    for bar in bars:
+        _bar_close_time(bar)
+    if not state.last_processed_bar_close_time:
+        raise ValueError("replay requires a prior processed bar boundary")
+    unprocessed = [
+        index for index, bar in enumerate(bars)
+        if _bar_close_time(bar) > state.last_processed_bar_close_time
+    ]
+    if len(unprocessed) < 2:
+        raise ValueError("state replay is reserved for two or more missed bars")
+    boundary = datetime.fromisoformat(state.last_processed_bar_close_time.replace("Z", "+00:00"))
+    expected = boundary + timedelta(hours=4)
+    for index in unprocessed:
+        observed = bars[index].close_time
+        if observed is None or abs((observed - expected).total_seconds()) > 0.002:
+            raise ValueError("closed-bar replay gap detected")
+        expected = observed + timedelta(hours=4)
+
+    actual_qty = max(0.0, float(actual_position_qty))
+    projected = StrategyState.from_dict(state.to_dict())
+    projected.actual_position_qty = actual_qty
+    if actual_qty > 1e-12 and projected.full_position_qty <= 1e-12:
+        raise ValueError("cannot replay an exchange position without a full-position target")
+
+    strategy = Zec4hStrategy()
+    evidence: list[dict[str, Any]] = []
+    last_reduce: Optional[StrategyDecision] = None
+    last_stop: Optional[StrategyDecision] = None
+    stale_entry = False
+    stale_add = False
+
+    for index in unprocessed:
+        decision = strategy.evaluate(
+            bars[: index + 1],
+            projected,
+            strategy_equity=strategy_equity,
+        )
+        if decision.diagnostics.get("source_reduce_signal") and not decision.action:
+            evidence.append({
+                "status": "LIVE_SAFETY_DEVIATION_BLOCKED",
+                "action": "REDUCE_50_SIGNAL",
+                "signal_key": build_signal_key("REDUCE_50_SIGNAL", decision.bar_close_time),
+                "bar_close_time": decision.bar_close_time,
+                "reason": decision.reason,
+                "live_safety_deviation": "NO_REDUCTION_BELOW_HALF_TARGET",
+            })
+        if decision.action == LiveAction.OPEN.value:
+            stale_entry = True
+            projected.pending_action = ""
+            evidence.append({
+                "status": "MISSED_STALE_ENTRY",
+                "action": decision.action,
+                "signal_key": decision.signal_key,
+                "bar_close_time": decision.bar_close_time,
+                "reason": "STALE_RISK_INCREASE_BLOCKED",
+            })
+        elif decision.action == LiveAction.ADD_50.value:
+            stale_add = True
+            add_qty = min(
+                max(projected.reduced_qty, 0.0),
+                max(projected.full_position_qty - projected.actual_position_qty, 0.0),
+            )
+            if add_qty > 1e-12:
+                Zec4hStrategy.apply_filled_action(projected, decision, filled_qty=add_qty)
+            else:
+                projected.pending_action = ""
+            evidence.append({
+                "status": "STALE_ADD_BLOCKED",
+                "action": decision.action,
+                "signal_key": decision.signal_key,
+                "bar_close_time": decision.bar_close_time,
+                "reason": "STALE_RISK_INCREASE_BLOCKED",
+            })
+        elif decision.action == LiveAction.REDUCE_50.value:
+            reduce_qty = projected.actual_position_qty * 0.5
+            if reduce_qty > 1e-12:
+                Zec4hStrategy.apply_filled_action(projected, decision, filled_qty=reduce_qty)
+                last_reduce = decision
+            evidence.append({
+                "status": "MISSED_RISK_REDUCTION",
+                "action": decision.action,
+                "signal_key": decision.signal_key,
+                "bar_close_time": decision.bar_close_time,
+                "reason": decision.reason,
+            })
+        elif decision.action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}:
+            close_qty = projected.actual_position_qty
+            if close_qty > 1e-12:
+                Zec4hStrategy.apply_filled_action(projected, decision, filled_qty=close_qty)
+                last_stop = decision
+            evidence.append({
+                "status": "MISSED_STOP_CLOSE",
+                "action": decision.action,
+                "signal_key": decision.signal_key,
+                "bar_close_time": decision.bar_close_time,
+                "reason": decision.reason,
+            })
+
+    desired_qty = max(0.0, projected.actual_position_qty)
+    for name in StrategyState.__dataclass_fields__:
+        setattr(state, name, getattr(projected, name))
+    state.actual_position_qty = actual_qty
+    state.pending_action = ""
+
+    risk_decision: Optional[StrategyDecision] = None
+    recovery_status = "STATE_REPLAY_COMPLETE"
+    if actual_qty > desired_qty + 1e-12:
+        if desired_qty <= 1e-12 and last_stop is not None:
+            recovery_status = "SAFETY_EXIT_REQUIRED"
+            state.phase = StrategyPhase.SAFETY_EXIT_REQUIRED.value
+            state.pending_action = last_stop.action or LiveAction.STOP_CLOSE.value
+            risk_decision = last_stop
+        elif last_reduce is not None:
+            recovery_status = "CONTROLLED_REDUCE_REQUIRED"
+            state.phase = StrategyPhase.RECOVERY_REDUCE_REQUIRED.value
+            state.pending_action = LiveAction.REDUCE_50.value
+            risk_decision = last_reduce
+    elif actual_qty + 1e-12 < desired_qty:
+        if actual_qty <= 1e-12:
+            recovery_status = "MISSED_STALE_ENTRY" if stale_entry else "STALE_RISK_INCREASE_BLOCKED"
+            state.phase = StrategyPhase.FLAT.value
+            state.full_position_qty = 0.0
+            state.reduced_qty = 0.0
+            state.entry_low = None
+        else:
+            recovery_status = "STALE_ADD_BLOCKED" if stale_add else "STALE_RISK_INCREASE_BLOCKED"
+            state.phase = StrategyPhase.LONG_REDUCED.value
+            state.reduced_qty = max(state.full_position_qty - actual_qty, 0.0)
+        state.wait_add_position = False
+        state.pullback_seen = False
+        state.bars_after_touch = 0
+    elif stale_entry:
+        recovery_status = "MISSED_STALE_ENTRY"
+    state.recovery_status = recovery_status
+    state.recovery_decision = asdict(risk_decision) if risk_decision is not None else {}
+    return StateReplayResult(
+        processed_bars=len(unprocessed),
+        evidence=tuple(evidence),
+        risk_reduction_decision=risk_decision,
+        recovery_status=recovery_status,
+        desired_position_qty=desired_qty,
+        actual_position_qty=actual_qty,
+    )
 
 
 class LiveExecutionLedger:
@@ -699,6 +943,10 @@ def build_live_scorecard(
         "current_position": current_position,
         "current_open_orders": current_open_orders,
         "strategy_state": strategy_state.phase,
+        "recovery_status": strategy_state.recovery_status,
+        "macd_numeric_parity": "STANDARD_EMA_AFTER_200_BAR_WARMUP",
+        "warmup_bars": WARMUP_BARS,
+        "live_safety_deviations": list(APPROVED_LIVE_SAFETY_DEVIATIONS),
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
     }
 

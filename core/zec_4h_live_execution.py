@@ -18,6 +18,7 @@ from core.binance_http import (
 )
 from core.order_normalizer import normalize_order_params
 from core.zec_4h_live import (
+    APPROVED_LIVE_SAFETY_DEVIATIONS,
     LiveAction,
     LiveExecutionLedger,
     STRATEGY_ID,
@@ -717,6 +718,7 @@ class LiveExecutionEngine:
             "strategy_equity_before": float(strategy_equity_before),
             "strategy_equity_after": float(strategy_equity_before),
             "exchange_snapshot": {},
+            "live_safety_deviations": list(APPROVED_LIVE_SAFETY_DEVIATIONS),
             "recorded_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         }
 
@@ -786,6 +788,8 @@ class LiveExecutionEngine:
             Zec4hStrategy.apply_filled_action(state, decision, filled_qty=filled_qty)
         elif status in {"CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}:
             state.pending_action = ""
+            state.recovery_status = ""
+            state.recovery_decision = {}
             if filled_qty > 0:
                 if decision.action in {LiveAction.OPEN.value, LiveAction.ADD_50.value}:
                     state.actual_position_qty += filled_qty

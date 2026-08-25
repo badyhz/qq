@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -17,13 +17,18 @@ if str(ROOT) not in sys.path:
 from core.paper_trading.data_source import DataSourceConfig, select_closed_bars
 from core.paper_trading.public_market_adapter import BinancePublicKlineAdapter
 from core.zec_4h_live import (
+    APPROVED_LIVE_SAFETY_DEVIATIONS,
     LiveExecutionLedger,
+    StrategyPhase,
     StrategyDecision,
     StrategyState,
     Zec4hStrategy,
+    WARMUP_BARS,
+    build_signal_key,
     build_live_scorecard,
     load_strategy_state,
     save_strategy_state,
+    replay_missed_closed_bars,
 )
 from core.zec_4h_live_execution import (
     BinanceUsdMExecutionAdapter,
@@ -109,6 +114,64 @@ def _pending_record(ledger: LiveExecutionLedger) -> dict | None:
     return pending[0] if pending else None
 
 
+def _append_replay_evidence(ledger: LiveExecutionLedger, row: dict) -> None:
+    base_key = str(row.get("signal_key", "")) or build_signal_key(
+        str(row.get("action", "STATE_REPLAY")), str(row["bar_close_time"])
+    )
+    evidence_key = f"{base_key}:EVIDENCE:{row['status']}"
+    if ledger.latest_by_signal_key(evidence_key) is not None:
+        return
+    ledger.append({
+        "strategy_id": "zec_4h_live_v1",
+        "signal_key": evidence_key,
+        "bar_close_time": str(row["bar_close_time"]),
+        "action": str(row.get("action", "STATE_REPLAY")),
+        "status": str(row["status"]),
+        "reason": str(row.get("reason", "")),
+        "requested_qty": 0.0,
+        "filled_qty": 0.0,
+        "average_fill_price": 0.0,
+        "fee": 0.0,
+        "funding": 0.0,
+        "realized_pnl": 0.0,
+        "net_realized_pnl": 0.0,
+        "live_safety_deviation": row.get("live_safety_deviation", ""),
+        "live_safety_deviations": list(APPROVED_LIVE_SAFETY_DEVIATIONS),
+        "exchange_snapshot": {},
+        "recorded_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+    })
+
+
+def _recover_persisted_recovery_outcome(
+    state: StrategyState,
+    ledger: LiveExecutionLedger,
+) -> bool:
+    """Finish a persisted replay reduction after a process crash."""
+    if not state.recovery_decision:
+        return False
+    signal_key = str(state.recovery_decision.get("signal_key", ""))
+    latest = ledger.latest_by_signal_key(signal_key) if signal_key else None
+    if latest is None:
+        return False
+    status = str(latest.get("status", "")).upper()
+    if status == "FILLED":
+        decision = _decision_from_record(latest)
+        Zec4hStrategy.apply_filled_action(
+            state,
+            decision,
+            filled_qty=float(latest.get("filled_qty", 0.0) or 0.0),
+        )
+        return True
+    if status in {"CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}:
+        state.pending_action = ""
+        state.recovery_status = ""
+        state.recovery_decision = {}
+        state.phase = StrategyPhase.HARD_STOP.value
+        state.hard_stop_reason = f"RECOVERY_ORDER_{status}"
+        return True
+    return False
+
+
 def run_cycle(
     *,
     state_path: Path,
@@ -120,6 +183,9 @@ def run_cycle(
     ledger = LiveExecutionLedger(ledger_path)
     state = load_strategy_state(state_path)
     engine = LiveExecutionEngine(adapter, ledger)
+
+    if _recover_persisted_recovery_outcome(state, ledger):
+        save_strategy_state(state_path, state)
 
     # Initial provisioning is strictly no-order and must prove the dedicated
     # account starts near 50 USDT.  Subsequent restarts recover from ledger.
@@ -162,28 +228,94 @@ def run_cycle(
                 strategy_equity=equity,
             )
         save_strategy_state(state_path, state)
+    elif state.recovery_decision:
+        recovered_risk_decision = _decision_from_record(state.recovery_decision)
+        result = engine.execute(
+            recovered_risk_decision,
+            state,
+            strategy_equity=equity,
+            exchange_available_balance=usdt_available_balance(adapter.get_balance()),
+            mark_price=recovered_risk_decision.signal_price,
+            symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
+        )
+        save_strategy_state(state_path, state)
     else:
         source = BinancePublicKlineAdapter(
             DataSourceConfig(mode="snapshot", symbol="ZECUSDT", timeframe="4h", network_enabled=True)
         )
-        raw_bars = source.get_bars("ZECUSDT", "4h", limit=200)
+        raw_bars = source.get_bars("ZECUSDT", "4h", limit=1500)
         selected = select_closed_bars(raw_bars, datetime.now(timezone.utc))
-        if len(selected.bars) < 28:
+        if len(selected.bars) < WARMUP_BARS:
             raise RuntimeError("INSUFFICIENT_CANONICAL_CLOSED_BARS")
         strategy = Zec4hStrategy()
-        if state.last_processed_bar_close_time is None:
+        if not state.warmup_complete:
             strategy.initialize_baseline(selected.bars, state)
             save_strategy_state(state_path, state)
-            result = {"ok": True, "submitted": False, "reason": "BASELINE_INITIALIZED"}
+            result = {
+                "ok": True,
+                "submitted": False,
+                "reason": "BASELINE_INITIALIZED_NO_ORDER",
+                "warmup_bars": len(selected.bars),
+            }
         else:
             position = adapter.get_position()
-            decision = strategy.evaluate(
-                selected.bars,
-                state,
-                strategy_equity=equity,
-                actual_position_qty=float(position.get("positionAmt", 0.0) or 0.0),
+            actual_qty = float(position.get("positionAmt", 0.0) or 0.0)
+            boundary_time = datetime.fromisoformat(
+                str(state.last_processed_bar_close_time).replace("Z", "+00:00")
             )
-            if decision.action:
+            unprocessed_bars = [
+                bar for bar in selected.bars
+                if bar.close_time is not None and bar.close_time > boundary_time
+            ]
+            expected_close = boundary_time + timedelta(hours=4)
+            for bar in unprocessed_bars:
+                if bar.close_time is None or abs((bar.close_time - expected_close).total_seconds()) > 0.002:
+                    raise RuntimeError("CLOSED_BAR_RECOVERY_GAP")
+                expected_close = bar.close_time + timedelta(hours=4)
+            unprocessed_count = len(unprocessed_bars)
+            decision = None
+            if unprocessed_count >= 2:
+                replay = replay_missed_closed_bars(
+                    selected.bars,
+                    state,
+                    strategy_equity=equity,
+                    actual_position_qty=actual_qty,
+                )
+                for evidence in replay.evidence:
+                    _append_replay_evidence(ledger, dict(evidence))
+                save_strategy_state(state_path, state)
+                post_replay_recovery = reconcile_startup(state, ledger, adapter)
+                if post_replay_recovery.get("ok") is not True:
+                    raise RuntimeError(
+                        f"POST_REPLAY_RECONCILIATION_BLOCKED:{post_replay_recovery.get('reason')}"
+                    )
+                decision = replay.risk_reduction_decision
+                result = {
+                    "ok": True,
+                    "submitted": False,
+                    "reason": replay.recovery_status,
+                    "replayed_closed_bars": replay.processed_bars,
+                }
+            elif unprocessed_count == 1:
+                decision = strategy.evaluate(
+                    selected.bars,
+                    state,
+                    strategy_equity=equity,
+                    actual_position_qty=actual_qty,
+                )
+                if decision.diagnostics.get("source_reduce_signal") and not decision.action:
+                    _append_replay_evidence(ledger, {
+                        "status": "LIVE_SAFETY_DEVIATION_BLOCKED",
+                        "action": "REDUCE_50_SIGNAL",
+                        "signal_key": build_signal_key("REDUCE_50_SIGNAL", decision.bar_close_time),
+                        "bar_close_time": decision.bar_close_time,
+                        "reason": decision.reason,
+                        "live_safety_deviation": "NO_REDUCTION_BELOW_HALF_TARGET",
+                    })
+            else:
+                result = {"ok": True, "submitted": False, "reason": "NO_NEW_CLOSED_BAR"}
+
+            if decision is not None and decision.action:
                 rules = extract_symbol_rules(adapter.get_exchange_info())
                 result = engine.execute(
                     decision,
@@ -193,7 +325,7 @@ def run_cycle(
                     mark_price=decision.signal_price,
                     symbol_rules=rules,
                 )
-            else:
+            elif decision is not None:
                 result = {"ok": True, "submitted": False, "reason": decision.reason}
             save_strategy_state(state_path, state)
 
