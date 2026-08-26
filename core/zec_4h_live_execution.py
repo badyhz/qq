@@ -45,7 +45,15 @@ ORDER_STATUSES = {
     "EXPIRED_IN_MATCH",
 }
 TERMINAL_ORDER_STATUSES = {"FILLED", "CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}
+TERMINAL_FAILURE_STATUSES = {"CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}
 UNKNOWN_STATUS = "UNKNOWN_RECONCILIATION_REQUIRED"
+STALE_RISK_INCREASE_STATUS = "STALE_RISK_INCREASE_BLOCKED"
+RISK_INCREASE_ACTIONS = {LiveAction.OPEN.value, LiveAction.ADD_50.value}
+RISK_REDUCTION_ACTIONS = {
+    LiveAction.REDUCE_50.value,
+    LiveAction.STOP_CLOSE.value,
+    LiveAction.HARD_STOP_CLOSE.value,
+}
 
 
 class ExecutionAdapter(Protocol):
@@ -516,9 +524,42 @@ def _partial_terminal_safety_decision(
         bar_close_time=original.bar_close_time,
         signal_price=original.signal_price,
         entry_low=None,
-        reason=f"PARTIAL_TERMINAL_{status}",
-        diagnostics={"partial_terminal_source_signal_key": original.signal_key},
+        reason=f"TERMINAL_ORDER_{status}_SAFETY_EXIT",
+        diagnostics={"terminal_source_signal_key": original.signal_key},
     )
+
+
+def _arm_terminal_safety_exit(
+    state: StrategyState,
+    decision: StrategyDecision,
+    *,
+    status: str,
+    exchange_qty: float,
+    partial_fill: bool,
+) -> None:
+    qty = float(exchange_qty)
+    state.phase = StrategyPhase.HARD_STOP.value
+    state.hard_stop_reason = (
+        f"ORDER_{status}_WITH_PARTIAL_FILL" if partial_fill else f"ORDER_{status}_WITH_OPEN_POSITION"
+    )
+    state.pending_action = ""
+    state.pending_decision = {}
+    if qty > 1e-12:
+        state.actual_position_qty = qty
+        state.full_position_qty = max(state.full_position_qty, qty)
+        close_decision = _partial_terminal_safety_decision(decision, status=status)
+        state.pending_action = LiveAction.HARD_STOP_CLOSE.value
+        state.recovery_status = (
+            "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED" if partial_fill else "TERMINAL_SAFETY_EXIT_REQUIRED"
+        )
+        state.recovery_decision = asdict(close_decision)
+    elif qty < -1e-12:
+        state.recovery_status = "TERMINAL_POSITION_DIRECTION_AMBIGUOUS"
+        state.recovery_decision = {}
+    else:
+        state.actual_position_qty = 0.0
+        state.recovery_status = ""
+        state.recovery_decision = {}
 
 
 def _apply_partial_terminal_transition(
@@ -566,20 +607,35 @@ def recover_unapplied_filled_transitions(
         signal_key = str(row.get("signal_key", ""))
         if signal_key:
             latest[signal_key] = dict(row)
+
     recovered_terminal = 0
-    pending_signal_key = str(state.pending_decision.get("signal_key", ""))
-    pending_terminal = latest.get(pending_signal_key) if pending_signal_key else None
-    if pending_terminal is not None:
-        pending_status = str(pending_terminal.get("status", "")).upper()
-        pending_filled = float(pending_terminal.get("filled_qty", 0.0) or 0.0)
-        if pending_status in TERMINAL_ORDER_STATUSES and pending_filled <= 0:
-            state.pending_action = ""
-            state.pending_decision = {}
-            state.recovery_status = ""
-            state.recovery_decision = {}
-            state.phase = StrategyPhase.HARD_STOP.value
-            state.hard_stop_reason = f"ORDER_{pending_status}"
-            recovered_terminal = 1
+    # Zero-fill terminal orders also need crash-safe flattening if the account
+    # still carries a long position.  Inspect both normal pending decisions and
+    # persisted safety/recovery decisions before candidate fill replay.
+    for payload_name in ("pending_decision", "recovery_decision"):
+        payload = getattr(state, payload_name)
+        signal_key = str(payload.get("signal_key", "")) if payload else ""
+        terminal = latest.get(signal_key) if signal_key else None
+        if terminal is None:
+            continue
+        status = str(terminal.get("status", "")).upper()
+        filled = float(terminal.get("filled_qty", 0.0) or 0.0)
+        if status not in TERMINAL_FAILURE_STATUSES or filled > 0:
+            continue
+        decision = _decision_from_ledger_record(terminal)
+        exchange_qty = position_quantity(adapter.get_position())
+        _arm_terminal_safety_exit(
+            state,
+            decision,
+            status=status,
+            exchange_qty=exchange_qty,
+            partial_fill=False,
+        )
+        recovered_terminal += 1
+        # The new recovery decision replaces the settled failed one.  Do not
+        # allow the same failed payload to participate in candidate replay.
+        break
+
     # Only decisions persisted as in-flight before submission are eligible.
     # Existing ledgers predate ``applied_fill_signal_keys``; scanning every
     # historical FILLED row on upgrade would double-apply settled exposure.
@@ -596,7 +652,7 @@ def recover_unapplied_filled_transitions(
         and float(row.get("filled_qty", 0.0) or 0.0) > 0
         and (
             str(row.get("status", "")).upper() == "FILLED"
-            or str(row.get("status", "")).upper() in {"CANCELED", "EXPIRED", "EXPIRED_IN_MATCH"}
+            or str(row.get("status", "")).upper() in {"CANCELED", "EXPIRED", "EXPIRED_IN_MATCH", "REJECTED"}
         )
     ]
     if not candidates:
@@ -680,11 +736,36 @@ class LiveExecutionEngine:
             # client order id absent.  The same id is reused.
             retry_requested_qty = float(previous.get("requested_qty", 0.0) or 0.0)
 
-        invariants = self._runtime_order_invariants(
-            state,
-            strategy_equity=strategy_equity,
-        )
+        try:
+            invariants = self._runtime_order_invariants(
+                decision.action,
+                state,
+                strategy_equity=strategy_equity,
+            )
+        except Exception:
+            if decision.action in RISK_INCREASE_ACTIONS:
+                self._expire_unsubmitted_risk_increase(
+                    decision,
+                    state,
+                    strategy_equity=strategy_equity,
+                    reason="RUNTIME_INVARIANT_CHECK_ERROR",
+                )
+                return {
+                    "ok": False,
+                    "submitted": False,
+                    "reason": "RUNTIME_INVARIANT_BLOCKED",
+                    "invariants": {"ok": False, "reason": "INVARIANT_CHECK_ERROR"},
+                }
+            raise
         if invariants.get("ok") is not True:
+            if decision.action in RISK_INCREASE_ACTIONS:
+                self._expire_unsubmitted_risk_increase(
+                    decision,
+                    state,
+                    strategy_equity=strategy_equity,
+                    reason="RUNTIME_INVARIANT_BLOCKED",
+                    details=invariants,
+                )
             return {
                 "ok": False,
                 "submitted": False,
@@ -701,6 +782,13 @@ class LiveExecutionEngine:
             symbol_rules=symbol_rules,
         )
         if requested_qty <= 0:
+            if decision.action in RISK_INCREASE_ACTIONS:
+                self._expire_unsubmitted_risk_increase(
+                    decision,
+                    state,
+                    strategy_equity=strategy_equity,
+                    reason="INVALID_OR_ZERO_QUANTITY",
+                )
             return {"ok": False, "submitted": False, "reason": "INVALID_OR_ZERO_QUANTITY"}
 
         base = self._base_record(
@@ -710,8 +798,8 @@ class LiveExecutionEngine:
         )
         self.ledger.append({**base, "status": "SIGNAL_CONFIRMED"})
         self.ledger.append({**base, "status": "SUBMITTING"})
-        side = "BUY" if decision.action in {LiveAction.OPEN.value, LiveAction.ADD_50.value} else "SELL"
-        reduce_only = decision.action not in {LiveAction.OPEN.value, LiveAction.ADD_50.value}
+        side = "BUY" if decision.action in RISK_INCREASE_ACTIONS else "SELL"
+        reduce_only = decision.action in RISK_REDUCTION_ACTIONS
         try:
             response = self.adapter.submit_market_order(
                 side=side,
@@ -840,11 +928,7 @@ class LiveExecutionEngine:
         else:
             return 0.0
         resolved_rules = dict(symbol_rules)
-        if action in {
-            LiveAction.REDUCE_50.value,
-            LiveAction.STOP_CLOSE.value,
-            LiveAction.HARD_STOP_CLOSE.value,
-        }:
+        if action in RISK_REDUCTION_ACTIONS:
             # Closing/reducing an existing position must not be blocked by the
             # entry notional gate. Quantity precision and minQty still apply.
             resolved_rules["min_notional"] = 0.0
@@ -861,30 +945,133 @@ class LiveExecutionEngine:
 
     def _runtime_order_invariants(
         self,
+        action: str,
         state: StrategyState,
         *,
         strategy_equity: float,
     ) -> dict[str, Any]:
-        reconciliation = reconcile_startup(state, self.ledger, self.adapter)
-        if reconciliation.get("ok") is not True:
-            return {"ok": False, "reason": reconciliation.get("reason", "RECONCILIATION_FAILED")}
-        position = reconciliation.get("position") or {}
-        isolated = _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated"
-        leverage_1x = int(float(position.get("leverage", 0) or 0)) == 1
+        if action in RISK_INCREASE_ACTIONS:
+            reconciliation = reconcile_startup(state, self.ledger, self.adapter)
+            if reconciliation.get("ok") is not True:
+                return {"ok": False, "reason": reconciliation.get("reason", "RECONCILIATION_FAILED")}
+            position = reconciliation.get("position") or {}
+            isolated = _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated"
+            leverage_1x = int(float(position.get("leverage", 0) or 0)) == 1
+            one_way = not _to_bool(self.adapter.get_position_mode().get("dualSidePosition"))
+            boundary = verify_dedicated_account_boundary(
+                exchange_equity=account_equity(self.adapter.get_account()),
+                strategy_equity=strategy_equity,
+            )
+            checks = {
+                "reconciliation": True,
+                "one_way_mode": one_way,
+                "isolated": isolated,
+                "leverage_1x": leverage_1x,
+                "dedicated_account_boundary": boundary.get("ok") is True,
+                "no_unrecognized_open_orders": True,
+            }
+            return {"ok": all(checks.values()), "checks": checks, "gate": "RISK_INCREASE_FULL"}
+
+        if action not in RISK_REDUCTION_ACTIONS:
+            return {"ok": False, "reason": "UNKNOWN_ACTION_GATE"}
+
+        # Risk-reducing orders must remain available when leverage, margin type,
+        # or account-equity allocation has drifted.  They still require a
+        # clearly identified one-way LONG and no conflicting exchange order.
+        position = self.adapter.get_position()
+        exchange_qty = position_quantity(position)
+        if exchange_qty <= 1e-12:
+            return {
+                "ok": False,
+                "reason": "NO_CONFIRMED_LONG_POSITION_TO_REDUCE",
+                "exchange_qty": exchange_qty,
+                "gate": "RISK_REDUCTION_SAFE",
+            }
         one_way = not _to_bool(self.adapter.get_position_mode().get("dualSidePosition"))
-        boundary = verify_dedicated_account_boundary(
-            exchange_equity=account_equity(self.adapter.get_account()),
-            strategy_equity=strategy_equity,
-        )
-        checks = {
-            "reconciliation": True,
-            "one_way_mode": one_way,
-            "isolated": isolated,
-            "leverage_1x": leverage_1x,
-            "dedicated_account_boundary": boundary.get("ok") is True,
-            "no_unrecognized_open_orders": True,
+        if not one_way:
+            return {
+                "ok": False,
+                "reason": "POSITION_MODE_AMBIGUOUS",
+                "gate": "RISK_REDUCTION_SAFE",
+            }
+
+        open_orders = self.adapter.get_open_orders()
+        latest: dict[str, dict[str, Any]] = {}
+        for row in self.ledger.read():
+            signal_key = str(row.get("signal_key", ""))
+            if signal_key:
+                latest[signal_key] = row
+        pending = [
+            row for row in latest.values()
+            if row.get("status") in {"SIGNAL_CONFIRMED", "SUBMITTING", "NEW", "PARTIALLY_FILLED", UNKNOWN_STATUS}
+        ]
+        known_clients = {str(row.get("client_order_id", "")) for row in pending if row.get("client_order_id")}
+        unknown_exchange_orders = [
+            item for item in open_orders
+            if str(item.get("clientOrderId", item.get("client_order_id", ""))) not in known_clients
+        ]
+        if unknown_exchange_orders:
+            return {
+                "ok": False,
+                "reason": "UNRECOGNIZED_EXCHANGE_OPEN_ORDER",
+                "gate": "RISK_REDUCTION_SAFE",
+            }
+
+        # Exchange quantity is authoritative for a reduce-only exit.  Sync it
+        # before sizing so a stale local quantity cannot accidentally leave a
+        # larger live exposure behind or request an unsafe amount.
+        state.actual_position_qty = exchange_qty
+        if action == LiveAction.REDUCE_50.value and state.full_position_qty <= 1e-12:
+            return {
+                "ok": False,
+                "reason": "FULL_POSITION_TARGET_UNKNOWN",
+                "gate": "RISK_REDUCTION_SAFE",
+            }
+        advisory = {
+            "isolated": _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated",
+            "leverage_1x": int(float(position.get("leverage", 0) or 0)) == 1,
         }
-        return {"ok": all(checks.values()), "checks": checks}
+        return {
+            "ok": True,
+            "gate": "RISK_REDUCTION_SAFE",
+            "exchange_qty": exchange_qty,
+            "checks": {
+                "confirmed_long": True,
+                "one_way_mode": True,
+                "no_unrecognized_open_orders": True,
+            },
+            "advisory_drift": advisory,
+        }
+
+    def _expire_unsubmitted_risk_increase(
+        self,
+        decision: StrategyDecision,
+        state: StrategyState,
+        *,
+        strategy_equity: float,
+        reason: str,
+        details: Optional[dict[str, Any]] = None,
+    ) -> None:
+        if decision.action not in RISK_INCREASE_ACTIONS:
+            return
+        existing = self.ledger.latest_by_signal_key(decision.signal_key)
+        if existing is None or existing.get("status") != STALE_RISK_INCREASE_STATUS:
+            record = self._base_record(
+                decision,
+                requested_qty=0.0,
+                strategy_equity_before=strategy_equity,
+            )
+            record.update({
+                "status": STALE_RISK_INCREASE_STATUS,
+                "reason": reason,
+                "exchange_snapshot": {"pre_submit_block": dict(details or {})},
+                "recorded_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            })
+            self.ledger.append(record)
+        state.pending_action = ""
+        state.pending_decision = {}
+        state.recovery_status = STALE_RISK_INCREASE_STATUS
+        state.recovery_decision = {}
 
     @staticmethod
     def _base_record(
@@ -985,7 +1172,7 @@ class LiveExecutionEngine:
         self.ledger.append(record)
         if status == "FILLED":
             Zec4hStrategy.apply_filled_action(state, decision, filled_qty=filled_qty)
-        elif status in {"CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"}:
+        elif status in TERMINAL_FAILURE_STATUSES:
             state.pending_action = ""
             state.pending_decision = {}
             state.recovery_status = ""
@@ -1000,13 +1187,30 @@ class LiveExecutionEngine:
             else:
                 state.phase = StrategyPhase.HARD_STOP.value
                 state.hard_stop_reason = f"ORDER_{status}"
+            try:
+                exchange_qty = position_quantity(self.adapter.get_position())
+            except Exception:
+                state.phase = StrategyPhase.HARD_STOP.value
+                state.recovery_status = "TERMINAL_POSITION_UNVERIFIED"
+                state.recovery_decision = {}
+            else:
+                _arm_terminal_safety_exit(
+                    state,
+                    decision,
+                    status=status,
+                    exchange_qty=exchange_qty,
+                    partial_fill=filled_qty > 0,
+                )
         return {
             "ok": status in {"NEW", "PARTIALLY_FILLED", "FILLED"},
             "submitted": True,
             "status": status,
             "filled_qty": filled_qty,
             "exchange_order_id": exchange_order_id,
-            "safety_exit_required": state.recovery_status == "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED",
+            "safety_exit_required": state.recovery_status in {
+                "PARTIAL_TERMINAL_SAFETY_EXIT_REQUIRED",
+                "TERMINAL_SAFETY_EXIT_REQUIRED",
+            },
         }
 
     def _fill_evidence(self, exchange_order_id: str) -> dict[str, Any]:
