@@ -539,12 +539,12 @@ def _arm_terminal_safety_exit(
 ) -> None:
     qty = float(exchange_qty)
     state.phase = StrategyPhase.HARD_STOP.value
-    state.hard_stop_reason = (
-        f"ORDER_{status}_WITH_PARTIAL_FILL" if partial_fill else f"ORDER_{status}_WITH_OPEN_POSITION"
-    )
     state.pending_action = ""
     state.pending_decision = {}
     if qty > 1e-12:
+        state.hard_stop_reason = (
+            f"ORDER_{status}_WITH_PARTIAL_FILL" if partial_fill else f"ORDER_{status}_WITH_OPEN_POSITION"
+        )
         state.actual_position_qty = qty
         state.full_position_qty = max(state.full_position_qty, qty)
         close_decision = _partial_terminal_safety_decision(decision, status=status)
@@ -554,9 +554,11 @@ def _arm_terminal_safety_exit(
         )
         state.recovery_decision = asdict(close_decision)
     elif qty < -1e-12:
+        state.hard_stop_reason = f"ORDER_{status}_POSITION_DIRECTION_AMBIGUOUS"
         state.recovery_status = "TERMINAL_POSITION_DIRECTION_AMBIGUOUS"
         state.recovery_decision = {}
     else:
+        state.hard_stop_reason = f"ORDER_{status}"
         state.actual_position_qty = 0.0
         state.recovery_status = ""
         state.recovery_decision = {}
