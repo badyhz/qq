@@ -1,0 +1,29 @@
+[Unit]
+Description=ZECUSDT 4H Small Live v1 (disabled until governed provisioning)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/quant-shadow/zec-4h-small-live.env
+
+[Service]
+Type=simple
+User=codex
+Group=codex
+WorkingDirectory=/opt/quant-shadow/qq
+# Fail closed by default.  A separately audited EnvironmentFile may override
+# these only during the later secret-provisioning and LIVE PREFLIGHT phase.
+Environment=ZEC_4H_LIVE_ENABLED=false
+Environment=ZEC_4H_PREFLIGHT_ENABLED=false
+Environment=ZEC_4H_LIVE_ACTIVATION=disabled
+EnvironmentFile=-/etc/quant-shadow/zec-4h-small-live.env
+ExecStart=/usr/bin/python3 /opt/quant-shadow/qq/scripts/run_zec_4h_small_live.py
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/quant-shadow/zec-4h-small-live
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
