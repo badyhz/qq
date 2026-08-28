@@ -23,9 +23,11 @@ STRATEGY_ID = "zec_4h_live_v1"
 SYMBOL = "ZECUSDT"
 TIMEFRAME = "4h"
 STARTING_EQUITY = 50.0
+LIVE_CAPITAL_CAP_USDT = 50.0
+MARGIN_PER_TRADE_RATE = 0.01
+TARGET_INITIAL_MARGIN_USDT = LIVE_CAPITAL_CAP_USDT * MARGIN_PER_TRADE_RATE
 TARGET_EQUITY = 150.0
 HARD_EQUITY_FLOOR = 30.0
-INITIAL_NOTIONAL_BUFFER = 0.96
 WARMUP_BARS = 200
 APPROVED_LIVE_SAFETY_DEVIATIONS = (
     "NO_REDUCTION_BELOW_HALF_TARGET",
@@ -87,6 +89,8 @@ class StrategyState:
     recovery_status: str = ""
     recovery_decision: dict[str, Any] = field(default_factory=dict)
     applied_fill_signal_keys: list[str] = field(default_factory=list)
+    stop_guard_active: bool = False
+    stop_guard_price: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -746,6 +750,8 @@ class Zec4hStrategy:
             state.actual_position_qty = qty
             state.reduced_qty = 0.0
             state.entry_low = float(decision.entry_low) if decision.entry_low is not None else None
+            state.stop_guard_price = state.entry_low
+            state.stop_guard_active = state.entry_low is not None and state.entry_low > 0
             state.phase = StrategyPhase.LONG_FULL.value
         elif action == LiveAction.REDUCE_50.value:
             state.actual_position_qty = max(0.0, state.actual_position_qty - qty)
@@ -760,6 +766,8 @@ class Zec4hStrategy:
             state.full_position_qty = max(state.full_position_qty, state.actual_position_qty)
             state.reduced_qty = 0.0
             state.entry_low = float(decision.entry_low) if decision.entry_low is not None else state.entry_low
+            state.stop_guard_price = state.entry_low
+            state.stop_guard_active = state.entry_low is not None and state.entry_low > 0
             state.phase = StrategyPhase.LONG_FULL.value
             # AiCoin keeps the newest attack reference across an ADD.  Only a
             # confirmed full position close uses the approved boundary clear.
@@ -769,6 +777,8 @@ class Zec4hStrategy:
             state.full_position_qty = 0.0
             state.reduced_qty = 0.0
             state.entry_low = None
+            state.stop_guard_active = False
+            state.stop_guard_price = None
             cls._clear_scaling_state(state)
             if action == LiveAction.HARD_STOP_CLOSE.value:
                 state.phase = StrategyPhase.HARD_STOP.value
@@ -1064,6 +1074,10 @@ def build_live_scorecard(
     return {
         "strategy_id": STRATEGY_ID,
         "starting_equity": STARTING_EQUITY,
+        "live_capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
+        "margin_per_trade_rate": MARGIN_PER_TRADE_RATE,
+        "target_initial_margin_usdt": TARGET_INITIAL_MARGIN_USDT,
+        "managed_capital_usdt": min(max(float(current_equity), 0.0), LIVE_CAPITAL_CAP_USDT),
         "current_equity": float(current_equity),
         "net_profit": net_profit,
         "target_equity": TARGET_EQUITY,
@@ -1092,9 +1106,20 @@ def build_live_scorecard(
     }
 
 
-def safe_initial_notional(strategy_equity: float) -> float:
+def safe_initial_notional(strategy_equity: float, leverage: int) -> float:
+    """Return the fixed-margin initial notional without exceeding the 50 USDT pool.
+
+    ``strategy_equity`` is deliberately not allowed to scale the order.  It is
+    accepted only so callers can fail closed when the strategy has no valid
+    capital evidence.  The live contract allocates exactly one percent of the
+    fixed 50 USDT pool as initial margin and lets the exchange/account-specific
+    leverage determine notional exposure.
+    """
     if not math.isfinite(strategy_equity) or strategy_equity <= 0:
         return 0.0
-    # Strategy equity is isolated from the rest of the account.  The 4% reserve
-    # absorbs fees, funding and small price changes before market submission.
-    return max(0.0, float(strategy_equity) * INITIAL_NOTIONAL_BUFFER)
+    if not isinstance(leverage, int) or isinstance(leverage, bool) or leverage <= 0:
+        return 0.0
+    managed_capital = min(float(strategy_equity), LIVE_CAPITAL_CAP_USDT)
+    if managed_capital < TARGET_INITIAL_MARGIN_USDT:
+        return 0.0
+    return TARGET_INITIAL_MARGIN_USDT * leverage

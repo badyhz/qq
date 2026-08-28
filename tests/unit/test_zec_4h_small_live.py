@@ -16,6 +16,8 @@ from core.zec_4h_live import (
     StrategyState,
     Zec4hStrategy,
     WARMUP_BARS,
+    LIVE_CAPITAL_CAP_USDT,
+    TARGET_INITIAL_MARGIN_USDT,
     build_live_scorecard,
     load_strategy_state,
     save_strategy_state,
@@ -27,6 +29,7 @@ from core.zec_4h_live_execution import (
     UNKNOWN_STATUS,
     extract_symbol_rules,
     reconcile_startup,
+    resolve_max_allowed_leverage,
     recover_unapplied_filled_transitions,
     run_live_preflight,
     strategy_equity_from_evidence,
@@ -112,13 +115,13 @@ class FakeAdapter:
     def __init__(self):
         self.submit_count = 0
         self.submit_response = {
-            "status": "FILLED", "executedQty": "0.48", "avgPrice": "100",
+            "status": "FILLED", "executedQty": "0.375", "avgPrice": "100",
             "orderId": "1001", "clientOrderId": "fake",
         }
         self.submit_error: Exception | None = None
         self.submit_responses = []
         self.query_response = None
-        self.position = {"symbol": "ZECUSDT", "positionAmt": "0", "isolated": True, "leverage": "1"}
+        self.position = {"symbol": "ZECUSDT", "positionAmt": "0", "isolated": True, "leverage": "75"}
         self.open_orders = []
         self.account = {
             "canTrade": True,
@@ -126,13 +129,19 @@ class FakeAdapter:
             "totalWalletBalance": "50",
             "totalUnrealizedProfit": "0",
         }
+        self.available_balance = 50.0
         self.fills = []
         self.income = []
         self.submitted = []
         self.dual_side_position = False
 
     def get_account(self): return dict(self.account)
-    def get_balance(self): return [{"asset": "USDT", "balance": "50"}]
+    def get_balance(self):
+        return [{
+            "asset": "USDT",
+            "balance": str(self.available_balance),
+            "availableBalance": str(self.available_balance),
+        }]
     def get_position(self, symbol="ZECUSDT"): return dict(self.position)
     def get_open_orders(self, symbol="ZECUSDT"): return [dict(row) for row in self.open_orders]
     def get_exchange_info(self): return exchange_info_fixture()
@@ -140,8 +149,21 @@ class FakeAdapter:
     def get_position_mode(self): return {"dualSidePosition": self.dual_side_position}
     def get_api_restrictions(self):
         return {"enableFutures": True, "enableWithdrawals": False, "ipRestrict": True}
-    def set_leverage(self, leverage, symbol="ZECUSDT"): return {"leverage": leverage, "symbol": symbol}
-    def set_margin_type(self, margin_type, symbol="ZECUSDT"): return {"code": 200}
+    def get_leverage_brackets(self, symbol="ZECUSDT"):
+        return [{
+            "symbol": symbol,
+            "brackets": [
+                {"bracket": 1, "initialLeverage": 75, "notionalFloor": 0, "notionalCap": 10000},
+                {"bracket": 2, "initialLeverage": 50, "notionalFloor": 10000, "notionalCap": 50000},
+            ],
+        }]
+    def set_leverage(self, leverage, symbol="ZECUSDT"):
+        self.position["leverage"] = str(leverage)
+        return {"leverage": leverage, "symbol": symbol}
+    def set_margin_type(self, margin_type, symbol="ZECUSDT"):
+        self.position["isolated"] = str(margin_type).upper() == "ISOLATED"
+        self.position["marginType"] = str(margin_type).lower()
+        return {"code": 200}
 
     def submit_market_order(self, **kwargs):
         self.submit_count += 1
@@ -271,7 +293,12 @@ def test_reduce_rule_b_strong_bearish_half_retrace():
 
 
 def test_reduce_fill_transitions_once_to_waiting_readd():
-    state = StrategyState(phase=StrategyPhase.LONG_FULL.value, actual_position_qty=1, full_position_qty=1)
+    state = StrategyState(
+        phase=StrategyPhase.LONG_FULL.value,
+        actual_position_qty=1,
+        full_position_qty=1,
+        entry_low=80.0,
+    )
     Zec4hStrategy.apply_filled_action(state, decision(LiveAction.REDUCE_50.value), filled_qty=0.5)
     assert state.phase == StrategyPhase.WAITING_READD.value
     assert state.wait_add_position is True
@@ -769,7 +796,7 @@ def test_duplicate_actions_are_blocked(tmp_path: Path, action: str):
         adapter.position["positionAmt"] = "0.5"
         state = StrategyState(
             phase=StrategyPhase.WAITING_READD.value, actual_position_qty=0.5,
-            full_position_qty=1, reduced_qty=0.5,
+            full_position_qty=1, reduced_qty=0.5, entry_low=80.0,
         )
     else:
         state = StrategyState()
@@ -786,7 +813,7 @@ def test_timeout_with_exchange_order_does_not_resend(tmp_path: Path):
     adapter = FakeAdapter()
     adapter.submit_error = TimeoutError()
     adapter.query_response = {
-        "status": "FILLED", "executedQty": "0.48", "avgPrice": "100", "orderId": "2001",
+        "status": "FILLED", "executedQty": "0.375", "avgPrice": "100", "orderId": "2001",
     }
     engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
     result = engine.execute(decision(LiveAction.OPEN.value), StrategyState(), strategy_equity=50, mark_price=100, symbol_rules=RULES)
@@ -954,9 +981,57 @@ def test_partial_terminal_crash_recovers_then_closes_without_waiting_for_bar(tmp
 def test_restart_reconciliation_passes_matching_position(tmp_path: Path):
     adapter = FakeAdapter()
     adapter.position["positionAmt"] = "1"
-    state = StrategyState(phase=StrategyPhase.LONG_FULL.value, actual_position_qty=1, full_position_qty=1)
+    state = StrategyState(
+        phase=StrategyPhase.LONG_FULL.value,
+        actual_position_qty=1,
+        full_position_qty=1,
+        entry_low=80.0,
+    )
     result = reconcile_startup(state, LiveExecutionLedger(tmp_path / "live.jsonl"), adapter)
     assert result["ok"] is True
+    assert state.stop_guard_active is True
+    assert state.stop_guard_price == 80.0
+
+
+def test_restart_reconciliation_blocks_unprotected_position(tmp_path: Path):
+    adapter = FakeAdapter()
+    adapter.position["positionAmt"] = "1"
+    state = StrategyState(
+        phase=StrategyPhase.LONG_FULL.value,
+        actual_position_qty=1,
+        full_position_qty=1,
+        entry_low=None,
+    )
+    result = reconcile_startup(state, LiveExecutionLedger(tmp_path / "live.jsonl"), adapter)
+    assert result == {"ok": False, "reason": "STOP_GUARD_PRICE_UNAVAILABLE"}
+
+
+def test_open_fill_arms_closed_bar_stop_guard(tmp_path: Path):
+    adapter = FakeAdapter()
+    state = StrategyState()
+    result = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl")).execute(
+        decision(LiveAction.OPEN.value, entry_low=90.0), state,
+        strategy_equity=50, mark_price=100, symbol_rules=RULES,
+    )
+    assert result["status"] == "FILLED"
+    assert state.stop_guard_active is True
+    assert state.stop_guard_price == 90.0
+
+
+def test_open_fill_without_stop_guard_requires_immediate_safety_exit(tmp_path: Path):
+    adapter = FakeAdapter()
+    state = StrategyState()
+    result = _execute_with_immediate_safety_exit(
+        LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl")),
+        decision(LiveAction.OPEN.value, entry_low=None),
+        state,
+        strategy_equity=50,
+        mark_price=100,
+        symbol_rules=RULES,
+    )
+    assert result["immediate_safety_exit"] is True
+    assert result["safety_exit"]["status"] == "FILLED"
+    assert float(adapter.position["positionAmt"]) == 0.0
 
 
 @pytest.mark.parametrize(
@@ -1066,15 +1141,43 @@ def test_unrecognized_exchange_open_order_fails_closed(tmp_path: Path):
     assert result == {"ok": False, "reason": "UNRECOGNIZED_EXCHANGE_OPEN_ORDER"}
 
 
-def test_initial_order_reserves_buffer_and_never_exceeds_50(tmp_path: Path):
+def test_initial_order_uses_exactly_one_percent_margin_and_never_scales_above_cap(tmp_path: Path):
     adapter = FakeAdapter()
+    adapter.account["totalMarginBalance"] = "500"
+    adapter.account["totalWalletBalance"] = "500"
+    adapter.available_balance = 500
     state = StrategyState()
     engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
-    engine.execute(decision(LiveAction.OPEN.value), state, strategy_equity=50, mark_price=100, symbol_rules=RULES)
-    submitted = adapter.submit_response
+    engine.execute(decision(LiveAction.OPEN.value), state, strategy_equity=500, mark_price=100, symbol_rules=RULES)
     assert adapter.submit_count == 1
     latest = engine.ledger.read()[-1]
-    assert latest["requested_qty"] * 100 <= 48.0 + 1e-9
+    assert LIVE_CAPITAL_CAP_USDT == 50.0
+    assert TARGET_INITIAL_MARGIN_USDT == 0.5
+    assert latest["requested_qty"] * 100 == pytest.approx(0.5 * 75)
+
+
+@pytest.mark.parametrize(
+    "rules,expected_qty",
+    [
+        ({**RULES, "step_size": 0.01, "min_qty": 0.01}, 0.37),
+        ({**RULES, "step_size": 0.5, "min_qty": 0.5}, 0.0),
+    ],
+)
+def test_initial_quantity_obeys_step_size_and_min_qty_without_raising_margin(
+    tmp_path: Path, rules: dict, expected_qty: float,
+):
+    adapter = FakeAdapter()
+    engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
+    result = engine.execute(
+        decision(LiveAction.OPEN.value), StrategyState(), strategy_equity=50,
+        mark_price=100, symbol_rules=rules,
+    )
+    if expected_qty == 0:
+        assert result["submitted"] is False
+        assert adapter.submit_count == 0
+    else:
+        assert engine.ledger.read()[-1]["requested_qty"] == pytest.approx(expected_qty)
+        assert engine.ledger.read()[-1]["requested_qty"] * 100 <= 0.5 * 75
 
 
 def test_reduce_quantity_never_crosses_original_half_target():
@@ -1314,6 +1417,10 @@ def test_binance_response_schema_and_write_guard():
         if path == "/fapi/v1/openOrders": return {"ok": True, "data": []}
         if path == "/fapi/v1/exchangeInfo": return {"ok": True, "data": exchange_info_fixture()}
         if path == "/fapi/v1/time": return {"ok": True, "data": {"serverTime": 1}}
+        if path == "/fapi/v1/leverageBracket": return {"ok": True, "data": [{
+            "symbol": "ZECUSDT",
+            "brackets": [{"initialLeverage": 75, "notionalFloor": 0, "notionalCap": 10000}],
+        }]}
         raise AssertionError(path)
 
     adapter = BinanceUsdMExecutionAdapter(api_key="fixture", api_secret="fixture", transport=transport)
@@ -1321,6 +1428,7 @@ def test_binance_response_schema_and_write_guard():
     assert adapter.get_balance()[0]["asset"] == "USDT"
     assert adapter.get_position()["positionAmt"] == "0"
     assert adapter.get_open_orders() == []
+    assert resolve_max_allowed_leverage(adapter.get_leverage_brackets()) == 75
     assert extract_symbol_rules(adapter.get_exchange_info())["min_notional"] == 5
     with pytest.raises(RuntimeError, match="DISABLED"):
         adapter.submit_market_order(
@@ -1336,14 +1444,54 @@ def test_preflight_requires_every_safety_check():
         local_time_ms=int(BASE.timestamp() * 1000),
     )
     assert result["preflight_pass"] is True
-    adapter.account["totalMarginBalance"] = "70"
+    adapter.position["leverage"] = "10"
     blocked = run_live_preflight(
         adapter,
         withdrawal_disabled_verified=True,
         local_time_ms=int(BASE.timestamp() * 1000),
     )
     assert blocked["preflight_pass"] is False
-    assert blocked["strategy_budget_ok"] is False
+    assert blocked["leverage_max_allowed"] is False
+
+
+def test_preflight_blocks_unknown_leverage_bracket_and_withdraw_permission():
+    adapter = FakeAdapter()
+    adapter.get_leverage_brackets = lambda symbol="ZECUSDT": []
+    unknown = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
+    assert unknown["preflight_pass"] is False
+    assert unknown["error"] == "ValueError"
+
+    adapter = FakeAdapter()
+    adapter.get_api_restrictions = lambda: {
+        "enableFutures": True, "enableWithdrawals": True, "ipRestrict": True,
+    }
+    withdrawal = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
+    assert withdrawal["preflight_pass"] is False
+    assert withdrawal["withdrawal_disabled_verified"] is False
+
+
+def test_max_leverage_resolution_respects_position_notional_bracket():
+    payload = [{
+        "symbol": "ZECUSDT",
+        "brackets": [
+            {"initialLeverage": 125, "notionalFloor": 0, "notionalCap": 50},
+            {"initialLeverage": 50, "notionalFloor": 50, "notionalCap": 10000},
+        ],
+    }]
+    assert resolve_max_allowed_leverage(payload, initial_margin_usdt=0.5) == 99
+
+
+def test_minimum_notional_never_increases_the_one_percent_margin(tmp_path: Path):
+    adapter = FakeAdapter()
+    rules = {**RULES, "min_notional": 50.0}
+    engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
+    result = engine.execute(
+        decision(LiveAction.OPEN.value), StrategyState(), strategy_equity=500,
+        mark_price=100, symbol_rules=rules,
+    )
+    assert result["submitted"] is False
+    assert result["reason"] == "INVALID_OR_ZERO_QUANTITY"
+    assert adapter.submit_count == 0
 
 
 @pytest.mark.parametrize("drift", ["LEVERAGE_10X", "CROSS_MARGIN", "HEDGE_MODE"])

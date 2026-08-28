@@ -21,6 +21,8 @@ from core.zec_4h_live import (
     APPROVED_LIVE_SAFETY_DEVIATIONS,
     LiveAction,
     LiveExecutionLedger,
+    LIVE_CAPITAL_CAP_USDT,
+    TARGET_INITIAL_MARGIN_USDT,
     STRATEGY_ID,
     STARTING_EQUITY,
     SYMBOL,
@@ -65,6 +67,7 @@ class ExecutionAdapter(Protocol):
     def get_server_time(self) -> dict[str, Any]: ...
     def get_position_mode(self) -> dict[str, Any]: ...
     def get_api_restrictions(self) -> dict[str, Any]: ...
+    def get_leverage_brackets(self, symbol: str = SYMBOL) -> Any: ...
     def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]: ...
     def set_margin_type(self, margin_type: str, symbol: str = SYMBOL) -> dict[str, Any]: ...
     def submit_market_order(
@@ -212,6 +215,12 @@ class BinanceUsdMExecutionAdapter:
         )
         if not isinstance(value, dict):
             raise RuntimeError("MALFORMED_API_RESTRICTIONS_RESPONSE")
+        return value
+
+    def get_leverage_brackets(self, symbol: str = SYMBOL) -> Any:
+        value = self._signed("GET", "/fapi/v1/leverageBracket", {"symbol": symbol})
+        if not isinstance(value, (dict, list)):
+            raise RuntimeError("MALFORMED_LEVERAGE_BRACKET_RESPONSE")
         return value
 
     def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]:
@@ -400,6 +409,37 @@ def extract_symbol_rules(exchange_info: dict[str, Any], symbol: str = SYMBOL) ->
     }
 
 
+def resolve_max_allowed_leverage(
+    payload: Any,
+    *,
+    symbol: str = SYMBOL,
+    initial_margin_usdt: float = TARGET_INITIAL_MARGIN_USDT,
+) -> int:
+    """Resolve the highest leverage whose resulting notional fits its bracket."""
+    rows = payload if isinstance(payload, list) else [payload]
+    matches = [row for row in rows if isinstance(row, dict) and row.get("symbol") == symbol]
+    if len(matches) != 1 or initial_margin_usdt <= 0:
+        raise ValueError("LEVERAGE_BRACKET_UNAVAILABLE")
+    bracket_payload = matches[0]
+    brackets = [row for row in bracket_payload.get("brackets", []) if isinstance(row, dict)]
+    maximum = max(
+        (int(float(row.get("initialLeverage", 0) or 0)) for row in brackets),
+        default=0,
+    )
+    notional_coefficient = float(bracket_payload.get("notionalCoef", 1.0) or 1.0)
+    if maximum <= 0 or notional_coefficient <= 0:
+        raise ValueError("INVALID_LEVERAGE_BRACKET")
+    for leverage in range(maximum, 0, -1):
+        notional = initial_margin_usdt * leverage
+        for bracket in brackets:
+            floor = float(bracket.get("notionalFloor", 0.0) or 0.0) * notional_coefficient
+            cap = float(bracket.get("notionalCap", 0.0) or 0.0) * notional_coefficient
+            bracket_leverage = int(float(bracket.get("initialLeverage", 0) or 0))
+            if floor <= notional and (cap <= 0 or notional < cap) and leverage <= bracket_leverage:
+                return leverage
+    raise ValueError("NO_LEVERAGE_BRACKET_FOR_TARGET_MARGIN")
+
+
 def run_live_preflight(
     adapter: ExecutionAdapter,
     *,
@@ -426,13 +466,17 @@ def run_live_preflight(
         checks["ip_restricted"] = _to_bool(restrictions.get("ipRestrict"))
         checks["account_equity"] = account_equity(account)
         checks["available_balance"] = usdt_available_balance(adapter.get_balance())
-        checks["available_buffer_ok"] = checks["available_balance"] >= expected_budget * 0.96
-        budget_tolerance = max(1.0, expected_budget * 0.02)
-        checks["strategy_budget_ok"] = abs(checks["account_equity"] - expected_budget) <= budget_tolerance
+        checks["available_buffer_ok"] = checks["available_balance"] >= TARGET_INITIAL_MARGIN_USDT
+        checks["strategy_budget_ok"] = expected_budget == LIVE_CAPITAL_CAP_USDT
+        checks["capital_cap_usdt"] = LIVE_CAPITAL_CAP_USDT
+        checks["initial_margin_usdt"] = TARGET_INITIAL_MARGIN_USDT
         position = adapter.get_position()
         checks["position_zero"] = abs(position_quantity(position)) <= 1e-12
         checks["isolated"] = _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated"
-        checks["leverage_1x"] = int(float(position.get("leverage", 0) or 0)) == 1
+        checks["max_allowed_leverage"] = resolve_max_allowed_leverage(adapter.get_leverage_brackets())
+        checks["leverage_max_allowed"] = (
+            int(float(position.get("leverage", 0) or 0)) == checks["max_allowed_leverage"]
+        )
         checks["one_way_mode"] = not _to_bool(adapter.get_position_mode().get("dualSidePosition"))
         checks["open_orders_zero"] = len(adapter.get_open_orders()) == 0
         if withdrawal_disabled_verified:
@@ -443,7 +487,7 @@ def run_live_preflight(
         return checks
     required = [
         "symbol_tradeable", "clock_ok", "api_read", "api_trade", "strategy_budget_ok", "available_buffer_ok",
-        "position_zero", "isolated", "leverage_1x", "one_way_mode", "open_orders_zero",
+        "position_zero", "isolated", "leverage_max_allowed", "one_way_mode", "open_orders_zero",
         "withdrawal_disabled_verified", "ip_restricted",
     ]
     checks["preflight_pass"] = all(checks.get(key) is True for key in required)
@@ -488,6 +532,14 @@ def reconcile_startup(
         }
     if state.phase in {StrategyPhase.FLAT.value, StrategyPhase.TARGET_REACHED_PAUSED.value} and exchange_qty > tolerance and not pending:
         return {"ok": False, "reason": "EXCHANGE_POSITION_WHILE_LOCAL_FLAT"}
+    if exchange_qty > tolerance:
+        if state.entry_low is None or float(state.entry_low) <= 0:
+            return {"ok": False, "reason": "STOP_GUARD_PRICE_UNAVAILABLE"}
+        state.stop_guard_price = float(state.entry_low)
+        state.stop_guard_active = True
+    else:
+        state.stop_guard_price = None
+        state.stop_guard_active = False
     return {
         "ok": True,
         "exchange_qty": exchange_qty,
@@ -782,6 +834,7 @@ class LiveExecutionEngine:
             exchange_available_balance=exchange_available_balance,
             mark_price=mark_price,
             symbol_rules=symbol_rules,
+            leverage=int(invariants.get("selected_leverage", 0) or 0),
         )
         if requested_qty <= 0:
             if decision.action in RISK_INCREASE_ACTIONS:
@@ -906,15 +959,14 @@ class LiveExecutionEngine:
         exchange_available_balance: Optional[float],
         mark_price: float,
         symbol_rules: dict[str, Any],
+        leverage: int = 1,
     ) -> float:
         if mark_price <= 0:
             return 0.0
         if action == LiveAction.OPEN.value:
-            permitted_equity = min(
-                strategy_equity,
-                float(exchange_available_balance) if exchange_available_balance is not None else strategy_equity,
-            )
-            raw_qty = safe_initial_notional(permitted_equity) / mark_price
+            if exchange_available_balance is not None and float(exchange_available_balance) < TARGET_INITIAL_MARGIN_USDT:
+                return 0.0
+            raw_qty = safe_initial_notional(strategy_equity, leverage) / mark_price
         elif action == LiveAction.REDUCE_50.value:
             raw_qty = max(
                 0.0,
@@ -958,21 +1010,34 @@ class LiveExecutionEngine:
                 return {"ok": False, "reason": reconciliation.get("reason", "RECONCILIATION_FAILED")}
             position = reconciliation.get("position") or {}
             isolated = _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated"
-            leverage_1x = int(float(position.get("leverage", 0) or 0)) == 1
+            try:
+                selected_leverage = resolve_max_allowed_leverage(self.adapter.get_leverage_brackets())
+            except Exception:
+                return {"ok": False, "reason": "MAX_ALLOWED_LEVERAGE_UNAVAILABLE"}
+            leverage_max_allowed = int(float(position.get("leverage", 0) or 0)) == selected_leverage
             one_way = not _to_bool(self.adapter.get_position_mode().get("dualSidePosition"))
-            boundary = verify_dedicated_account_boundary(
-                exchange_equity=account_equity(self.adapter.get_account()),
-                strategy_equity=strategy_equity,
-            )
+            account = self.adapter.get_account()
+            restrictions = self.adapter.get_api_restrictions()
+            managed_capital = min(max(float(strategy_equity), 0.0), LIVE_CAPITAL_CAP_USDT)
             checks = {
                 "reconciliation": True,
                 "one_way_mode": one_way,
                 "isolated": isolated,
-                "leverage_1x": leverage_1x,
-                "dedicated_account_boundary": boundary.get("ok") is True,
+                "leverage_max_allowed": leverage_max_allowed,
+                "capital_cap": managed_capital <= LIVE_CAPITAL_CAP_USDT,
+                "initial_margin_available": account_equity(account) >= TARGET_INITIAL_MARGIN_USDT,
+                "api_trade": _to_bool(account.get("canTrade")) and _to_bool(restrictions.get("enableFutures")),
+                "withdrawal_disabled": not _to_bool(restrictions.get("enableWithdrawals")),
                 "no_unrecognized_open_orders": True,
             }
-            return {"ok": all(checks.values()), "checks": checks, "gate": "RISK_INCREASE_FULL"}
+            return {
+                "ok": all(checks.values()),
+                "checks": checks,
+                "gate": "RISK_INCREASE_FULL",
+                "selected_leverage": selected_leverage,
+                "capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
+                "initial_margin_usdt": TARGET_INITIAL_MARGIN_USDT,
+            }
 
         if action not in RISK_REDUCTION_ACTIONS:
             return {"ok": False, "reason": "UNKNOWN_ACTION_GATE"}
@@ -1031,7 +1096,7 @@ class LiveExecutionEngine:
             }
         advisory = {
             "isolated": _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated",
-            "leverage_1x": int(float(position.get("leverage", 0) or 0)) == 1,
+            "leverage_max_allowed": None,
         }
         return {
             "ok": True,
@@ -1105,6 +1170,8 @@ class LiveExecutionEngine:
             "realized_slippage": 0.0,
             "strategy_equity_before": float(strategy_equity_before),
             "strategy_equity_after": float(strategy_equity_before),
+            "live_capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
+            "initial_margin_usdt": TARGET_INITIAL_MARGIN_USDT,
             "exchange_snapshot": {},
             "live_safety_deviations": list(APPROVED_LIVE_SAFETY_DEVIATIONS),
             "recorded_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
@@ -1174,6 +1241,15 @@ class LiveExecutionEngine:
         self.ledger.append(record)
         if status == "FILLED":
             Zec4hStrategy.apply_filled_action(state, decision, filled_qty=filled_qty)
+            if decision.action in RISK_INCREASE_ACTIONS and state.actual_position_qty > 1e-12:
+                if not state.stop_guard_active or state.stop_guard_price is None:
+                    _arm_terminal_safety_exit(
+                        state,
+                        decision,
+                        status="STOP_GUARD_CREATION_FAILED",
+                        exchange_qty=state.actual_position_qty,
+                        partial_fill=False,
+                    )
         elif status in TERMINAL_FAILURE_STATUSES:
             state.pending_action = ""
             state.pending_decision = {}
