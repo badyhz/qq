@@ -157,6 +157,13 @@ class FakeAdapter:
                 {"bracket": 2, "initialLeverage": 50, "notionalFloor": 10000, "notionalCap": 50000},
             ],
         }]
+    def get_symbol_config(self, symbol="ZECUSDT"):
+        return {
+            "symbol": symbol,
+            "marginType": "ISOLATED" if self.position.get("isolated") else "CROSSED",
+            "leverage": int(float(self.position.get("leverage", 0) or 0)),
+            "maxNotionalValue": "10000",
+        }
     def set_leverage(self, leverage, symbol="ZECUSDT"):
         self.position["leverage"] = str(leverage)
         return {"leverage": leverage, "symbol": symbol}
@@ -1421,6 +1428,9 @@ def test_binance_response_schema_and_write_guard():
             "symbol": "ZECUSDT",
             "brackets": [{"initialLeverage": 75, "notionalFloor": 0, "notionalCap": 10000}],
         }]}
+        if path == "/fapi/v1/symbolConfig": return {"ok": True, "data": [{
+            "symbol": "ZECUSDT", "marginType": "ISOLATED", "leverage": 75,
+        }]}
         raise AssertionError(path)
 
     adapter = BinanceUsdMExecutionAdapter(api_key="fixture", api_secret="fixture", transport=transport)
@@ -1429,6 +1439,7 @@ def test_binance_response_schema_and_write_guard():
     assert adapter.get_position()["positionAmt"] == "0"
     assert adapter.get_open_orders() == []
     assert resolve_max_allowed_leverage(adapter.get_leverage_brackets()) == 75
+    assert adapter.get_symbol_config()["marginType"] == "ISOLATED"
     assert extract_symbol_rules(adapter.get_exchange_info())["min_notional"] == 5
     with pytest.raises(RuntimeError, match="DISABLED"):
         adapter.submit_market_order(
@@ -1444,6 +1455,10 @@ def test_preflight_requires_every_safety_check():
         local_time_ms=int(BASE.timestamp() * 1000),
     )
     assert result["preflight_pass"] is True
+    assert result["api_authentication"] is True
+    assert result["futures_account_access"] is True
+    assert result["futures_trading_permission"] is True
+    assert result["withdraw_permission"] == "OFF"
     adapter.position["leverage"] = "10"
     blocked = run_live_preflight(
         adapter,
@@ -1468,6 +1483,27 @@ def test_preflight_blocks_unknown_leverage_bracket_and_withdraw_permission():
     withdrawal = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
     assert withdrawal["preflight_pass"] is False
     assert withdrawal["withdrawal_disabled_verified"] is False
+    assert withdrawal["withdraw_permission"] == "ON"
+
+
+def test_preflight_parses_futures_permission_and_authentication_failure():
+    adapter = FakeAdapter()
+    adapter.account["canTrade"] = False
+    denied = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
+    assert denied["api_authentication"] is True
+    assert denied["futures_account_access"] is True
+    assert denied["futures_trading_permission"] is False
+    assert denied["preflight_pass"] is False
+
+    adapter = FakeAdapter()
+    def authentication_error():
+        raise RuntimeError("AUTHENTICATION_FAILED")
+    adapter.get_account = authentication_error
+    failed = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
+    assert failed["api_authentication"] is False
+    assert failed["futures_account_access"] is False
+    assert failed["futures_trading_permission"] is False
+    assert failed["withdraw_permission"] == "UNKNOWN"
 
 
 def test_max_leverage_resolution_respects_position_notional_bracket():

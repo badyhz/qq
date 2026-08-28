@@ -68,6 +68,7 @@ class ExecutionAdapter(Protocol):
     def get_position_mode(self) -> dict[str, Any]: ...
     def get_api_restrictions(self) -> dict[str, Any]: ...
     def get_leverage_brackets(self, symbol: str = SYMBOL) -> Any: ...
+    def get_symbol_config(self, symbol: str = SYMBOL) -> dict[str, Any]: ...
     def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]: ...
     def set_margin_type(self, margin_type: str, symbol: str = SYMBOL) -> dict[str, Any]: ...
     def submit_market_order(
@@ -222,6 +223,14 @@ class BinanceUsdMExecutionAdapter:
         if not isinstance(value, (dict, list)):
             raise RuntimeError("MALFORMED_LEVERAGE_BRACKET_RESPONSE")
         return value
+
+    def get_symbol_config(self, symbol: str = SYMBOL) -> dict[str, Any]:
+        value = self._signed("GET", "/fapi/v1/symbolConfig", {"symbol": symbol})
+        rows = value if isinstance(value, list) else [value]
+        matches = [row for row in rows if isinstance(row, dict) and row.get("symbol") == symbol]
+        if len(matches) != 1:
+            raise RuntimeError("MALFORMED_SYMBOL_CONFIG_RESPONSE")
+        return dict(matches[0])
 
     def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]:
         self._assert_live_write()
@@ -459,10 +468,18 @@ def run_live_preflight(
         checks["clock_skew_ms"] = abs(local_ms - server_time)
         checks["clock_ok"] = checks["clock_skew_ms"] <= maximum_clock_skew_ms
         account = adapter.get_account()
+        checks["api_authentication"] = True
+        checks["futures_account_access"] = True
         checks["api_read"] = True
         restrictions = adapter.get_api_restrictions()
-        checks["api_trade"] = _to_bool(account.get("canTrade")) and _to_bool(restrictions.get("enableFutures"))
+        checks["futures_trading_permission"] = (
+            _to_bool(account.get("canTrade")) and _to_bool(restrictions.get("enableFutures"))
+        )
+        checks["api_trade"] = checks["futures_trading_permission"]
         checks["withdrawal_disabled_verified"] = not _to_bool(restrictions.get("enableWithdrawals"))
+        checks["withdraw_permission"] = (
+            "OFF" if checks["withdrawal_disabled_verified"] else "ON"
+        )
         checks["ip_restricted"] = _to_bool(restrictions.get("ipRestrict"))
         checks["account_equity"] = account_equity(account)
         checks["available_balance"] = usdt_available_balance(adapter.get_balance())
@@ -471,11 +488,14 @@ def run_live_preflight(
         checks["capital_cap_usdt"] = LIVE_CAPITAL_CAP_USDT
         checks["initial_margin_usdt"] = TARGET_INITIAL_MARGIN_USDT
         position = adapter.get_position()
+        symbol_config = adapter.get_symbol_config()
         checks["position_zero"] = abs(position_quantity(position)) <= 1e-12
-        checks["isolated"] = _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated"
+        checks["account_margin_mode"] = str(symbol_config.get("marginType", "")).upper()
+        checks["isolated"] = checks["account_margin_mode"] == "ISOLATED"
         checks["max_allowed_leverage"] = resolve_max_allowed_leverage(adapter.get_leverage_brackets())
+        checks["account_leverage"] = int(float(symbol_config.get("leverage", 0) or 0))
         checks["leverage_max_allowed"] = (
-            int(float(position.get("leverage", 0) or 0)) == checks["max_allowed_leverage"]
+            checks["account_leverage"] == checks["max_allowed_leverage"]
         )
         checks["one_way_mode"] = not _to_bool(adapter.get_position_mode().get("dualSidePosition"))
         checks["open_orders_zero"] = len(adapter.get_open_orders()) == 0
@@ -483,6 +503,10 @@ def run_live_preflight(
             checks["withdrawal_disabled_verified"] = checks["withdrawal_disabled_verified"] is True
     except Exception as exc:
         checks["error"] = exc.__class__.__name__
+        checks.setdefault("api_authentication", False)
+        checks.setdefault("futures_account_access", False)
+        checks.setdefault("futures_trading_permission", False)
+        checks.setdefault("withdraw_permission", "UNKNOWN")
         checks["preflight_pass"] = False
         return checks
     required = [
