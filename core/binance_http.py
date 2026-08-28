@@ -7,6 +7,7 @@ from urllib import parse
 from urllib import request as urllib_request
 
 from core.binance_endpoints import build_binance_url
+from core.binance_rest_limiter import run_binance_rest_call
 from core.binance_signing import sign_binance_params
 from core.http_error_parser import (
     build_http_error_from_exception,
@@ -124,7 +125,12 @@ def build_urllib_passthrough_transport(*, timeout_seconds: float = 5.0) -> Trans
         req = urllib_request.Request(url, method=method)
         for key, value in dict(row.get("headers", {})).items():
             req.add_header(str(key), str(value))
-        with urllib_request.urlopen(req, timeout=timeout) as response:  # pragma: no cover - network path
+        response_call = lambda: urllib_request.urlopen(req, timeout=timeout)
+        with run_binance_rest_call(
+            response_call,
+            url=url,
+            health_probe=str(row.get("path", "")) in {"/api/v3/ping", "/fapi/v1/ping"},
+        ) as response:  # pragma: no cover - network path
             body = response.read()
             response_text = body.decode("utf-8", errors="replace")
             response_json = None

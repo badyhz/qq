@@ -9,6 +9,7 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 from urllib.parse import urlencode
 
+from core.binance_rest_limiter import run_binance_rest_call
 from core.paper_trading.data_source import (
     DataSource, DataSourceConfig, MarketBar, MarketSnapshot,
     utc_datetime_from_epoch_ms,
@@ -95,7 +96,10 @@ class BinancePublicKlineAdapter(DataSource):
 
         try:
             req = Request(url, method="GET")
-            with urlopen(req, timeout=self._timeout) as resp:
+            with run_binance_rest_call(
+                lambda: urlopen(req, timeout=self._timeout),
+                url=url,
+            ) as resp:
                 data = json.loads(resp.read().decode())
         except (URLError, HTTPError, json.JSONDecodeError, OSError):
             return []
@@ -131,7 +135,11 @@ class BinancePublicKlineAdapter(DataSource):
             raise ValueError("public evidence endpoint is disabled or unsupported")
         url = f"{self._base_url}{endpoint}?{urlencode(params)}"
         try:
-            with urlopen(Request(url, method="GET"), timeout=self._timeout) as resp:
+            request = Request(url, method="GET")
+            with run_binance_rest_call(
+                lambda: urlopen(request, timeout=self._timeout),
+                url=url,
+            ) as resp:
                 return json.loads(resp.read().decode())
         except (URLError, HTTPError, json.JSONDecodeError, OSError) as exc:
             raise ValueError("public evidence source error") from exc

@@ -25,6 +25,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 import requests
+
+from core.binance_rest_limiter import run_binance_rest_call
 from scripts.trade_logic_klines_fetch_common import (
     BINANCE_KLINES_URL,
     build_kline_request_params,
@@ -403,7 +405,11 @@ def fetch_klines(symbol: str, interval: str, start: pd.Timestamp, end: pd.Timest
             limit=1500,
         )
         try:
-            resp = requests.get(BINANCE_KLINES_URL, params=params, timeout=timeout)
+            prepared = requests.Request("GET", BINANCE_KLINES_URL, params=params).prepare()
+            resp = run_binance_rest_call(
+                lambda: requests.get(BINANCE_KLINES_URL, params=params, timeout=timeout),
+                url=prepared.url,
+            )
         except Exception as exc:
             raise RuntimeError(f"network error fetching {symbol} {interval}: {exc}") from exc
         if resp.status_code != 200:

@@ -10,6 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from core.binance_rest_limiter import run_binance_rest_call
 from scripts.public_kline_backfill_common import (
     build_kline_request_windows,
     normalize_kline_backfill_config,
@@ -78,7 +79,10 @@ def _fetch_public_klines(
     )
     url = f"{base_url}{path}?{query}"
     try:
-        with urlopen(url, timeout=timeout_sec) as resp:
+        with run_binance_rest_call(
+            lambda: urlopen(url, timeout=timeout_sec),
+            url=url,
+        ) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except HTTPError as exc:
         return {"ok": False, "error": f"http_{exc.code}"}

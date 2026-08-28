@@ -9,6 +9,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from core.binance_rest_limiter import BinanceRestBlocked, run_binance_rest_call
+
 
 def normalize_kline_interval(interval: Any) -> str:
     value = str(interval or "").strip()
@@ -544,7 +546,10 @@ def _http_json(
 ) -> dict[str, Any]:
     url = f"{str(base_url).rstrip('/')}{path}?{urlencode(query)}"
     try:
-        with urlopen(url, timeout=float(timeout_sec)) as resp:
+        with run_binance_rest_call(
+            lambda: urlopen(url, timeout=float(timeout_sec)),
+            url=url,
+        ) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
             return {"ok": True, "payload": payload, "error": ""}
     except Exception as exc:
@@ -559,22 +564,24 @@ def _http_json_with_retry(
     timeout_sec: float,
     retries_on_429: int = 2,
 ) -> dict[str, Any]:
-    attempts = 0
-    while True:
-        attempts += 1
-        url = f"{str(base_url).rstrip('/')}{path}?{urlencode(query)}"
-        try:
-            with urlopen(url, timeout=float(timeout_sec)) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-                return {"ok": True, "payload": payload, "error": "", "status_code": getattr(resp, "status", None)}
-        except HTTPError as exc:
-            status = int(getattr(exc, "code", 0) or 0)
-            if status == 429 and attempts <= retries_on_429 + 1:
-                time.sleep(0.3 * attempts)
-                continue
-            return {"ok": False, "payload": [], "error": f"HTTPError:{status}:{exc}", "status_code": status}
-        except Exception as exc:
-            return {"ok": False, "payload": [], "error": f"{exc.__class__.__name__}:{exc}", "status_code": None}
+    # Kept for API compatibility; Binance 429/418 must never trigger an HTTP
+    # retry here. The shared limiter persists cooldown for every other caller.
+    del retries_on_429
+    url = f"{str(base_url).rstrip('/')}{path}?{urlencode(query)}"
+    try:
+        with run_binance_rest_call(
+            lambda: urlopen(url, timeout=float(timeout_sec)),
+            url=url,
+        ) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            return {"ok": True, "payload": payload, "error": "", "status_code": getattr(resp, "status", None)}
+    except HTTPError as exc:
+        status = int(getattr(exc, "code", 0) or 0)
+        return {"ok": False, "payload": [], "error": f"HTTPError:{status}:{exc}", "status_code": status}
+    except BinanceRestBlocked as exc:
+        return {"ok": False, "payload": [], "error": exc.reason, "status_code": None}
+    except Exception as exc:
+        return {"ok": False, "payload": [], "error": f"{exc.__class__.__name__}:{exc}", "status_code": None}
 
 
 def _build_time_range(rows: list[dict[str, Any]]) -> dict[str, Optional[int]]:

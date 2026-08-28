@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.request import urlopen
 
+from core.binance_rest_limiter import run_binance_rest_call
+
 
 class DataFeed:
     def __init__(self, config: dict, logger):
@@ -237,7 +239,10 @@ class DataFeed:
         url = f"{base_url}/fapi/v1/klines?symbol={symbol}&interval={self.timeframe}&limit={limit}"
         fetch_start = time.time()
         try:
-            with urlopen(url, timeout=10) as response:
+            with run_binance_rest_call(
+                lambda: urlopen(url, timeout=10),
+                url=url,
+            ) as response:
                 payload = json.loads(response.read().decode("utf-8"))
 
             candles = []
