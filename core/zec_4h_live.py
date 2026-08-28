@@ -28,6 +28,8 @@ MARGIN_PER_TRADE_RATE = 0.01
 TARGET_INITIAL_MARGIN_USDT = LIVE_CAPITAL_CAP_USDT * MARGIN_PER_TRADE_RATE
 FIXED_LEVERAGE = 50
 TARGET_INITIAL_NOTIONAL_USDT = TARGET_INITIAL_MARGIN_USDT * FIXED_LEVERAGE
+TAKE_PROFIT_MODE = "FIXED_2R"
+TAKE_PROFIT_R_MULTIPLE = 2.0
 TARGET_EQUITY = 150.0
 HARD_EQUITY_FLOOR = 30.0
 WARMUP_BARS = 200
@@ -53,6 +55,7 @@ class LiveAction(str, Enum):
     REDUCE_50 = "REDUCE_50"
     ADD_50 = "ADD_50"
     STOP_CLOSE = "STOP_CLOSE"
+    TAKE_PROFIT_CLOSE = "TAKE_PROFIT_CLOSE"
     HARD_STOP_CLOSE = "HARD_STOP_CLOSE"
 
 
@@ -93,6 +96,10 @@ class StrategyState:
     applied_fill_signal_keys: list[str] = field(default_factory=list)
     stop_guard_active: bool = False
     stop_guard_price: Optional[float] = None
+    initial_entry_price: Optional[float] = None
+    initial_stop_price: Optional[float] = None
+    take_profit_active: bool = False
+    take_profit_price: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -238,6 +245,7 @@ def build_client_order_id(signal_key: str, action: str, bar_close_time: str) -> 
         LiveAction.REDUCE_50.value: "r5",
         LiveAction.ADD_50.value: "a5",
         LiveAction.STOP_CLOSE.value: "sc",
+        LiveAction.TAKE_PROFIT_CLOSE.value: "tp",
         LiveAction.HARD_STOP_CLOSE.value: "hc",
     }[action]
     return f"z4{action_code}{stamp}{digest}"[:35]
@@ -404,6 +412,7 @@ class Zec4hStrategy:
         state.actual_position_qty = 0.0
         state.full_position_qty = 0.0
         state.reduced_qty = 0.0
+        self._clear_exit_protection(state)
         state.warmup_complete = True
         state.warmup_bar_count = len(bars)
 
@@ -551,6 +560,25 @@ class Zec4hStrategy:
                 reason="CLOSED_BAR_BELOW_ENTRY_LOW",
                 hm_detected=hm_detected,
                 diagnostics=diagnostics,
+            )
+
+        if (
+            has_position
+            and state.take_profit_active
+            and state.take_profit_price is not None
+            and current.close >= state.take_profit_price
+        ):
+            state.pending_action = LiveAction.TAKE_PROFIT_CLOSE.value
+            return _decision(
+                action=LiveAction.TAKE_PROFIT_CLOSE.value,
+                bar=current,
+                reason="CLOSED_BAR_AT_OR_ABOVE_FIXED_2R",
+                hm_detected=hm_detected,
+                diagnostics={
+                    **diagnostics,
+                    "take_profit_mode": TAKE_PROFIT_MODE,
+                    "take_profit_price": state.take_profit_price,
+                },
             )
 
         if state.wait_add_position and buy_signal:
@@ -731,6 +759,34 @@ class Zec4hStrategy:
         state.wait_attack_reduce = False
         cls._clear_readd_state(state)
 
+    @staticmethod
+    def arm_fixed_2r_take_profit(
+        state: StrategyState,
+        *,
+        entry_price: float,
+        initial_stop_price: float,
+    ) -> float:
+        """Bind the v1 2R target once to the OPEN fill and initial stop."""
+        entry = float(entry_price)
+        stop = float(initial_stop_price)
+        if not math.isfinite(entry) or not math.isfinite(stop) or entry <= 0 or stop <= 0 or stop >= entry:
+            raise ValueError("fixed 2R requires a positive entry above the initial stop")
+        target = entry + TAKE_PROFIT_R_MULTIPLE * (entry - stop)
+        state.initial_entry_price = entry
+        state.initial_stop_price = stop
+        state.take_profit_price = target
+        state.take_profit_active = True
+        return target
+
+    @staticmethod
+    def _clear_exit_protection(state: StrategyState) -> None:
+        state.stop_guard_active = False
+        state.stop_guard_price = None
+        state.initial_entry_price = None
+        state.initial_stop_price = None
+        state.take_profit_active = False
+        state.take_profit_price = None
+
     @classmethod
     def apply_filled_action(
         cls,
@@ -738,6 +794,7 @@ class Zec4hStrategy:
         decision: StrategyDecision,
         *,
         filled_qty: float,
+        average_fill_price: Optional[float] = None,
         record_applied_fill: bool = True,
     ) -> None:
         """Advance strategy state only after the exchange reports FILLED."""
@@ -748,12 +805,28 @@ class Zec4hStrategy:
             return
         action = decision.action
         if action == LiveAction.OPEN.value:
+            cls._clear_exit_protection(state)
             state.full_position_qty = qty
             state.actual_position_qty = qty
             state.reduced_qty = 0.0
             state.entry_low = float(decision.entry_low) if decision.entry_low is not None else None
             state.stop_guard_price = state.entry_low
             state.stop_guard_active = state.entry_low is not None and state.entry_low > 0
+            entry_price = (
+                float(decision.signal_price)
+                if average_fill_price is None
+                else float(average_fill_price)
+            )
+            if state.entry_low is not None:
+                try:
+                    cls.arm_fixed_2r_take_profit(
+                        state,
+                        entry_price=entry_price,
+                        initial_stop_price=state.entry_low,
+                    )
+                except ValueError:
+                    state.take_profit_active = False
+                    state.take_profit_price = None
             state.phase = StrategyPhase.LONG_FULL.value
         elif action == LiveAction.REDUCE_50.value:
             state.actual_position_qty = max(0.0, state.actual_position_qty - qty)
@@ -774,13 +847,16 @@ class Zec4hStrategy:
             # AiCoin keeps the newest attack reference across an ADD.  Only a
             # confirmed full position close uses the approved boundary clear.
             cls._clear_readd_state(state)
-        elif action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}:
+        elif action in {
+            LiveAction.STOP_CLOSE.value,
+            LiveAction.TAKE_PROFIT_CLOSE.value,
+            LiveAction.HARD_STOP_CLOSE.value,
+        }:
             state.actual_position_qty = 0.0
             state.full_position_qty = 0.0
             state.reduced_qty = 0.0
             state.entry_low = None
-            state.stop_guard_active = False
-            state.stop_guard_price = None
+            cls._clear_exit_protection(state)
             cls._clear_scaling_state(state)
             if action == LiveAction.HARD_STOP_CLOSE.value:
                 state.phase = StrategyPhase.HARD_STOP.value
@@ -909,7 +985,11 @@ def replay_missed_closed_bars(
                 "bar_close_time": decision.bar_close_time,
                 "reason": decision.reason,
             })
-        elif decision.action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}:
+        elif decision.action in {
+            LiveAction.STOP_CLOSE.value,
+            LiveAction.TAKE_PROFIT_CLOSE.value,
+            LiveAction.HARD_STOP_CLOSE.value,
+        }:
             close_qty = projected.actual_position_qty
             if close_qty > 1e-12:
                 Zec4hStrategy.apply_filled_action(
@@ -953,6 +1033,7 @@ def replay_missed_closed_bars(
             state.full_position_qty = 0.0
             state.reduced_qty = 0.0
             state.entry_low = None
+            Zec4hStrategy._clear_exit_protection(state)
         else:
             recovery_status = "STALE_ADD_BLOCKED" if stale_add else "STALE_RISK_INCREASE_BLOCKED"
             state.phase = StrategyPhase.LONG_REDUCED.value
@@ -1047,7 +1128,11 @@ def build_live_scorecard(
             active["funding"] += float(row.get("funding", 0.0) or 0.0)
         if (
             has_execution
-            and action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}
+            and action in {
+                LiveAction.STOP_CLOSE.value,
+                LiveAction.TAKE_PROFIT_CLOSE.value,
+                LiveAction.HARD_STOP_CLOSE.value,
+            }
             and active is not None
         ):
             active["net"] = active["gross"] - active["fees"] + active["funding"]
@@ -1063,7 +1148,11 @@ def build_live_scorecard(
     equity_path = [STARTING_EQUITY]
     exit_rows = [
         row for row in fills
-        if row.get("action") in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}
+        if row.get("action") in {
+            LiveAction.STOP_CLOSE.value,
+            LiveAction.TAKE_PROFIT_CLOSE.value,
+            LiveAction.HARD_STOP_CLOSE.value,
+        }
     ]
     equity_path.extend(float(row.get("strategy_equity_after", equity_path[-1]) or equity_path[-1]) for row in exit_rows)
     peak = equity_path[0]

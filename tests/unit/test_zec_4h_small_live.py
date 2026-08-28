@@ -112,6 +112,23 @@ def decision(action: str, *, entry_low: float | None = 90.0) -> StrategyDecision
     )
 
 
+def protected_long_state(**overrides) -> StrategyState:
+    values = {
+        "phase": StrategyPhase.LONG_FULL.value,
+        "actual_position_qty": 1.0,
+        "full_position_qty": 1.0,
+        "entry_low": 98.0,
+        "stop_guard_active": True,
+        "stop_guard_price": 98.0,
+        "initial_entry_price": 100.0,
+        "initial_stop_price": 98.0,
+        "take_profit_active": True,
+        "take_profit_price": 104.0,
+    }
+    values.update(overrides)
+    return StrategyState(**values)
+
+
 class FakeAdapter:
     def __init__(self):
         self.submit_count = 0
@@ -526,6 +543,73 @@ def test_closed_bar_below_entry_low_stops():
     assert result.action == LiveAction.STOP_CLOSE.value
 
 
+@pytest.mark.parametrize(
+    "entry,initial_stop,expected_target",
+    [(100.0, 98.0, 104.0), (50.0, 49.0, 52.0)],
+)
+def test_fixed_2r_target_uses_entry_and_initial_stop(entry, initial_stop, expected_target):
+    state = StrategyState()
+    target = Zec4hStrategy.arm_fixed_2r_take_profit(
+        state,
+        entry_price=entry,
+        initial_stop_price=initial_stop,
+    )
+    assert target == pytest.approx(expected_target)
+    assert state.take_profit_price == pytest.approx(expected_target)
+    assert state.initial_entry_price == pytest.approx(entry)
+    assert state.initial_stop_price == pytest.approx(initial_stop)
+
+
+def test_later_stop_change_and_add_do_not_move_fixed_2r_target():
+    state = protected_long_state()
+    original_target = state.take_profit_price
+    Zec4hStrategy.apply_filled_action(
+        state,
+        decision(LiveAction.ADD_50.value, entry_low=99.0),
+        filled_qty=0.5,
+        average_fill_price=110.0,
+    )
+    assert state.entry_low == pytest.approx(99.0)
+    assert state.stop_guard_price == pytest.approx(99.0)
+    assert state.initial_stop_price == pytest.approx(98.0)
+    assert state.take_profit_price == original_target
+
+
+def test_closed_bar_at_fixed_2r_emits_full_take_profit_close():
+    bars = bars_from_closes([100.0] * 27 + [104.0])
+    state = full_long_state(
+        bars,
+        entry_low=98.0,
+        stop_guard_active=True,
+        stop_guard_price=98.0,
+        initial_entry_price=100.0,
+        initial_stop_price=98.0,
+        take_profit_active=True,
+        take_profit_price=104.0,
+    )
+    result = Zec4hStrategy().evaluate(bars, state, strategy_equity=50)
+    assert result.action == LiveAction.TAKE_PROFIT_CLOSE.value
+    assert result.reason == "CLOSED_BAR_AT_OR_ABOVE_FIXED_2R"
+
+
+@pytest.mark.parametrize("exit_action", [LiveAction.STOP_CLOSE.value, LiveAction.TAKE_PROFIT_CLOSE.value])
+def test_stop_and_take_profit_each_clear_both_exit_guards(exit_action):
+    state = protected_long_state()
+    Zec4hStrategy.apply_filled_action(
+        state,
+        decision(exit_action),
+        filled_qty=1.0,
+        average_fill_price=104.0,
+    )
+    assert state.actual_position_qty == 0.0
+    assert state.stop_guard_active is False
+    assert state.stop_guard_price is None
+    assert state.take_profit_active is False
+    assert state.take_profit_price is None
+    assert state.initial_entry_price is None
+    assert state.initial_stop_price is None
+
+
 def test_filled_stop_clears_attack_state_at_position_boundary():
     state = StrategyState(
         phase=StrategyPhase.LONG_FULL.value,
@@ -792,19 +876,25 @@ def test_historical_missed_reduce_can_only_return_controlled_risk_reduction():
     LiveAction.REDUCE_50.value,
     LiveAction.ADD_50.value,
     LiveAction.STOP_CLOSE.value,
+    LiveAction.TAKE_PROFIT_CLOSE.value,
 ])
 def test_duplicate_actions_are_blocked(tmp_path: Path, action: str):
     adapter = FakeAdapter()
-    if action in {LiveAction.REDUCE_50.value, LiveAction.STOP_CLOSE.value}:
+    if action in {
+        LiveAction.REDUCE_50.value,
+        LiveAction.STOP_CLOSE.value,
+        LiveAction.TAKE_PROFIT_CLOSE.value,
+    }:
         adapter.submit_response["executedQty"] = "0.5" if action == LiveAction.REDUCE_50.value else "1"
         adapter.position["positionAmt"] = "1"
-        state = StrategyState(phase=StrategyPhase.LONG_FULL.value, actual_position_qty=1, full_position_qty=1)
+        state = protected_long_state()
     elif action == LiveAction.ADD_50.value:
         adapter.submit_response["executedQty"] = "0.5"
         adapter.position["positionAmt"] = "0.5"
-        state = StrategyState(
+        state = protected_long_state(
             phase=StrategyPhase.WAITING_READD.value, actual_position_qty=0.5,
             full_position_qty=1, reduced_qty=0.5, entry_low=80.0,
+            stop_guard_price=80.0,
         )
     else:
         state = StrategyState()
@@ -989,12 +1079,7 @@ def test_partial_terminal_crash_recovers_then_closes_without_waiting_for_bar(tmp
 def test_restart_reconciliation_passes_matching_position(tmp_path: Path):
     adapter = FakeAdapter()
     adapter.position["positionAmt"] = "1"
-    state = StrategyState(
-        phase=StrategyPhase.LONG_FULL.value,
-        actual_position_qty=1,
-        full_position_qty=1,
-        entry_low=80.0,
-    )
+    state = protected_long_state(entry_low=80.0, stop_guard_price=80.0)
     result = reconcile_startup(state, LiveExecutionLedger(tmp_path / "live.jsonl"), adapter)
     assert result["ok"] is True
     assert state.stop_guard_active is True
@@ -1024,6 +1109,44 @@ def test_open_fill_arms_closed_bar_stop_guard(tmp_path: Path):
     assert result["status"] == "FILLED"
     assert state.stop_guard_active is True
     assert state.stop_guard_price == 90.0
+    assert state.initial_entry_price == pytest.approx(100.0)
+    assert state.initial_stop_price == pytest.approx(90.0)
+    assert state.take_profit_active is True
+    assert state.take_profit_price == pytest.approx(120.0)
+
+
+def test_take_profit_execution_closes_full_long_reduce_only_without_short(tmp_path: Path):
+    adapter = FakeAdapter()
+    adapter.position["positionAmt"] = "1"
+    adapter.submit_response.update(status="FILLED", executedQty="1", avgPrice="104")
+    state = protected_long_state()
+    result = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl")).execute(
+        decision(LiveAction.TAKE_PROFIT_CLOSE.value),
+        state,
+        strategy_equity=50,
+        mark_price=104,
+        symbol_rules=RULES,
+    )
+    assert result["status"] == "FILLED"
+    assert adapter.submitted == [{
+        "side": "SELL",
+        "quantity": 1.0,
+        "client_order_id": decision(LiveAction.TAKE_PROFIT_CLOSE.value).client_order_id,
+        "reduce_only": True,
+    }]
+    assert float(adapter.position["positionAmt"]) == 0.0
+    assert state.actual_position_qty == 0.0
+
+
+def test_restart_round_trip_retains_fixed_2r_state(tmp_path: Path):
+    path = tmp_path / "state.json"
+    original = protected_long_state()
+    save_strategy_state(path, original)
+    loaded = load_strategy_state(path)
+    assert loaded.initial_entry_price == pytest.approx(100.0)
+    assert loaded.initial_stop_price == pytest.approx(98.0)
+    assert loaded.take_profit_active is True
+    assert loaded.take_profit_price == pytest.approx(104.0)
 
 
 def test_open_fill_without_stop_guard_requires_immediate_safety_exit(tmp_path: Path):
@@ -1049,6 +1172,7 @@ def test_open_fill_without_stop_guard_requires_immediate_safety_exit(tmp_path: P
         (LiveAction.REDUCE_50.value, 1.0, 0.5, 0.5, StrategyPhase.LONG_FULL.value),
         (LiveAction.ADD_50.value, 0.5, 0.5, 1.0, StrategyPhase.WAITING_READD.value),
         (LiveAction.STOP_CLOSE.value, 1.0, 1.0, 0.0, StrategyPhase.LONG_FULL.value),
+        (LiveAction.TAKE_PROFIT_CLOSE.value, 1.0, 1.0, 0.0, StrategyPhase.LONG_FULL.value),
         (LiveAction.HARD_STOP_CLOSE.value, 1.0, 1.0, 0.0, StrategyPhase.LONG_FULL.value),
     ],
 )
@@ -1060,12 +1184,17 @@ def test_generic_filled_crash_recovery_applies_exactly_once(
     after_qty: float,
     before_phase: str,
 ):
-    state = StrategyState(
-        phase=before_phase,
-        actual_position_qty=before_qty,
-        full_position_qty=1.0 if before_qty else 0.0,
-        reduced_qty=0.5 if action == LiveAction.ADD_50.value else 0.0,
-        entry_low=80.0 if before_qty else None,
+    state = (
+        protected_long_state(
+            phase=before_phase,
+            actual_position_qty=before_qty,
+            full_position_qty=1.0,
+            reduced_qty=0.5 if action == LiveAction.ADD_50.value else 0.0,
+            entry_low=80.0,
+            stop_guard_price=80.0,
+        )
+        if before_qty
+        else StrategyState()
     )
     item = decision(action, entry_low=95.0)
     state.pending_action = action
@@ -1273,6 +1402,13 @@ def test_runner_hard_floor_closes_on_poll_without_new_closed_bar(tmp_path: Path,
     state.actual_position_qty = 1.0
     state.full_position_qty = 1.0
     state.entry_low = 80.0
+    Zec4hStrategy.arm_fixed_2r_take_profit(
+        state,
+        entry_price=100.0,
+        initial_stop_price=80.0,
+    )
+    state.stop_guard_active = True
+    state.stop_guard_price = 80.0
     state_path = tmp_path / "state.json"
     ledger_path = tmp_path / "live.jsonl"
     scorecard_path = tmp_path / "scorecard.json"

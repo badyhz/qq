@@ -56,6 +56,7 @@ RISK_INCREASE_ACTIONS = {LiveAction.OPEN.value, LiveAction.ADD_50.value}
 RISK_REDUCTION_ACTIONS = {
     LiveAction.REDUCE_50.value,
     LiveAction.STOP_CLOSE.value,
+    LiveAction.TAKE_PROFIT_CLOSE.value,
     LiveAction.HARD_STOP_CLOSE.value,
 }
 
@@ -557,6 +558,14 @@ def reconcile_startup(
     if exchange_qty > tolerance:
         if state.entry_low is None or float(state.entry_low) <= 0:
             return {"ok": False, "reason": "STOP_GUARD_PRICE_UNAVAILABLE"}
+        if (
+            not state.take_profit_active
+            or state.take_profit_price is None
+            or state.initial_entry_price is None
+            or state.initial_stop_price is None
+            or float(state.take_profit_price) <= float(state.initial_entry_price)
+        ):
+            return {"ok": False, "reason": "TAKE_PROFIT_GUARD_UNAVAILABLE"}
         state.stop_guard_price = float(state.entry_low)
         state.stop_guard_active = True
     else:
@@ -744,6 +753,7 @@ def recover_unapplied_filled_transitions(
                 projected,
                 decision,
                 filled_qty=filled_qty,
+                average_fill_price=float(row.get("average_fill_price", 0.0) or 0.0),
             )
         else:
             _apply_partial_terminal_transition(
@@ -999,7 +1009,11 @@ class LiveExecutionEngine:
                 max(state.reduced_qty, 0.0),
                 max(state.full_position_qty - state.actual_position_qty, 0.0),
             )
-        elif action in {LiveAction.STOP_CLOSE.value, LiveAction.HARD_STOP_CLOSE.value}:
+        elif action in {
+            LiveAction.STOP_CLOSE.value,
+            LiveAction.TAKE_PROFIT_CLOSE.value,
+            LiveAction.HARD_STOP_CLOSE.value,
+        }:
             raw_qty = state.actual_position_qty
         else:
             return 0.0
@@ -1266,13 +1280,23 @@ class LiveExecutionEngine:
             }
         self.ledger.append(record)
         if status == "FILLED":
-            Zec4hStrategy.apply_filled_action(state, decision, filled_qty=filled_qty)
+            Zec4hStrategy.apply_filled_action(
+                state,
+                decision,
+                filled_qty=filled_qty,
+                average_fill_price=average_price,
+            )
             if decision.action in RISK_INCREASE_ACTIONS and state.actual_position_qty > 1e-12:
-                if not state.stop_guard_active or state.stop_guard_price is None:
+                if (
+                    not state.stop_guard_active
+                    or state.stop_guard_price is None
+                    or not state.take_profit_active
+                    or state.take_profit_price is None
+                ):
                     _arm_terminal_safety_exit(
                         state,
                         decision,
-                        status="STOP_GUARD_CREATION_FAILED",
+                        status="EXIT_GUARD_CREATION_FAILED",
                         exchange_qty=state.actual_position_qty,
                         partial_fill=False,
                     )
