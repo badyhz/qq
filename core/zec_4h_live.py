@@ -26,6 +26,8 @@ STARTING_EQUITY = 50.0
 LIVE_CAPITAL_CAP_USDT = 50.0
 MARGIN_PER_TRADE_RATE = 0.01
 TARGET_INITIAL_MARGIN_USDT = LIVE_CAPITAL_CAP_USDT * MARGIN_PER_TRADE_RATE
+FIXED_LEVERAGE = 50
+TARGET_INITIAL_NOTIONAL_USDT = TARGET_INITIAL_MARGIN_USDT * FIXED_LEVERAGE
 TARGET_EQUITY = 150.0
 HARD_EQUITY_FLOOR = 30.0
 WARMUP_BARS = 200
@@ -1077,6 +1079,9 @@ def build_live_scorecard(
         "live_capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
         "margin_per_trade_rate": MARGIN_PER_TRADE_RATE,
         "target_initial_margin_usdt": TARGET_INITIAL_MARGIN_USDT,
+        "leverage_mode": "FIXED",
+        "leverage": FIXED_LEVERAGE,
+        "target_initial_notional_usdt": TARGET_INITIAL_NOTIONAL_USDT,
         "managed_capital_usdt": min(max(float(current_equity), 0.0), LIVE_CAPITAL_CAP_USDT),
         "current_equity": float(current_equity),
         "net_profit": net_profit,

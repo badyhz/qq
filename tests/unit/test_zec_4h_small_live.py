@@ -16,6 +16,7 @@ from core.zec_4h_live import (
     StrategyState,
     Zec4hStrategy,
     WARMUP_BARS,
+    FIXED_LEVERAGE,
     LIVE_CAPITAL_CAP_USDT,
     TARGET_INITIAL_MARGIN_USDT,
     build_live_scorecard,
@@ -29,7 +30,7 @@ from core.zec_4h_live_execution import (
     UNKNOWN_STATUS,
     extract_symbol_rules,
     reconcile_startup,
-    resolve_max_allowed_leverage,
+    fixed_leverage_allowed,
     recover_unapplied_filled_transitions,
     run_live_preflight,
     strategy_equity_from_evidence,
@@ -115,13 +116,13 @@ class FakeAdapter:
     def __init__(self):
         self.submit_count = 0
         self.submit_response = {
-            "status": "FILLED", "executedQty": "0.375", "avgPrice": "100",
+            "status": "FILLED", "executedQty": "0.25", "avgPrice": "100",
             "orderId": "1001", "clientOrderId": "fake",
         }
         self.submit_error: Exception | None = None
         self.submit_responses = []
         self.query_response = None
-        self.position = {"symbol": "ZECUSDT", "positionAmt": "0", "isolated": True, "leverage": "75"}
+        self.position = {"symbol": "ZECUSDT", "positionAmt": "0", "isolated": True, "leverage": "50"}
         self.open_orders = []
         self.account = {
             "canTrade": True,
@@ -820,7 +821,7 @@ def test_timeout_with_exchange_order_does_not_resend(tmp_path: Path):
     adapter = FakeAdapter()
     adapter.submit_error = TimeoutError()
     adapter.query_response = {
-        "status": "FILLED", "executedQty": "0.375", "avgPrice": "100", "orderId": "2001",
+        "status": "FILLED", "executedQty": "0.25", "avgPrice": "100", "orderId": "2001",
     }
     engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
     result = engine.execute(decision(LiveAction.OPEN.value), StrategyState(), strategy_equity=50, mark_price=100, symbol_rules=RULES)
@@ -1160,13 +1161,14 @@ def test_initial_order_uses_exactly_one_percent_margin_and_never_scales_above_ca
     latest = engine.ledger.read()[-1]
     assert LIVE_CAPITAL_CAP_USDT == 50.0
     assert TARGET_INITIAL_MARGIN_USDT == 0.5
-    assert latest["requested_qty"] * 100 == pytest.approx(0.5 * 75)
+    assert FIXED_LEVERAGE == 50
+    assert latest["requested_qty"] * 100 == pytest.approx(0.5 * 50)
 
 
 @pytest.mark.parametrize(
     "rules,expected_qty",
     [
-        ({**RULES, "step_size": 0.01, "min_qty": 0.01}, 0.37),
+        ({**RULES, "step_size": 0.01, "min_qty": 0.01}, 0.25),
         ({**RULES, "step_size": 0.5, "min_qty": 0.5}, 0.0),
     ],
 )
@@ -1184,7 +1186,7 @@ def test_initial_quantity_obeys_step_size_and_min_qty_without_raising_margin(
         assert adapter.submit_count == 0
     else:
         assert engine.ledger.read()[-1]["requested_qty"] == pytest.approx(expected_qty)
-        assert engine.ledger.read()[-1]["requested_qty"] * 100 <= 0.5 * 75
+        assert engine.ledger.read()[-1]["requested_qty"] * 100 <= 0.5 * 50
 
 
 def test_reduce_quantity_never_crosses_original_half_target():
@@ -1429,7 +1431,7 @@ def test_binance_response_schema_and_write_guard():
             "brackets": [{"initialLeverage": 75, "notionalFloor": 0, "notionalCap": 10000}],
         }]}
         if path == "/fapi/v1/symbolConfig": return {"ok": True, "data": [{
-            "symbol": "ZECUSDT", "marginType": "ISOLATED", "leverage": 75,
+            "symbol": "ZECUSDT", "marginType": "ISOLATED", "leverage": 50,
         }]}
         raise AssertionError(path)
 
@@ -1438,7 +1440,7 @@ def test_binance_response_schema_and_write_guard():
     assert adapter.get_balance()[0]["asset"] == "USDT"
     assert adapter.get_position()["positionAmt"] == "0"
     assert adapter.get_open_orders() == []
-    assert resolve_max_allowed_leverage(adapter.get_leverage_brackets()) == 75
+    assert fixed_leverage_allowed(adapter.get_leverage_brackets()) is True
     assert adapter.get_symbol_config()["marginType"] == "ISOLATED"
     assert extract_symbol_rules(adapter.get_exchange_info())["min_notional"] == 5
     with pytest.raises(RuntimeError, match="DISABLED"):
@@ -1466,7 +1468,7 @@ def test_preflight_requires_every_safety_check():
         local_time_ms=int(BASE.timestamp() * 1000),
     )
     assert blocked["preflight_pass"] is False
-    assert blocked["leverage_max_allowed"] is False
+    assert blocked["leverage_fixed_50x"] is False
 
 
 def test_preflight_blocks_unknown_leverage_bracket_and_withdraw_permission():
@@ -1506,7 +1508,24 @@ def test_preflight_parses_futures_permission_and_authentication_failure():
     assert failed["withdraw_permission"] == "UNKNOWN"
 
 
-def test_max_leverage_resolution_respects_position_notional_bracket():
+def test_runner_credential_env_absent_is_blocked(monkeypatch):
+    monkeypatch.delenv("ZEC_4H_BINANCE_API_KEY", raising=False)
+    monkeypatch.delenv("ZEC_4H_BINANCE_API_SECRET", raising=False)
+    with pytest.raises(RuntimeError, match="BINANCE_LIVE_CREDENTIALS_MISSING"):
+        live_runner._adapter(live_enabled=False)
+
+
+def test_runner_credential_env_present_is_loaded_without_logging(monkeypatch, capsys):
+    monkeypatch.setenv("ZEC_4H_BINANCE_API_KEY", "fixture-key-never-log")
+    monkeypatch.setenv("ZEC_4H_BINANCE_API_SECRET", "fixture-secret-never-log")
+    adapter = live_runner._adapter(live_enabled=False)
+    assert isinstance(adapter, BinanceUsdMExecutionAdapter)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_fixed_50x_permission_uses_the_25_usdt_notional_bracket():
     payload = [{
         "symbol": "ZECUSDT",
         "brackets": [
@@ -1514,7 +1533,34 @@ def test_max_leverage_resolution_respects_position_notional_bracket():
             {"initialLeverage": 50, "notionalFloor": 50, "notionalCap": 10000},
         ],
     }]
-    assert resolve_max_allowed_leverage(payload, initial_margin_usdt=0.5) == 99
+    assert fixed_leverage_allowed(payload, initial_margin_usdt=0.5) is True
+
+
+def test_fixed_50x_permission_does_not_use_a_different_notional_bracket():
+    payload = [{
+        "symbol": "ZECUSDT",
+        "brackets": [
+            {"initialLeverage": 75, "notionalFloor": 0, "notionalCap": 20},
+            {"initialLeverage": 20, "notionalFloor": 20, "notionalCap": 10000},
+        ],
+    }]
+    assert fixed_leverage_allowed(payload, initial_margin_usdt=0.5) is False
+
+
+def test_fixed_50x_rejection_blocks_without_leverage_fallback(tmp_path: Path):
+    adapter = FakeAdapter()
+    adapter.get_leverage_brackets = lambda symbol="ZECUSDT": [{
+        "symbol": symbol,
+        "brackets": [{"initialLeverage": 20, "notionalFloor": 0, "notionalCap": 10000}],
+    }]
+    engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
+    result = engine.execute(
+        decision(LiveAction.OPEN.value), StrategyState(), strategy_equity=50,
+        mark_price=100, symbol_rules=RULES,
+    )
+    assert result["submitted"] is False
+    assert result["reason"] == "RUNTIME_INVARIANT_BLOCKED"
+    assert adapter.submit_count == 0
 
 
 def test_minimum_notional_never_increases_the_one_percent_margin(tmp_path: Path):
