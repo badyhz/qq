@@ -306,6 +306,11 @@ class BinanceRestLimiter:
                     raise
                 now = float(self.clock())
                 delay = max(0.01, exc.retry_at - now)
+                if exc.reason == "BINANCE_REQUEST_IN_FLIGHT":
+                    # The lease is crash protection, not an expected request
+                    # duration. Re-check shortly because observe() normally
+                    # releases it as soon as the current HTTP call returns.
+                    delay = min(delay, 0.1)
                 with self._locked_state() as state:
                     state["wait_count"] = int(_number(state.get("wait_count"))) + 1
                 sleeper(delay)

@@ -328,6 +328,21 @@ def test_whole_server_mix_is_smoothed_under_240_weight_per_minute(tmp_path: Path
     assert state["wait_count"] > 0
 
 
+def test_in_flight_contention_rechecks_before_full_crash_lease(tmp_path: Path):
+    clock = Clock()
+    guard = limiter(tmp_path, clock)
+    guard.acquire(weight=1)
+    sleeps = []
+
+    def release_after_short_wait(seconds: float):
+        sleeps.append(seconds)
+        clock.value += seconds
+        guard.observe(status_code=200)
+
+    guard.acquire_with_pacing(weight=1, sleeper=release_after_short_wait)
+    assert sleeps == [pytest.approx(0.1), pytest.approx(0.15)]
+
+
 @pytest.mark.parametrize("status", [429, 418])
 def test_rate_limit_at_request_n_stops_all_later_components(tmp_path: Path, status: int):
     clock = Clock()
