@@ -4,7 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from email.message import Message
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -28,9 +31,13 @@ class Clock:
 
 
 class Response:
-    def __init__(self, status: int = 200, headers: dict | None = None):
+    def __init__(self, status: int = 200, headers: dict | None = None, payload: dict | None = None):
         self.status = status
         self.headers = headers or {}
+        self._payload = payload or {}
+
+    def json(self):
+        return self._payload
 
 
 def limiter(tmp_path: Path, clock: Clock, *, budget: int = 240) -> BinanceRestLimiter:
@@ -133,6 +140,7 @@ def test_successful_probe_marks_read_recovered(tmp_path: Path):
     guard.acquire(weight=1, health_probe=True)
     guard.observe(status_code=200, health_probe=True)
     assert guard.snapshot()["public_read_healthy"] is True
+    clock.value += 1
     guard.acquire(weight=1)
 
 
@@ -172,6 +180,8 @@ def test_local_weight_budget_blocks_without_http(tmp_path: Path):
     guard = limiter(tmp_path, clock, budget=5)
     guard.acquire(weight=5)
     guard.observe(status_code=200)
+    with guard._locked_state() as state:
+        state["next_request_at"] = 0
     with pytest.raises(BinanceRestBlocked, match="LOCAL_WEIGHT_BUDGET"):
         guard.acquire(weight=1)
 
@@ -258,3 +268,94 @@ def test_private_endpoint_is_outside_public_market_limiter(tmp_path: Path):
     )
     assert calls == 1
     assert not guard.state_path.exists()
+
+
+def test_state_and_lock_are_private_files(tmp_path: Path):
+    clock = Clock()
+    guard = limiter(tmp_path, clock)
+    guard.acquire(weight=1)
+    guard.observe(status_code=200)
+    assert guard.state_path.stat().st_mode & 0o777 == 0o600
+    assert guard.lock_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_state_is_shared_across_python_processes(tmp_path: Path):
+    state_path = tmp_path / "cross-process.json"
+    root = str(Path(__file__).resolve().parents[2])
+    first = """
+from shared.binance_rest_limiter import BinanceRestLimiter
+g=BinanceRestLimiter(r'%s')
+g.acquire(weight=1)
+g.observe(status_code=418, headers={'Retry-After':'120'}, error_code=-1003)
+""" % state_path
+    second = """
+from shared.binance_rest_limiter import BinanceRestBlocked, BinanceRestLimiter
+g=BinanceRestLimiter(r'%s')
+try:
+    g.acquire(weight=1)
+except BinanceRestBlocked as exc:
+    print(exc.reason)
+""" % state_path
+    env = {**os.environ, "PYTHONPATH": root}
+    subprocess.run([sys.executable, "-c", first], check=True, env=env)
+    result = subprocess.run(
+        [sys.executable, "-c", second], check=True, env=env, capture_output=True, text=True
+    )
+    assert result.stdout.strip() == "BINANCE_IP_BANNED"
+
+
+def test_whole_server_mix_is_smoothed_under_240_weight_per_minute(tmp_path: Path):
+    clock = Clock()
+    guard = limiter(tmp_path, clock)
+
+    def advance(seconds: float):
+        clock.value += seconds
+
+    urls = (
+        ["https://fapi.binance.com/fapi/v1/klines?limit=1500"] * 166
+        + ["https://fapi.binance.com/fapi/v1/klines?limit=500"] * 21
+        + ["https://fapi.binance.com/fapi/v1/klines?limit=500"] * 25
+        + ["https://fapi.binance.com/fapi/v1/klines?limit=500"]
+        + ["https://fapi.binance.com/fapi/v1/fundingRate?limit=1000"] * 24
+    )
+    for url in urls:
+        run_binance_rest_call(
+            lambda: Response(200), url=url, limiter=guard, sleeper=advance
+        )
+    state = guard.snapshot()
+    assert state["total_requests"] == len(urls)
+    assert state["maximum_observed_1m_weight"] <= 240
+    assert state["wait_count"] > 0
+
+
+@pytest.mark.parametrize("status", [429, 418])
+def test_rate_limit_at_request_n_stops_all_later_components(tmp_path: Path, status: int):
+    clock = Clock()
+    guard = limiter(tmp_path, clock)
+    network_calls = 0
+
+    def advance(seconds: float):
+        clock.value += seconds
+
+    def request():
+        nonlocal network_calls
+        network_calls += 1
+        if network_calls == 8:
+            return Response(status, {"Retry-After": "60"}, {"code": -1003, "msg": "limited"})
+        return Response(200)
+
+    for _component in range(5):
+        for _request in range(20):
+            try:
+                run_binance_rest_call(
+                    request,
+                    url="https://fapi.binance.com/fapi/v1/klines?limit=500",
+                    limiter=guard,
+                    sleeper=advance,
+                )
+            except BinanceRestBlocked:
+                pass
+    assert network_calls == 8
+    state = guard.snapshot()
+    assert state["error_1003_count"] == 1
+    assert state[f"status_{status}_count"] == 1
