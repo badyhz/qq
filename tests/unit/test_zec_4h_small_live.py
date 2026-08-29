@@ -8,6 +8,8 @@ import scripts.run_zec_4h_small_live as live_runner
 
 from core.paper_trading.data_source import MarketBar
 from core.zec_4h_live import (
+    ACCOUNT_MODE,
+    API_MODE,
     APPROVED_LIVE_SAFETY_DEVIATIONS,
     LiveAction,
     LiveExecutionLedger,
@@ -18,7 +20,7 @@ from core.zec_4h_live import (
     WARMUP_BARS,
     FIXED_LEVERAGE,
     LIVE_CAPITAL_CAP_USDT,
-    TARGET_INITIAL_MARGIN_USDT,
+    SIZING_BASE_USDT,
     build_live_scorecard,
     load_strategy_state,
     save_strategy_state,
@@ -140,7 +142,7 @@ class FakeAdapter:
         self.submit_error: Exception | None = None
         self.submit_responses = []
         self.query_response = None
-        self.position = {"symbol": "ZECUSDT", "positionAmt": "0", "isolated": True, "leverage": "50"}
+        self.position = {"symbol": "ZECUSDT", "positionAmt": "0", "leverage": "50"}
         self.open_orders = []
         self.account = {
             "canTrade": True,
@@ -168,7 +170,6 @@ class FakeAdapter:
     def get_position_mode(self): return {"dualSidePosition": self.dual_side_position}
     def get_api_restrictions(self):
         return {
-            "enableFutures": True,
             "enablePortfolioMarginTrading": True,
             "enableWithdrawals": False,
             "ipRestrict": True,
@@ -184,18 +185,12 @@ class FakeAdapter:
     def get_symbol_config(self, symbol="ZECUSDT"):
         return {
             "symbol": symbol,
-            "marginType": "ISOLATED" if self.position.get("isolated") else "CROSSED",
             "leverage": int(float(self.position.get("leverage", 0) or 0)),
             "maxNotionalValue": "10000",
         }
     def set_leverage(self, leverage, symbol="ZECUSDT"):
         self.position["leverage"] = str(leverage)
         return {"leverage": leverage, "symbol": symbol}
-    def set_margin_type(self, margin_type, symbol="ZECUSDT"):
-        self.position["isolated"] = str(margin_type).upper() == "ISOLATED"
-        self.position["marginType"] = str(margin_type).lower()
-        return {"code": 200}
-
     def submit_market_order(self, **kwargs):
         self.submit_count += 1
         self.submitted.append(dict(kwargs))
@@ -1121,6 +1116,28 @@ def test_open_fill_arms_closed_bar_stop_guard(tmp_path: Path):
     assert state.take_profit_price == pytest.approx(120.0)
 
 
+def test_papi_fill_without_avg_price_recovers_weighted_price_from_user_trades(tmp_path: Path):
+    adapter = FakeAdapter()
+    adapter.submit_response.pop("avgPrice")
+    adapter.fills = [
+        {"orderId": "1001", "price": "100", "qty": "0.10", "commission": "0.001"},
+        {"orderId": "1001", "price": "102", "qty": "0.15", "commission": "0.0015"},
+    ]
+    state = StrategyState()
+    ledger = LiveExecutionLedger(tmp_path / "live.jsonl")
+    result = LiveExecutionEngine(adapter, ledger).execute(
+        decision(LiveAction.OPEN.value, entry_low=90.0),
+        state,
+        strategy_equity=50,
+        mark_price=100,
+        symbol_rules=RULES,
+    )
+    assert result["status"] == "FILLED"
+    assert ledger.read()[-1]["average_fill_price"] == pytest.approx(101.2)
+    assert state.initial_entry_price == pytest.approx(101.2)
+    assert state.take_profit_price == pytest.approx(123.6)
+
+
 def test_take_profit_execution_closes_full_long_reduce_only_without_short(tmp_path: Path):
     adapter = FakeAdapter()
     adapter.position["positionAmt"] = "1"
@@ -1284,7 +1301,7 @@ def test_unrecognized_exchange_open_order_fails_closed(tmp_path: Path):
     assert result == {"ok": False, "reason": "UNRECOGNIZED_EXCHANGE_OPEN_ORDER"}
 
 
-def test_initial_order_uses_exactly_one_percent_margin_and_never_scales_above_cap(tmp_path: Path):
+def test_initial_order_uses_one_percent_sizing_base_and_never_scales_above_cap(tmp_path: Path):
     adapter = FakeAdapter()
     adapter.account["totalMarginBalance"] = "500"
     adapter.account["totalWalletBalance"] = "500"
@@ -1295,8 +1312,13 @@ def test_initial_order_uses_exactly_one_percent_margin_and_never_scales_above_ca
     assert adapter.submit_count == 1
     latest = engine.ledger.read()[-1]
     assert LIVE_CAPITAL_CAP_USDT == 50.0
-    assert TARGET_INITIAL_MARGIN_USDT == 0.5
+    assert SIZING_BASE_USDT == 0.5
     assert FIXED_LEVERAGE == 50
+    assert ACCOUNT_MODE == "PORTFOLIO_MARGIN"
+    assert API_MODE == "PAPI"
+    assert latest["account_mode"] == "PORTFOLIO_MARGIN"
+    assert latest["api_mode"] == "PAPI"
+    assert latest["sizing_base_usdt"] == pytest.approx(0.5)
     assert latest["requested_qty"] * 100 == pytest.approx(0.5 * 50)
 
 
@@ -1307,7 +1329,7 @@ def test_initial_order_uses_exactly_one_percent_margin_and_never_scales_above_ca
         ({**RULES, "step_size": 0.5, "min_qty": 0.5}, 0.0),
     ],
 )
-def test_initial_quantity_obeys_step_size_and_min_qty_without_raising_margin(
+def test_initial_quantity_obeys_step_size_and_min_qty_without_raising_sizing_base(
     tmp_path: Path, rules: dict, expected_qty: float,
 ):
     adapter = FakeAdapter()
@@ -1573,7 +1595,7 @@ def test_binance_response_schema_and_write_guard():
             "brackets": [{"initialLeverage": 75, "notionalFloor": 0, "notionalCap": 10000}],
         }]}
         if path == "/papi/v1/um/symbolConfig": return {"ok": True, "data": [{
-            "symbol": "ZECUSDT", "marginType": "ISOLATED", "leverage": 50,
+            "symbol": "ZECUSDT", "leverage": 50,
         }]}
         raise AssertionError(path)
 
@@ -1583,7 +1605,7 @@ def test_binance_response_schema_and_write_guard():
     assert adapter.get_position()["positionAmt"] == "0"
     assert adapter.get_open_orders() == []
     assert fixed_leverage_allowed(adapter.get_leverage_brackets()) is True
-    assert adapter.get_symbol_config()["marginType"] == "ISOLATED"
+    assert adapter.get_symbol_config()["leverage"] == 50
     assert extract_symbol_rules(adapter.get_exchange_info())["min_notional"] == 5
     signed_calls = [row for row in calls if row[1].startswith("/papi/")]
     assert signed_calls
@@ -1593,6 +1615,46 @@ def test_binance_response_schema_and_write_guard():
         adapter.submit_market_order(
             side="BUY", quantity=0.1, client_order_id="fixture", reduce_only=False,
         )
+
+
+def test_papi_order_submit_query_cancel_and_fill_routes_are_authenticated_only():
+    calls = []
+
+    def transport(request):
+        calls.append((request["method"], request["path"], request["url"]))
+        path = request["path"]
+        if path == "/papi/v1/um/order":
+            return {"ok": True, "data": {"symbol": "ZECUSDT", "orderId": 1001, "status": "NEW"}}
+        if path == "/papi/v1/um/userTrades":
+            return {"ok": True, "data": []}
+        raise AssertionError(path)
+
+    adapter = BinanceUsdMExecutionAdapter(
+        api_key="fixture",
+        api_secret="fixture",
+        live_enabled=True,
+        transport=transport,
+        timestamp_ms=1_700_000_000_000,
+    )
+    adapter.submit_market_order(
+        side="BUY", quantity=0.25, client_order_id="entry-fixture", reduce_only=False,
+    )
+    adapter.submit_market_order(
+        side="SELL", quantity=0.25, client_order_id="exit-fixture", reduce_only=True,
+    )
+    adapter.query_order(client_order_id="entry-fixture")
+    adapter.cancel_order(client_order_id="exit-fixture")
+    assert adapter.get_fills(order_id="1001") == []
+
+    assert [(method, path) for method, path, _ in calls] == [
+        ("POST", "/papi/v1/um/order"),
+        ("POST", "/papi/v1/um/order"),
+        ("GET", "/papi/v1/um/order"),
+        ("DELETE", "/papi/v1/um/order"),
+        ("GET", "/papi/v1/um/userTrades"),
+    ]
+    assert all(url.startswith("https://papi.binance.com/papi/") for _, _, url in calls)
+    assert not any("/fapi/" in url for _, _, url in calls)
 
 
 def test_portfolio_margin_read_only_preflight_passes_without_orders():
@@ -1619,8 +1681,11 @@ def test_preflight_requires_every_safety_check():
     )
     assert result["preflight_pass"] is True
     assert result["api_authentication"] is True
-    assert result["futures_account_access"] is True
-    assert result["futures_trading_permission"] is True
+    assert result["papi_authentication"] is True
+    assert result["portfolio_margin_access"] is True
+    assert result["trading_permission"] is True
+    assert result["account_mode"] == "PORTFOLIO_MARGIN"
+    assert result["api_mode"] == "PAPI"
     assert result["withdraw_permission"] == "OFF"
     adapter.position["leverage"] = "10"
     blocked = run_live_preflight(
@@ -1641,7 +1706,7 @@ def test_preflight_blocks_unknown_leverage_bracket_and_withdraw_permission():
 
     adapter = FakeAdapter()
     adapter.get_api_restrictions = lambda: {
-        "enableFutures": True, "enableWithdrawals": True, "ipRestrict": True,
+        "enablePortfolioMarginTrading": True, "enableWithdrawals": True, "ipRestrict": True,
     }
     withdrawal = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
     assert withdrawal["preflight_pass"] is False
@@ -1649,13 +1714,17 @@ def test_preflight_blocks_unknown_leverage_bracket_and_withdraw_permission():
     assert withdrawal["withdraw_permission"] == "ON"
 
 
-def test_preflight_parses_futures_permission_and_authentication_failure():
+def test_preflight_parses_portfolio_permission_and_authentication_failure():
     adapter = FakeAdapter()
-    adapter.account["canTrade"] = False
+    adapter.get_api_restrictions = lambda: {
+        "enablePortfolioMarginTrading": False,
+        "enableWithdrawals": False,
+        "ipRestrict": True,
+    }
     denied = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
     assert denied["api_authentication"] is True
-    assert denied["futures_account_access"] is True
-    assert denied["futures_trading_permission"] is False
+    assert denied["portfolio_margin_access"] is True
+    assert denied["trading_permission"] is False
     assert denied["preflight_pass"] is False
 
     adapter = FakeAdapter()
@@ -1664,8 +1733,8 @@ def test_preflight_parses_futures_permission_and_authentication_failure():
     adapter.get_account = authentication_error
     failed = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
     assert failed["api_authentication"] is False
-    assert failed["futures_account_access"] is False
-    assert failed["futures_trading_permission"] is False
+    assert failed["portfolio_margin_access"] is False
+    assert failed["trading_permission"] is False
     assert failed["withdraw_permission"] == "UNKNOWN"
 
 
@@ -1694,7 +1763,7 @@ def test_fixed_50x_permission_uses_the_25_usdt_notional_bracket():
             {"initialLeverage": 50, "notionalFloor": 50, "notionalCap": 10000},
         ],
     }]
-    assert fixed_leverage_allowed(payload, initial_margin_usdt=0.5) is True
+    assert fixed_leverage_allowed(payload, sizing_base_usdt=0.5) is True
 
 
 def test_fixed_50x_permission_does_not_use_a_different_notional_bracket():
@@ -1705,7 +1774,7 @@ def test_fixed_50x_permission_does_not_use_a_different_notional_bracket():
             {"initialLeverage": 20, "notionalFloor": 20, "notionalCap": 10000},
         ],
     }]
-    assert fixed_leverage_allowed(payload, initial_margin_usdt=0.5) is False
+    assert fixed_leverage_allowed(payload, sizing_base_usdt=0.5) is False
 
 
 def test_fixed_50x_rejection_blocks_without_leverage_fallback(tmp_path: Path):
@@ -1724,7 +1793,7 @@ def test_fixed_50x_rejection_blocks_without_leverage_fallback(tmp_path: Path):
     assert adapter.submit_count == 0
 
 
-def test_minimum_notional_never_increases_the_one_percent_margin(tmp_path: Path):
+def test_minimum_notional_never_increases_the_one_percent_sizing_base(tmp_path: Path):
     adapter = FakeAdapter()
     rules = {**RULES, "min_notional": 50.0}
     engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
@@ -1737,14 +1806,11 @@ def test_minimum_notional_never_increases_the_one_percent_margin(tmp_path: Path)
     assert adapter.submit_count == 0
 
 
-@pytest.mark.parametrize("drift", ["LEVERAGE_10X", "CROSS_MARGIN", "HEDGE_MODE"])
+@pytest.mark.parametrize("drift", ["LEVERAGE_10X", "HEDGE_MODE"])
 def test_runtime_invariant_drift_blocks_every_new_order(tmp_path: Path, drift: str):
     adapter = FakeAdapter()
     if drift == "LEVERAGE_10X":
         adapter.position["leverage"] = "10"
-    elif drift == "CROSS_MARGIN":
-        adapter.position["isolated"] = False
-        adapter.position["marginType"] = "cross"
     else:
         adapter.dual_side_position = True
     engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))

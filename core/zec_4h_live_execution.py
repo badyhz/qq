@@ -18,13 +18,15 @@ from core.binance_http import (
 )
 from core.order_normalizer import normalize_order_params
 from core.zec_4h_live import (
+    ACCOUNT_MODE,
+    API_MODE,
     APPROVED_LIVE_SAFETY_DEVIATIONS,
     LiveAction,
     LiveExecutionLedger,
     FIXED_LEVERAGE,
     LIVE_CAPITAL_CAP_USDT,
     TARGET_INITIAL_NOTIONAL_USDT,
-    TARGET_INITIAL_MARGIN_USDT,
+    SIZING_BASE_USDT,
     STRATEGY_ID,
     STARTING_EQUITY,
     SYMBOL,
@@ -73,7 +75,6 @@ class ExecutionAdapter(Protocol):
     def get_leverage_brackets(self, symbol: str = SYMBOL) -> Any: ...
     def get_symbol_config(self, symbol: str = SYMBOL) -> dict[str, Any]: ...
     def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]: ...
-    def set_margin_type(self, margin_type: str, symbol: str = SYMBOL) -> dict[str, Any]: ...
     def submit_market_order(
         self,
         *,
@@ -246,16 +247,6 @@ class BinanceUsdMExecutionAdapter:
             raise RuntimeError("MALFORMED_LEVERAGE_RESPONSE")
         return value
 
-    def set_margin_type(self, margin_type: str, symbol: str = SYMBOL) -> dict[str, Any]:
-        self._assert_live_write()
-        normalized = str(margin_type).upper()
-        if normalized != "ISOLATED":
-            raise ValueError("zec_4h_live_v1 only permits ISOLATED margin")
-        value = self._signed("POST", "/papi/v1/um/marginType", {"symbol": symbol, "marginType": normalized})
-        if not isinstance(value, dict):
-            raise RuntimeError("MALFORMED_MARGIN_TYPE_RESPONSE")
-        return value
-
     def submit_market_order(
         self,
         *,
@@ -365,7 +356,13 @@ def usdt_available_balance(rows: list[dict[str, Any]]) -> float:
     if len(matches) != 1:
         raise ValueError("USDT balance unavailable")
     row = matches[0]
-    return float(row.get("availableBalance", row.get("balance", 0.0)) or 0.0)
+    return float(
+        row.get(
+            "availableBalance",
+            row.get("crossMarginFree", row.get("balance", 0.0)),
+        )
+        or 0.0
+    )
 
 
 def strategy_equity_from_evidence(
@@ -430,19 +427,19 @@ def fixed_leverage_allowed(
     *,
     symbol: str = SYMBOL,
     leverage: int = FIXED_LEVERAGE,
-    initial_margin_usdt: float = TARGET_INITIAL_MARGIN_USDT,
+    sizing_base_usdt: float = SIZING_BASE_USDT,
 ) -> bool:
     """Return whether the account bracket permits exactly the configured 50x."""
     rows = payload if isinstance(payload, list) else [payload]
     matches = [row for row in rows if isinstance(row, dict) and row.get("symbol") == symbol]
-    if len(matches) != 1 or initial_margin_usdt <= 0:
+    if len(matches) != 1 or sizing_base_usdt <= 0:
         raise ValueError("LEVERAGE_BRACKET_UNAVAILABLE")
     bracket_payload = matches[0]
     brackets = [row for row in bracket_payload.get("brackets", []) if isinstance(row, dict)]
     notional_coefficient = float(bracket_payload.get("notionalCoef", 1.0) or 1.0)
     if leverage <= 0 or notional_coefficient <= 0:
         raise ValueError("INVALID_LEVERAGE_BRACKET")
-    notional = initial_margin_usdt * leverage
+    notional = sizing_base_usdt * leverage
     for bracket in brackets:
         floor = float(bracket.get("notionalFloor", 0.0) or 0.0) * notional_coefficient
         cap = float(bracket.get("notionalCap", 0.0) or 0.0) * notional_coefficient
@@ -520,7 +517,7 @@ def run_live_preflight(
     maximum_clock_skew_ms: int = 1000,
     local_time_ms: Optional[int] = None,
 ) -> dict[str, Any]:
-    """Authenticated no-order preflight.  It does not change leverage/margin."""
+    """Authenticated PAPI no-order preflight for the fixed software allocation."""
     checks: dict[str, Any] = {}
     try:
         rules = extract_symbol_rules(adapter.get_exchange_info())
@@ -532,13 +529,14 @@ def run_live_preflight(
         checks["clock_ok"] = checks["clock_skew_ms"] <= maximum_clock_skew_ms
         account = adapter.get_account()
         checks["api_authentication"] = True
-        checks["futures_account_access"] = True
+        checks["papi_authentication"] = True
+        checks["portfolio_margin_access"] = True
         checks["api_read"] = True
         restrictions = adapter.get_api_restrictions()
-        checks["futures_trading_permission"] = (
-            _to_bool(account.get("canTrade")) and _to_bool(restrictions.get("enableFutures"))
+        checks["trading_permission"] = _to_bool(
+            restrictions.get("enablePortfolioMarginTrading")
         )
-        checks["api_trade"] = checks["futures_trading_permission"]
+        checks["api_trade"] = checks["trading_permission"]
         checks["withdrawal_disabled_verified"] = not _to_bool(restrictions.get("enableWithdrawals"))
         checks["withdraw_permission"] = (
             "OFF" if checks["withdrawal_disabled_verified"] else "ON"
@@ -546,16 +544,16 @@ def run_live_preflight(
         checks["ip_restricted"] = _to_bool(restrictions.get("ipRestrict"))
         checks["account_equity"] = account_equity(account)
         checks["available_balance"] = usdt_available_balance(adapter.get_balance())
-        checks["available_buffer_ok"] = checks["available_balance"] >= TARGET_INITIAL_MARGIN_USDT
+        checks["available_buffer_ok"] = checks["available_balance"] >= SIZING_BASE_USDT
         checks["strategy_budget_ok"] = expected_budget == LIVE_CAPITAL_CAP_USDT
+        checks["account_mode"] = ACCOUNT_MODE
+        checks["api_mode"] = API_MODE
         checks["capital_cap_usdt"] = LIVE_CAPITAL_CAP_USDT
-        checks["initial_margin_usdt"] = TARGET_INITIAL_MARGIN_USDT
+        checks["sizing_base_usdt"] = SIZING_BASE_USDT
         checks["target_initial_notional_usdt"] = TARGET_INITIAL_NOTIONAL_USDT
         position = adapter.get_position()
         symbol_config = adapter.get_symbol_config()
         checks["position_zero"] = abs(position_quantity(position)) <= 1e-12
-        checks["account_margin_mode"] = str(symbol_config.get("marginType", "")).upper()
-        checks["isolated"] = checks["account_margin_mode"] == "ISOLATED"
         checks["fixed_leverage"] = FIXED_LEVERAGE
         checks["zecusdt_50x_allowed"] = fixed_leverage_allowed(adapter.get_leverage_brackets())
         checks["account_leverage"] = int(float(symbol_config.get("leverage", 0) or 0))
@@ -567,14 +565,15 @@ def run_live_preflight(
     except Exception as exc:
         checks["error"] = exc.__class__.__name__
         checks.setdefault("api_authentication", False)
-        checks.setdefault("futures_account_access", False)
-        checks.setdefault("futures_trading_permission", False)
+        checks.setdefault("papi_authentication", False)
+        checks.setdefault("portfolio_margin_access", False)
+        checks.setdefault("trading_permission", False)
         checks.setdefault("withdraw_permission", "UNKNOWN")
         checks["preflight_pass"] = False
         return checks
     required = [
         "symbol_tradeable", "clock_ok", "api_read", "api_trade", "strategy_budget_ok", "available_buffer_ok",
-        "position_zero", "isolated", "zecusdt_50x_allowed", "leverage_fixed_50x", "one_way_mode", "open_orders_zero",
+        "position_zero", "zecusdt_50x_allowed", "leverage_fixed_50x", "one_way_mode", "open_orders_zero",
         "withdrawal_disabled_verified", "ip_restricted",
     ]
     checks["preflight_pass"] = all(checks.get(key) is True for key in required)
@@ -1060,7 +1059,7 @@ class LiveExecutionEngine:
         if mark_price <= 0:
             return 0.0
         if action == LiveAction.OPEN.value:
-            if exchange_available_balance is not None and float(exchange_available_balance) < TARGET_INITIAL_MARGIN_USDT:
+            if exchange_available_balance is not None and float(exchange_available_balance) < SIZING_BASE_USDT:
                 return 0.0
             raw_qty = safe_initial_notional(strategy_equity, leverage) / mark_price
         elif action == LiveAction.REDUCE_50.value:
@@ -1113,7 +1112,6 @@ class LiveExecutionEngine:
             except Exception:
                 return {"ok": False, "reason": "FIXED_50X_PERMISSION_UNAVAILABLE"}
             symbol_config = self.adapter.get_symbol_config()
-            isolated = str(symbol_config.get("marginType", "")).upper() == "ISOLATED"
             leverage_fixed_50x = int(float(symbol_config.get("leverage", 0) or 0)) == FIXED_LEVERAGE
             one_way = not _to_bool(self.adapter.get_position_mode().get("dualSidePosition"))
             account = self.adapter.get_account()
@@ -1122,12 +1120,12 @@ class LiveExecutionEngine:
             checks = {
                 "reconciliation": True,
                 "one_way_mode": one_way,
-                "isolated": isolated,
+                "portfolio_margin_account": True,
                 "fixed_50x_allowed": fixed_allowed,
                 "leverage_fixed_50x": leverage_fixed_50x,
                 "capital_cap": managed_capital <= LIVE_CAPITAL_CAP_USDT,
-                "initial_margin_available": account_equity(account) >= TARGET_INITIAL_MARGIN_USDT,
-                "api_trade": _to_bool(account.get("canTrade")) and _to_bool(restrictions.get("enableFutures")),
+                "sizing_base_available": account_equity(account) >= SIZING_BASE_USDT,
+                "api_trade": _to_bool(restrictions.get("enablePortfolioMarginTrading")),
                 "withdrawal_disabled": not _to_bool(restrictions.get("enableWithdrawals")),
                 "no_unrecognized_open_orders": True,
             }
@@ -1136,15 +1134,17 @@ class LiveExecutionEngine:
                 "checks": checks,
                 "gate": "RISK_INCREASE_FULL",
                 "selected_leverage": FIXED_LEVERAGE,
+                "account_mode": ACCOUNT_MODE,
+                "api_mode": API_MODE,
                 "capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
-                "initial_margin_usdt": TARGET_INITIAL_MARGIN_USDT,
+                "sizing_base_usdt": SIZING_BASE_USDT,
             }
 
         if action not in RISK_REDUCTION_ACTIONS:
             return {"ok": False, "reason": "UNKNOWN_ACTION_GATE"}
 
-        # Risk-reducing orders must remain available when leverage, margin type,
-        # or account-equity allocation has drifted.  They still require a
+        # Risk-reducing orders must remain available when leverage or account
+        # equity has drifted. They still require a
         # clearly identified one-way LONG and no conflicting exchange order.
         position = self.adapter.get_position()
         exchange_qty = position_quantity(position)
@@ -1195,10 +1195,7 @@ class LiveExecutionEngine:
                 "reason": "FULL_POSITION_TARGET_UNKNOWN",
                 "gate": "RISK_REDUCTION_SAFE",
             }
-        advisory = {
-            "isolated": _to_bool(position.get("isolated")) or str(position.get("marginType", "")).lower() == "isolated",
-            "leverage_fixed_50x": None,
-        }
+        advisory = {"account_mode": ACCOUNT_MODE, "leverage_fixed_50x": None}
         return {
             "ok": True,
             "gate": "RISK_REDUCTION_SAFE",
@@ -1272,7 +1269,9 @@ class LiveExecutionEngine:
             "strategy_equity_before": float(strategy_equity_before),
             "strategy_equity_after": float(strategy_equity_before),
             "live_capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
-            "initial_margin_usdt": TARGET_INITIAL_MARGIN_USDT,
+            "account_mode": ACCOUNT_MODE,
+            "api_mode": API_MODE,
+            "sizing_base_usdt": SIZING_BASE_USDT,
             "leverage_mode": "FIXED",
             "leverage": FIXED_LEVERAGE,
             "target_initial_notional_usdt": TARGET_INITIAL_NOTIONAL_USDT,
@@ -1297,6 +1296,8 @@ class LiveExecutionEngine:
         average_price = float(response.get("avgPrice", response.get("average_fill_price", 0.0)) or 0.0)
         exchange_order_id = str(response.get("orderId", response.get("exchange_order_id", "")) or "")
         evidence = self._fill_evidence(exchange_order_id) if filled_qty > 0 else {}
+        if average_price <= 0:
+            average_price = float(evidence.get("average_fill_price", 0.0) or 0.0)
         fee = float(evidence.get("fee", 0.0))
         realized_pnl = float(evidence.get("realized_pnl", 0.0))
         equity_after = strategy_equity_before
@@ -1415,11 +1416,18 @@ class LiveExecutionEngine:
         matching = [row for row in fills if str(row.get("orderId", "")) == exchange_order_id]
         fee = sum(float(row.get("commission", 0.0) or 0.0) for row in matching)
         realized = sum(float(row.get("realizedPnl", 0.0) or 0.0) for row in matching)
+        quantities = [float(row.get("qty", row.get("quantity", 0.0)) or 0.0) for row in matching]
+        total_qty = sum(quantities)
+        total_quote = sum(
+            float(row.get("price", 0.0) or 0.0) * qty
+            for row, qty in zip(matching, quantities)
+        )
         assets = {str(row.get("commissionAsset", "")) for row in matching if row.get("commissionAsset")}
         return {
             "fee": fee,
             "fee_asset": next(iter(assets)) if len(assets) == 1 else ("MULTIPLE" if assets else ""),
             "realized_pnl": realized,
+            "average_fill_price": total_quote / total_qty if total_qty > 0 else 0.0,
         }
 
 

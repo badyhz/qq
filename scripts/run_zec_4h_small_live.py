@@ -41,7 +41,6 @@ from core.zec_4h_live_execution import (
     reconcile_startup,
     recover_unapplied_filled_transitions,
     run_live_preflight,
-    run_portfolio_margin_read_only_preflight,
     strategy_equity_from_evidence,
     usdt_available_balance,
 )
@@ -91,7 +90,7 @@ def _adapter(*, live_enabled: bool) -> BinanceUsdMExecutionAdapter:
 def run_preflight_only() -> dict:
     if not _enabled("ZEC_4H_PREFLIGHT_ENABLED"):
         raise RuntimeError("ZEC_4H_PREFLIGHT_DISABLED")
-    return run_portfolio_margin_read_only_preflight(_adapter(live_enabled=False))
+    return run_live_preflight(_adapter(live_enabled=False))
 
 
 def _decision_from_record(row: dict) -> StrategyDecision:

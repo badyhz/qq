@@ -22,12 +22,14 @@ from core.paper_trading.data_source import MarketBar, format_utc_timestamp
 STRATEGY_ID = "zec_4h_live_v1"
 SYMBOL = "ZECUSDT"
 TIMEFRAME = "4h"
+ACCOUNT_MODE = "PORTFOLIO_MARGIN"
+API_MODE = "PAPI"
 STARTING_EQUITY = 50.0
 LIVE_CAPITAL_CAP_USDT = 50.0
-MARGIN_PER_TRADE_RATE = 0.01
-TARGET_INITIAL_MARGIN_USDT = LIVE_CAPITAL_CAP_USDT * MARGIN_PER_TRADE_RATE
+SIZING_BASE_RATE = 0.01
+SIZING_BASE_USDT = LIVE_CAPITAL_CAP_USDT * SIZING_BASE_RATE
 FIXED_LEVERAGE = 50
-TARGET_INITIAL_NOTIONAL_USDT = TARGET_INITIAL_MARGIN_USDT * FIXED_LEVERAGE
+TARGET_INITIAL_NOTIONAL_USDT = SIZING_BASE_USDT * FIXED_LEVERAGE
 TAKE_PROFIT_MODE = "FIXED_2R"
 TAKE_PROFIT_R_MULTIPLE = 2.0
 TARGET_EQUITY = 150.0
@@ -1166,8 +1168,10 @@ def build_live_scorecard(
         "strategy_id": STRATEGY_ID,
         "starting_equity": STARTING_EQUITY,
         "live_capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
-        "margin_per_trade_rate": MARGIN_PER_TRADE_RATE,
-        "target_initial_margin_usdt": TARGET_INITIAL_MARGIN_USDT,
+        "account_mode": ACCOUNT_MODE,
+        "api_mode": API_MODE,
+        "sizing_base_rate": SIZING_BASE_RATE,
+        "sizing_base_usdt": SIZING_BASE_USDT,
         "leverage_mode": "FIXED",
         "leverage": FIXED_LEVERAGE,
         "target_initial_notional_usdt": TARGET_INITIAL_NOTIONAL_USDT,
@@ -1201,19 +1205,19 @@ def build_live_scorecard(
 
 
 def safe_initial_notional(strategy_equity: float, leverage: int) -> float:
-    """Return the fixed-margin initial notional without exceeding the 50 USDT pool.
+    """Return fixed sizing notional without exceeding the 50 USDT strategy pool.
 
     ``strategy_equity`` is deliberately not allowed to scale the order.  It is
     accepted only so callers can fail closed when the strategy has no valid
     capital evidence.  The live contract allocates exactly one percent of the
-    fixed 50 USDT pool as initial margin and lets the exchange/account-specific
-    leverage determine notional exposure.
+    fixed 50 USDT software pool as its sizing base. Portfolio Margin account
+    equity must never scale this strategy allocation.
     """
     if not math.isfinite(strategy_equity) or strategy_equity <= 0:
         return 0.0
     if not isinstance(leverage, int) or isinstance(leverage, bool) or leverage <= 0:
         return 0.0
     managed_capital = min(float(strategy_equity), LIVE_CAPITAL_CAP_USDT)
-    if managed_capital < TARGET_INITIAL_MARGIN_USDT:
+    if managed_capital < SIZING_BASE_USDT:
         return 0.0
-    return TARGET_INITIAL_MARGIN_USDT * leverage
+    return SIZING_BASE_USDT * leverage
