@@ -102,7 +102,7 @@ class ExecutionAdapter(Protocol):
 
 
 class BinanceUsdMExecutionAdapter:
-    """Minimal HMAC USD-M adapter matching current Binance REST response shapes."""
+    """HMAC Portfolio Margin UM adapter for ZECUSDT execution and audit."""
 
     def __init__(
         self,
@@ -125,7 +125,7 @@ class BinanceUsdMExecutionAdapter:
         path: str,
         params: Optional[dict[str, Any]] = None,
         *,
-        market_type: str = "futures",
+        market_type: str = "portfolio_margin",
     ) -> Any:
         if not self._api_key or not self._api_secret:
             raise RuntimeError("BINANCE_LIVE_CREDENTIALS_MISSING")
@@ -166,19 +166,19 @@ class BinanceUsdMExecutionAdapter:
             raise RuntimeError("ZEC_4H_LIVE_WRITE_DISABLED")
 
     def get_account(self) -> dict[str, Any]:
-        value = self._signed("GET", "/fapi/v3/account")
+        value = self._signed("GET", "/papi/v1/um/account")
         if not isinstance(value, dict):
             raise RuntimeError("MALFORMED_ACCOUNT_RESPONSE")
         return value
 
     def get_balance(self) -> list[dict[str, Any]]:
-        value = self._signed("GET", "/fapi/v3/balance")
+        value = self._signed("GET", "/papi/v1/balance")
         if not isinstance(value, list):
             raise RuntimeError("MALFORMED_BALANCE_RESPONSE")
         return [dict(item) for item in value if isinstance(item, dict)]
 
     def get_position(self, symbol: str = SYMBOL) -> dict[str, Any]:
-        value = self._signed("GET", "/fapi/v3/positionRisk", {"symbol": symbol})
+        value = self._signed("GET", "/papi/v1/um/positionRisk", {"symbol": symbol})
         if isinstance(value, list):
             matches = [item for item in value if isinstance(item, dict) and item.get("symbol") == symbol]
             if len(matches) == 1:
@@ -188,7 +188,7 @@ class BinanceUsdMExecutionAdapter:
         raise RuntimeError("MALFORMED_POSITION_RESPONSE")
 
     def get_open_orders(self, symbol: str = SYMBOL) -> list[dict[str, Any]]:
-        value = self._signed("GET", "/fapi/v1/openOrders", {"symbol": symbol})
+        value = self._signed("GET", "/papi/v1/um/openOrders", {"symbol": symbol})
         if not isinstance(value, list):
             raise RuntimeError("MALFORMED_OPEN_ORDERS_RESPONSE")
         return [dict(item) for item in value if isinstance(item, dict)]
@@ -206,7 +206,7 @@ class BinanceUsdMExecutionAdapter:
         return value
 
     def get_position_mode(self) -> dict[str, Any]:
-        value = self._signed("GET", "/fapi/v1/positionSide/dual")
+        value = self._signed("GET", "/papi/v1/um/positionSide/dual")
         if not isinstance(value, dict) or "dualSidePosition" not in value:
             raise RuntimeError("MALFORMED_POSITION_MODE_RESPONSE")
         return value
@@ -222,13 +222,13 @@ class BinanceUsdMExecutionAdapter:
         return value
 
     def get_leverage_brackets(self, symbol: str = SYMBOL) -> Any:
-        value = self._signed("GET", "/fapi/v1/leverageBracket", {"symbol": symbol})
+        value = self._signed("GET", "/papi/v1/um/leverageBracket", {"symbol": symbol})
         if not isinstance(value, (dict, list)):
             raise RuntimeError("MALFORMED_LEVERAGE_BRACKET_RESPONSE")
         return value
 
     def get_symbol_config(self, symbol: str = SYMBOL) -> dict[str, Any]:
-        value = self._signed("GET", "/fapi/v1/symbolConfig", {"symbol": symbol})
+        value = self._signed("GET", "/papi/v1/um/symbolConfig", {"symbol": symbol})
         rows = value if isinstance(value, list) else [value]
         matches = [row for row in rows if isinstance(row, dict) and row.get("symbol") == symbol]
         if len(matches) != 1:
@@ -237,7 +237,7 @@ class BinanceUsdMExecutionAdapter:
 
     def set_leverage(self, leverage: int, symbol: str = SYMBOL) -> dict[str, Any]:
         self._assert_live_write()
-        value = self._signed("POST", "/fapi/v1/leverage", {"symbol": symbol, "leverage": int(leverage)})
+        value = self._signed("POST", "/papi/v1/um/leverage", {"symbol": symbol, "leverage": int(leverage)})
         if not isinstance(value, dict):
             raise RuntimeError("MALFORMED_LEVERAGE_RESPONSE")
         return value
@@ -247,7 +247,7 @@ class BinanceUsdMExecutionAdapter:
         normalized = str(margin_type).upper()
         if normalized != "ISOLATED":
             raise ValueError("zec_4h_live_v1 only permits ISOLATED margin")
-        value = self._signed("POST", "/fapi/v1/marginType", {"symbol": symbol, "marginType": normalized})
+        value = self._signed("POST", "/papi/v1/um/marginType", {"symbol": symbol, "marginType": normalized})
         if not isinstance(value, dict):
             raise RuntimeError("MALFORMED_MARGIN_TYPE_RESPONSE")
         return value
@@ -271,7 +271,7 @@ class BinanceUsdMExecutionAdapter:
             "newOrderRespType": "RESULT",
             "reduceOnly": bool(reduce_only),
         }
-        value = self._signed("POST", "/fapi/v1/order", params)
+        value = self._signed("POST", "/papi/v1/um/order", params)
         if not isinstance(value, dict):
             raise RuntimeError("MALFORMED_ORDER_RESPONSE")
         return value
@@ -289,7 +289,7 @@ class BinanceUsdMExecutionAdapter:
         else:
             params["origClientOrderId"] = client_order_id
         try:
-            value = self._signed("GET", "/fapi/v1/order", params)
+            value = self._signed("GET", "/papi/v1/um/order", params)
         except RuntimeError as exc:
             if "-2013" in str(exc):
                 return None
@@ -315,7 +315,7 @@ class BinanceUsdMExecutionAdapter:
             params["origClientOrderId"] = client_order_id
         else:
             raise ValueError("order identity required")
-        value = self._signed("DELETE", "/fapi/v1/order", params)
+        value = self._signed("DELETE", "/papi/v1/um/order", params)
         if not isinstance(value, dict):
             raise RuntimeError("MALFORMED_CANCEL_RESPONSE")
         return value
@@ -324,7 +324,7 @@ class BinanceUsdMExecutionAdapter:
         params: dict[str, Any] = {"symbol": symbol, "limit": 1000}
         if order_id:
             params["orderId"] = order_id
-        value = self._signed("GET", "/fapi/v1/userTrades", params)
+        value = self._signed("GET", "/papi/v1/um/userTrades", params)
         if not isinstance(value, list):
             raise RuntimeError("MALFORMED_FILLS_RESPONSE")
         return [dict(item) for item in value if isinstance(item, dict)]
@@ -332,7 +332,7 @@ class BinanceUsdMExecutionAdapter:
     def get_income(self, symbol: str = SYMBOL, income_type: str = "FUNDING_FEE") -> list[dict[str, Any]]:
         value = self._signed(
             "GET",
-            "/fapi/v1/income",
+            "/papi/v1/um/income",
             {"symbol": symbol, "incomeType": income_type, "limit": 1000},
         )
         if not isinstance(value, list):
@@ -446,6 +446,63 @@ def fixed_leverage_allowed(
         if floor <= notional and (cap <= 0 or notional < cap):
             return leverage <= bracket_leverage
     raise ValueError("NO_LEVERAGE_BRACKET_FOR_FIXED_NOTIONAL")
+
+
+def run_portfolio_margin_read_only_preflight(
+    adapter: ExecutionAdapter,
+) -> dict[str, Any]:
+    """Authenticate the Unified Account via PAPI without any write request."""
+    checks: dict[str, Any] = {
+        "papi_authentication": False,
+        "portfolio_margin_access": False,
+        "trading_permission": False,
+        "withdraw_permission": "UNKNOWN",
+        "zecusdt_available": False,
+        "real_order": False,
+        "live_enabled": False,
+    }
+    try:
+        account = adapter.get_account()
+        checks["papi_authentication"] = True
+        checks["portfolio_margin_access"] = True
+        checks["trading_permission"] = _to_bool(account.get("canTrade"))
+
+        balances = adapter.get_balance()
+        checks["balance_read"] = isinstance(balances, list)
+        position = adapter.get_position()
+        checks["position_read"] = str(position.get("symbol", "")) == SYMBOL
+        open_orders = adapter.get_open_orders()
+        checks["open_orders_read"] = isinstance(open_orders, list)
+
+        symbol_config = adapter.get_symbol_config()
+        rules = extract_symbol_rules(adapter.get_exchange_info())
+        checks["zecusdt_available"] = (
+            str(symbol_config.get("symbol", "")) == SYMBOL
+            and rules.get("status") == "TRADING"
+            and rules.get("contract_type") == "PERPETUAL"
+        )
+        checks["zecusdt_position_qty"] = position_quantity(position)
+        checks["zecusdt_open_order_count"] = len(open_orders)
+
+        restrictions = adapter.get_api_restrictions()
+        withdrawals_enabled = _to_bool(restrictions.get("enableWithdrawals"))
+        checks["withdraw_permission"] = "ON" if withdrawals_enabled else "OFF"
+    except Exception as exc:
+        checks["error"] = exc.__class__.__name__
+        checks["preflight_pass"] = False
+        return checks
+
+    checks["preflight_pass"] = all([
+        checks["papi_authentication"],
+        checks["portfolio_margin_access"],
+        checks["trading_permission"],
+        checks["withdraw_permission"] == "OFF",
+        checks["zecusdt_available"],
+        checks.get("balance_read") is True,
+        checks.get("position_read") is True,
+        checks.get("open_orders_read") is True,
+    ])
+    return checks
 
 
 def run_live_preflight(

@@ -32,6 +32,7 @@ from core.zec_4h_live_execution import (
     reconcile_startup,
     fixed_leverage_allowed,
     recover_unapplied_filled_transitions,
+    run_portfolio_margin_read_only_preflight,
     run_live_preflight,
     strategy_equity_from_evidence,
     verify_dedicated_account_boundary,
@@ -1554,19 +1555,19 @@ def test_binance_response_schema_and_write_guard():
     calls = []
 
     def transport(request):
-        calls.append((request["method"], request["path"]))
+        calls.append((request["method"], request["path"], request["url"]))
         path = request["path"]
-        if path == "/fapi/v3/account": return {"ok": True, "data": {"canTrade": True}}
-        if path == "/fapi/v3/balance": return {"ok": True, "data": [{"asset": "USDT"}]}
-        if path == "/fapi/v3/positionRisk": return {"ok": True, "data": [{"symbol": "ZECUSDT", "positionAmt": "0"}]}
-        if path == "/fapi/v1/openOrders": return {"ok": True, "data": []}
+        if path == "/papi/v1/um/account": return {"ok": True, "data": {"canTrade": True}}
+        if path == "/papi/v1/balance": return {"ok": True, "data": [{"asset": "USDT"}]}
+        if path == "/papi/v1/um/positionRisk": return {"ok": True, "data": [{"symbol": "ZECUSDT", "positionAmt": "0"}]}
+        if path == "/papi/v1/um/openOrders": return {"ok": True, "data": []}
         if path == "/fapi/v1/exchangeInfo": return {"ok": True, "data": exchange_info_fixture()}
         if path == "/fapi/v1/time": return {"ok": True, "data": {"serverTime": 1}}
-        if path == "/fapi/v1/leverageBracket": return {"ok": True, "data": [{
+        if path == "/papi/v1/um/leverageBracket": return {"ok": True, "data": [{
             "symbol": "ZECUSDT",
             "brackets": [{"initialLeverage": 75, "notionalFloor": 0, "notionalCap": 10000}],
         }]}
-        if path == "/fapi/v1/symbolConfig": return {"ok": True, "data": [{
+        if path == "/papi/v1/um/symbolConfig": return {"ok": True, "data": [{
             "symbol": "ZECUSDT", "marginType": "ISOLATED", "leverage": 50,
         }]}
         raise AssertionError(path)
@@ -1579,10 +1580,29 @@ def test_binance_response_schema_and_write_guard():
     assert fixed_leverage_allowed(adapter.get_leverage_brackets()) is True
     assert adapter.get_symbol_config()["marginType"] == "ISOLATED"
     assert extract_symbol_rules(adapter.get_exchange_info())["min_notional"] == 5
+    signed_calls = [row for row in calls if row[1].startswith("/papi/")]
+    assert signed_calls
+    assert all(row[2].startswith("https://papi.binance.com/papi/") for row in signed_calls)
+    assert not any("/fapi/" in row[1] and "signature=" in row[2] for row in calls)
     with pytest.raises(RuntimeError, match="DISABLED"):
         adapter.submit_market_order(
             side="BUY", quantity=0.1, client_order_id="fixture", reduce_only=False,
         )
+
+
+def test_portfolio_margin_read_only_preflight_passes_without_orders():
+    adapter = FakeAdapter()
+    before_submit_count = adapter.submit_count
+    result = run_portfolio_margin_read_only_preflight(adapter)
+    assert result["preflight_pass"] is True
+    assert result["papi_authentication"] is True
+    assert result["portfolio_margin_access"] is True
+    assert result["trading_permission"] is True
+    assert result["withdraw_permission"] == "OFF"
+    assert result["zecusdt_available"] is True
+    assert adapter.submit_count == before_submit_count == 0
+    assert result["real_order"] is False
+    assert result["live_enabled"] is False
 
 
 def test_preflight_requires_every_safety_check():

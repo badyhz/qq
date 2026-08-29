@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Final
 
 
-VALID_MARKET_TYPES: Final[set[str]] = {"spot", "futures"}
+VALID_MARKET_TYPES: Final[set[str]] = {"spot", "futures", "portfolio_margin"}
 
 BASE_URLS: Final[dict[str, dict[str, str]]] = {
     "spot": {
@@ -15,6 +15,9 @@ BASE_URLS: Final[dict[str, dict[str, str]]] = {
         "live": "https://fapi.binance.com",
         "testnet": "https://demo-fapi.binance.com",
         "sandbox": "https://demo-fapi.binance.com",
+    },
+    "portfolio_margin": {
+        "live": "https://papi.binance.com",
     },
 }
 
@@ -37,11 +40,22 @@ ENDPOINT_PATHS: Final[dict[str, dict[str, str]]] = {
         "open_orders": "/fapi/v1/openOrders",
         "positions": "/fapi/v2/positionRisk",
     },
+    "portfolio_margin": {
+        "ping": "",
+        "time": "",
+        "account": "/papi/v1/um/account",
+        "exchange_info": "",
+        "order": "/papi/v1/um/order",
+        "open_orders": "/papi/v1/um/openOrders",
+        "positions": "/papi/v1/um/positionRisk",
+    },
 }
 
 
 def resolve_binance_market_type(market_type: str) -> str:
     market = str(market_type or "spot").strip().lower()
+    if market in {"portfolio", "papi", "unified_account"}:
+        market = "portfolio_margin"
     return market if market in VALID_MARKET_TYPES else "spot"
 
 
@@ -49,6 +63,8 @@ def resolve_binance_base_url(environment: str, market_type: str = "spot") -> str
     env = str(environment or "live").strip().lower()
     market = resolve_binance_market_type(market_type)
     catalog = BASE_URLS.get(market, BASE_URLS["spot"])
+    if market == "portfolio_margin" and env != "live":
+        raise ValueError("Portfolio Margin PAPI is configured for live read-only access only")
     return catalog.get(env, catalog["live"])
 
 
