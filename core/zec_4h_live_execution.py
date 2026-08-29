@@ -82,6 +82,7 @@ class ExecutionAdapter(Protocol):
         quantity: float,
         client_order_id: str,
         reduce_only: bool,
+        position_side: str = "BOTH",
         symbol: str = SYMBOL,
     ) -> dict[str, Any]: ...
     def query_order(
@@ -182,12 +183,29 @@ class BinanceUsdMExecutionAdapter:
         value = self._signed("GET", "/papi/v1/um/positionRisk", {"symbol": symbol})
         if isinstance(value, list):
             matches = [item for item in value if isinstance(item, dict) and item.get("symbol") == symbol]
-            if len(matches) == 1:
-                return dict(matches[0])
+            short_positions = [
+                item for item in matches
+                if str(item.get("positionSide", "")).upper() == "SHORT"
+                and abs(float(item.get("positionAmt", 0.0) or 0.0)) > 1e-12
+            ]
+            if short_positions:
+                raise RuntimeError("SHORT_POSITION_FORBIDDEN")
+            long_positions = [
+                item for item in matches
+                if str(item.get("positionSide", "")).upper() == "LONG"
+            ]
+            both_positions = [
+                item for item in matches
+                if str(item.get("positionSide", "BOTH")).upper() == "BOTH"
+            ]
+            if len(long_positions) == 1:
+                return dict(long_positions[0])
+            if len(both_positions) == 1:
+                return dict(both_positions[0])
             if not matches and len(value) == 0:
                 # PAPI omits symbols that have neither a position nor an open
                 # order. Preserve the executor's explicit zero-position shape.
-                return {"symbol": symbol, "positionAmt": "0"}
+                return {"symbol": symbol, "positionAmt": "0", "positionSide": "BOTH"}
         if isinstance(value, dict) and value.get("symbol") == symbol:
             return dict(value)
         raise RuntimeError("MALFORMED_POSITION_RESPONSE")
@@ -254,9 +272,13 @@ class BinanceUsdMExecutionAdapter:
         quantity: float,
         client_order_id: str,
         reduce_only: bool,
+        position_side: str = "BOTH",
         symbol: str = SYMBOL,
     ) -> dict[str, Any]:
         self._assert_live_write()
+        normalized_position_side = str(position_side).upper()
+        if normalized_position_side not in {"BOTH", "LONG"}:
+            raise ValueError("LONG_ONLY_POSITION_SIDE_REQUIRED")
         params = {
             "symbol": symbol,
             "side": str(side).upper(),
@@ -264,8 +286,12 @@ class BinanceUsdMExecutionAdapter:
             "quantity": _decimal_text(quantity),
             "newClientOrderId": str(client_order_id)[:35],
             "newOrderRespType": "RESULT",
-            "reduceOnly": bool(reduce_only),
+            "positionSide": normalized_position_side,
         }
+        if normalized_position_side == "BOTH":
+            params["reduceOnly"] = bool(reduce_only)
+        elif reduce_only and str(side).upper() != "SELL":
+            raise ValueError("LONG_HEDGE_REDUCTION_MUST_SELL")
         value = self._signed("POST", "/papi/v1/um/order", params)
         if not isinstance(value, dict):
             raise RuntimeError("MALFORMED_ORDER_RESPONSE")
@@ -558,7 +584,10 @@ def run_live_preflight(
         checks["zecusdt_50x_allowed"] = fixed_leverage_allowed(adapter.get_leverage_brackets())
         checks["account_leverage"] = int(float(symbol_config.get("leverage", 0) or 0))
         checks["leverage_fixed_50x"] = checks["account_leverage"] == FIXED_LEVERAGE
-        checks["one_way_mode"] = not _to_bool(adapter.get_position_mode().get("dualSidePosition"))
+        dual_side = _dual_side_mode(adapter.get_position_mode())
+        checks["position_mode"] = "HEDGE" if dual_side else "ONE_WAY"
+        checks["long_only_position_side"] = "LONG" if dual_side else "BOTH"
+        checks["position_mode_supported"] = True
         checks["open_orders_zero"] = len(adapter.get_open_orders()) == 0
         if withdrawal_disabled_verified:
             checks["withdrawal_disabled_verified"] = checks["withdrawal_disabled_verified"] is True
@@ -573,7 +602,7 @@ def run_live_preflight(
         return checks
     required = [
         "symbol_tradeable", "clock_ok", "api_read", "api_trade", "strategy_budget_ok", "available_buffer_ok",
-        "position_zero", "zecusdt_50x_allowed", "leverage_fixed_50x", "one_way_mode", "open_orders_zero",
+        "position_zero", "zecusdt_50x_allowed", "leverage_fixed_50x", "position_mode_supported", "open_orders_zero",
         "withdrawal_disabled_verified", "ip_restricted",
     ]
     checks["preflight_pass"] = all(checks.get(key) is True for key in required)
@@ -956,6 +985,7 @@ class LiveExecutionEngine:
                 quantity=requested_qty,
                 client_order_id=decision.client_order_id,
                 reduce_only=reduce_only,
+                position_side=str(invariants.get("position_side", "BOTH")),
             )
         except (TimeoutError, ConnectionError, OSError):
             recovered = self.adapter.query_order(client_order_id=decision.client_order_id)
@@ -1113,13 +1143,15 @@ class LiveExecutionEngine:
                 return {"ok": False, "reason": "FIXED_50X_PERMISSION_UNAVAILABLE"}
             symbol_config = self.adapter.get_symbol_config()
             leverage_fixed_50x = int(float(symbol_config.get("leverage", 0) or 0)) == FIXED_LEVERAGE
-            one_way = not _to_bool(self.adapter.get_position_mode().get("dualSidePosition"))
+            dual_side = _dual_side_mode(self.adapter.get_position_mode())
+            position_side = "LONG" if dual_side else "BOTH"
             account = self.adapter.get_account()
             restrictions = self.adapter.get_api_restrictions()
             managed_capital = min(max(float(strategy_equity), 0.0), LIVE_CAPITAL_CAP_USDT)
             checks = {
                 "reconciliation": True,
-                "one_way_mode": one_way,
+                "position_mode_supported": True,
+                "long_only_position_side": position_side in {"BOTH", "LONG"},
                 "portfolio_margin_account": True,
                 "fixed_50x_allowed": fixed_allowed,
                 "leverage_fixed_50x": leverage_fixed_50x,
@@ -1136,6 +1168,8 @@ class LiveExecutionEngine:
                 "selected_leverage": FIXED_LEVERAGE,
                 "account_mode": ACCOUNT_MODE,
                 "api_mode": API_MODE,
+                "position_mode": "HEDGE" if dual_side else "ONE_WAY",
+                "position_side": position_side,
                 "capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
                 "sizing_base_usdt": SIZING_BASE_USDT,
             }
@@ -1155,13 +1189,8 @@ class LiveExecutionEngine:
                 "exchange_qty": exchange_qty,
                 "gate": "RISK_REDUCTION_SAFE",
             }
-        one_way = not _to_bool(self.adapter.get_position_mode().get("dualSidePosition"))
-        if not one_way:
-            return {
-                "ok": False,
-                "reason": "POSITION_MODE_AMBIGUOUS",
-                "gate": "RISK_REDUCTION_SAFE",
-            }
+        dual_side = _dual_side_mode(self.adapter.get_position_mode())
+        position_side = "LONG" if dual_side else "BOTH"
 
         open_orders = self.adapter.get_open_orders()
         latest: dict[str, dict[str, Any]] = {}
@@ -1199,10 +1228,12 @@ class LiveExecutionEngine:
         return {
             "ok": True,
             "gate": "RISK_REDUCTION_SAFE",
+            "position_mode": "HEDGE" if dual_side else "ONE_WAY",
+            "position_side": position_side,
             "exchange_qty": exchange_qty,
             "checks": {
                 "confirmed_long": True,
-                "one_way_mode": True,
+                "long_only_position_side": True,
                 "no_unrecognized_open_orders": True,
             },
             "advisory_drift": advisory,
@@ -1448,3 +1479,15 @@ def _to_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _dual_side_mode(payload: dict[str, Any]) -> bool:
+    if "dualSidePosition" not in payload:
+        raise ValueError("POSITION_MODE_UNAVAILABLE")
+    value = payload.get("dualSidePosition")
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized not in {"true", "false"}:
+        raise ValueError("POSITION_MODE_UNAVAILABLE")
+    return normalized == "true"

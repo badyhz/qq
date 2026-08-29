@@ -1156,6 +1156,7 @@ def test_take_profit_execution_closes_full_long_reduce_only_without_short(tmp_pa
         "quantity": 1.0,
         "client_order_id": decision(LiveAction.TAKE_PROFIT_CLOSE.value).client_order_id,
         "reduce_only": True,
+        "position_side": "BOTH",
     }]
     assert float(adapter.position["positionAmt"]) == 0.0
     assert state.actual_position_qty == 0.0
@@ -1617,11 +1618,32 @@ def test_binance_response_schema_and_write_guard():
         )
 
 
+def test_papi_position_reader_selects_long_leg_and_fails_closed_on_short_exposure():
+    payload = [
+        {"symbol": "ZECUSDT", "positionSide": "BOTH", "positionAmt": "0"},
+        {"symbol": "ZECUSDT", "positionSide": "LONG", "positionAmt": "0.25"},
+        {"symbol": "ZECUSDT", "positionSide": "SHORT", "positionAmt": "0"},
+    ]
+
+    def transport(request):
+        assert request["path"] == "/papi/v1/um/positionRisk"
+        return {"ok": True, "data": list(payload)}
+
+    adapter = BinanceUsdMExecutionAdapter(
+        api_key="fixture", api_secret="fixture", transport=transport,
+    )
+    assert adapter.get_position()["positionSide"] == "LONG"
+    assert adapter.get_position()["positionAmt"] == "0.25"
+    payload[-1]["positionAmt"] = "-0.01"
+    with pytest.raises(RuntimeError, match="SHORT_POSITION_FORBIDDEN"):
+        adapter.get_position()
+
+
 def test_papi_order_submit_query_cancel_and_fill_routes_are_authenticated_only():
     calls = []
 
     def transport(request):
-        calls.append((request["method"], request["path"], request["url"]))
+        calls.append(dict(request))
         path = request["path"]
         if path == "/papi/v1/um/order":
             return {"ok": True, "data": {"symbol": "ZECUSDT", "orderId": 1001, "status": "NEW"}}
@@ -1642,19 +1664,27 @@ def test_papi_order_submit_query_cancel_and_fill_routes_are_authenticated_only()
     adapter.submit_market_order(
         side="SELL", quantity=0.25, client_order_id="exit-fixture", reduce_only=True,
     )
+    adapter.submit_market_order(
+        side="SELL", quantity=0.25, client_order_id="hedge-exit-fixture",
+        reduce_only=True, position_side="LONG",
+    )
     adapter.query_order(client_order_id="entry-fixture")
     adapter.cancel_order(client_order_id="exit-fixture")
     assert adapter.get_fills(order_id="1001") == []
 
-    assert [(method, path) for method, path, _ in calls] == [
+    assert [(row["method"], row["path"]) for row in calls] == [
+        ("POST", "/papi/v1/um/order"),
         ("POST", "/papi/v1/um/order"),
         ("POST", "/papi/v1/um/order"),
         ("GET", "/papi/v1/um/order"),
         ("DELETE", "/papi/v1/um/order"),
         ("GET", "/papi/v1/um/userTrades"),
     ]
-    assert all(url.startswith("https://papi.binance.com/papi/") for _, _, url in calls)
-    assert not any("/fapi/" in url for _, _, url in calls)
+    assert all(row["url"].startswith("https://papi.binance.com/papi/") for row in calls)
+    assert not any("/fapi/" in row["url"] for row in calls)
+    hedge_exit = calls[2]["params"]
+    assert hedge_exit["positionSide"] == "LONG"
+    assert "reduceOnly" not in hedge_exit
 
 
 def test_portfolio_margin_read_only_preflight_passes_without_orders():
@@ -1687,6 +1717,15 @@ def test_preflight_requires_every_safety_check():
     assert result["account_mode"] == "PORTFOLIO_MARGIN"
     assert result["api_mode"] == "PAPI"
     assert result["withdraw_permission"] == "OFF"
+    adapter.dual_side_position = True
+    hedge = run_live_preflight(
+        adapter,
+        withdrawal_disabled_verified=True,
+        local_time_ms=int(BASE.timestamp() * 1000),
+    )
+    assert hedge["preflight_pass"] is True
+    assert hedge["position_mode"] == "HEDGE"
+    assert hedge["long_only_position_side"] == "LONG"
     adapter.position["leverage"] = "10"
     blocked = run_live_preflight(
         adapter,
@@ -1712,6 +1751,12 @@ def test_preflight_blocks_unknown_leverage_bracket_and_withdraw_permission():
     assert withdrawal["preflight_pass"] is False
     assert withdrawal["withdrawal_disabled_verified"] is False
     assert withdrawal["withdraw_permission"] == "ON"
+
+    adapter = FakeAdapter()
+    adapter.get_position_mode = lambda: {}
+    unknown_mode = run_live_preflight(adapter, local_time_ms=int(BASE.timestamp() * 1000))
+    assert unknown_mode["preflight_pass"] is False
+    assert unknown_mode["error"] == "ValueError"
 
 
 def test_preflight_parses_portfolio_permission_and_authentication_failure():
@@ -1806,13 +1851,9 @@ def test_minimum_notional_never_increases_the_one_percent_sizing_base(tmp_path: 
     assert adapter.submit_count == 0
 
 
-@pytest.mark.parametrize("drift", ["LEVERAGE_10X", "HEDGE_MODE"])
-def test_runtime_invariant_drift_blocks_every_new_order(tmp_path: Path, drift: str):
+def test_runtime_invariant_leverage_drift_blocks_every_new_order(tmp_path: Path):
     adapter = FakeAdapter()
-    if drift == "LEVERAGE_10X":
-        adapter.position["leverage"] = "10"
-    else:
-        adapter.dual_side_position = True
+    adapter.position["leverage"] = "10"
     engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
     result = engine.execute(
         decision(LiveAction.OPEN.value),
@@ -1825,3 +1866,34 @@ def test_runtime_invariant_drift_blocks_every_new_order(tmp_path: Path, drift: s
     assert result["submitted"] is False
     assert result["reason"] == "RUNTIME_INVARIANT_BLOCKED"
     assert adapter.submit_count == 0
+
+
+def test_hedge_mode_entry_and_take_profit_target_only_the_long_leg(tmp_path: Path):
+    adapter = FakeAdapter()
+    adapter.dual_side_position = True
+    ledger = LiveExecutionLedger(tmp_path / "live.jsonl")
+    state = StrategyState()
+    opened = LiveExecutionEngine(adapter, ledger).execute(
+        decision(LiveAction.OPEN.value, entry_low=90.0),
+        state,
+        strategy_equity=50,
+        mark_price=100,
+        symbol_rules=RULES,
+    )
+    assert opened["status"] == "FILLED"
+    assert adapter.submitted[-1]["side"] == "BUY"
+    assert adapter.submitted[-1]["position_side"] == "LONG"
+    assert adapter.submitted[-1]["reduce_only"] is False
+
+    adapter.submit_response.update(status="FILLED", executedQty=str(state.actual_position_qty), avgPrice="104")
+    closed = LiveExecutionEngine(adapter, ledger).execute(
+        decision(LiveAction.TAKE_PROFIT_CLOSE.value),
+        state,
+        strategy_equity=50,
+        mark_price=104,
+        symbol_rules=RULES,
+    )
+    assert closed["status"] == "FILLED"
+    assert adapter.submitted[-1]["side"] == "SELL"
+    assert adapter.submitted[-1]["position_side"] == "LONG"
+    assert adapter.submitted[-1]["reduce_only"] is True
