@@ -370,6 +370,13 @@ def position_quantity(position: dict[str, Any]) -> float:
 
 
 def account_equity(account: dict[str, Any]) -> float:
+    assets = [row for row in account.get("assets", []) if isinstance(row, dict)]
+    usdt = [row for row in assets if str(row.get("asset", "")).upper() == "USDT"]
+    if len(usdt) == 1:
+        row = usdt[0]
+        wallet = float(row.get("crossWalletBalance", row.get("walletBalance", 0.0)) or 0.0)
+        unrealized = float(row.get("crossUnPnl", row.get("unrealizedProfit", 0.0)) or 0.0)
+        return wallet + unrealized
     if "totalMarginBalance" in account:
         return float(account.get("totalMarginBalance") or 0.0)
     wallet = float(account.get("totalWalletBalance", account.get("walletBalance", 0.0)) or 0.0)
@@ -1145,7 +1152,8 @@ class LiveExecutionEngine:
             leverage_fixed_50x = int(float(symbol_config.get("leverage", 0) or 0)) == FIXED_LEVERAGE
             dual_side = _dual_side_mode(self.adapter.get_position_mode())
             position_side = "LONG" if dual_side else "BOTH"
-            account = self.adapter.get_account()
+            self.adapter.get_account()  # authenticated PAPI access must remain healthy
+            available_balance = usdt_available_balance(self.adapter.get_balance())
             restrictions = self.adapter.get_api_restrictions()
             managed_capital = min(max(float(strategy_equity), 0.0), LIVE_CAPITAL_CAP_USDT)
             checks = {
@@ -1156,7 +1164,7 @@ class LiveExecutionEngine:
                 "fixed_50x_allowed": fixed_allowed,
                 "leverage_fixed_50x": leverage_fixed_50x,
                 "capital_cap": managed_capital <= LIVE_CAPITAL_CAP_USDT,
-                "sizing_base_available": account_equity(account) >= SIZING_BASE_USDT,
+                "sizing_base_available": available_balance >= SIZING_BASE_USDT,
                 "api_trade": _to_bool(restrictions.get("enablePortfolioMarginTrading")),
                 "withdrawal_disabled": not _to_bool(restrictions.get("enableWithdrawals")),
                 "no_unrecognized_open_orders": True,
@@ -1331,11 +1339,9 @@ class LiveExecutionEngine:
             average_price = float(evidence.get("average_fill_price", 0.0) or 0.0)
         fee = float(evidence.get("fee", 0.0))
         realized_pnl = float(evidence.get("realized_pnl", 0.0))
-        equity_after = strategy_equity_before
-        try:
-            equity_after = account_equity(self.adapter.get_account())
-        except Exception:
-            pass
+        # Portfolio Margin account equity may include unrelated collateral and
+        # must never scale or overwrite this strategy's fixed 50 USDT ledger.
+        equity_after = strategy_equity_before + realized_pnl - fee
         record = {
             **self._base_record(
                 decision,

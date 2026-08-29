@@ -30,6 +30,7 @@ from core.zec_4h_live_execution import (
     BinanceUsdMExecutionAdapter,
     LiveExecutionEngine,
     UNKNOWN_STATUS,
+    account_equity,
     extract_symbol_rules,
     reconcile_startup,
     fixed_leverage_allowed,
@@ -1134,6 +1135,7 @@ def test_papi_fill_without_avg_price_recovers_weighted_price_from_user_trades(tm
     )
     assert result["status"] == "FILLED"
     assert ledger.read()[-1]["average_fill_price"] == pytest.approx(101.2)
+    assert ledger.read()[-1]["strategy_equity_after"] == pytest.approx(49.9975)
     assert state.initial_entry_price == pytest.approx(101.2)
     assert state.take_profit_price == pytest.approx(123.6)
 
@@ -1304,8 +1306,12 @@ def test_unrecognized_exchange_open_order_fails_closed(tmp_path: Path):
 
 def test_initial_order_uses_one_percent_sizing_base_and_never_scales_above_cap(tmp_path: Path):
     adapter = FakeAdapter()
-    adapter.account["totalMarginBalance"] = "500"
-    adapter.account["totalWalletBalance"] = "500"
+    adapter.account = {
+        "assets": [
+            {"asset": "USDT", "crossWalletBalance": "500", "crossUnPnl": "0"},
+            {"asset": "BTC", "crossWalletBalance": "9", "crossUnPnl": "1"},
+        ],
+    }
     adapter.available_balance = 500
     state = StrategyState()
     engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
@@ -1321,6 +1327,31 @@ def test_initial_order_uses_one_percent_sizing_base_and_never_scales_above_cap(t
     assert latest["api_mode"] == "PAPI"
     assert latest["sizing_base_usdt"] == pytest.approx(0.5)
     assert latest["requested_qty"] * 100 == pytest.approx(0.5 * 50)
+    assert account_equity(adapter.account) == pytest.approx(500.0)
+
+
+def test_runtime_sizing_uses_papi_usdt_available_balance_not_total_account_equity(tmp_path: Path):
+    adapter = FakeAdapter()
+    adapter.account = {"assets": []}
+    adapter.available_balance = 2.15746237
+    engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "live.jsonl"))
+    result = engine.execute(
+        decision(LiveAction.OPEN.value), StrategyState(), strategy_equity=50,
+        mark_price=100, symbol_rules=RULES,
+    )
+    assert result["status"] == "FILLED"
+    assert adapter.submitted[-1]["quantity"] == pytest.approx(0.25)
+
+    adapter = FakeAdapter()
+    adapter.account["totalMarginBalance"] = "999999"
+    adapter.available_balance = 0.49
+    engine = LiveExecutionEngine(adapter, LiveExecutionLedger(tmp_path / "blocked.jsonl"))
+    blocked = engine.execute(
+        decision(LiveAction.OPEN.value), StrategyState(), strategy_equity=50,
+        mark_price=100, symbol_rules=RULES,
+    )
+    assert blocked["submitted"] is False
+    assert adapter.submit_count == 0
 
 
 @pytest.mark.parametrize(
