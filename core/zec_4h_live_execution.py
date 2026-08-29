@@ -183,6 +183,10 @@ class BinanceUsdMExecutionAdapter:
             matches = [item for item in value if isinstance(item, dict) and item.get("symbol") == symbol]
             if len(matches) == 1:
                 return dict(matches[0])
+            if not matches and len(value) == 0:
+                # PAPI omits symbols that have neither a position nor an open
+                # order. Preserve the executor's explicit zero-position shape.
+                return {"symbol": symbol, "positionAmt": "0"}
         if isinstance(value, dict) and value.get("symbol") == symbol:
             return dict(value)
         raise RuntimeError("MALFORMED_POSITION_RESPONSE")
@@ -465,7 +469,7 @@ def run_portfolio_margin_read_only_preflight(
         account = adapter.get_account()
         checks["papi_authentication"] = True
         checks["portfolio_margin_access"] = True
-        checks["trading_permission"] = _to_bool(account.get("canTrade"))
+        checks["account_read"] = isinstance(account, dict)
 
         balances = adapter.get_balance()
         checks["balance_read"] = isinstance(balances, list)
@@ -485,6 +489,9 @@ def run_portfolio_margin_read_only_preflight(
         checks["zecusdt_open_order_count"] = len(open_orders)
 
         restrictions = adapter.get_api_restrictions()
+        checks["trading_permission"] = _to_bool(
+            restrictions.get("enablePortfolioMarginTrading")
+        )
         withdrawals_enabled = _to_bool(restrictions.get("enableWithdrawals"))
         checks["withdraw_permission"] = "ON" if withdrawals_enabled else "OFF"
     except Exception as exc:

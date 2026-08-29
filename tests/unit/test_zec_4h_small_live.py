@@ -167,7 +167,12 @@ class FakeAdapter:
     def get_server_time(self): return {"serverTime": int(BASE.timestamp() * 1000)}
     def get_position_mode(self): return {"dualSidePosition": self.dual_side_position}
     def get_api_restrictions(self):
-        return {"enableFutures": True, "enableWithdrawals": False, "ipRestrict": True}
+        return {
+            "enableFutures": True,
+            "enablePortfolioMarginTrading": True,
+            "enableWithdrawals": False,
+            "ipRestrict": True,
+        }
     def get_leverage_brackets(self, symbol="ZECUSDT"):
         return [{
             "symbol": symbol,
@@ -1559,7 +1564,7 @@ def test_binance_response_schema_and_write_guard():
         path = request["path"]
         if path == "/papi/v1/um/account": return {"ok": True, "data": {"canTrade": True}}
         if path == "/papi/v1/balance": return {"ok": True, "data": [{"asset": "USDT"}]}
-        if path == "/papi/v1/um/positionRisk": return {"ok": True, "data": [{"symbol": "ZECUSDT", "positionAmt": "0"}]}
+        if path == "/papi/v1/um/positionRisk": return {"ok": True, "data": []}
         if path == "/papi/v1/um/openOrders": return {"ok": True, "data": []}
         if path == "/fapi/v1/exchangeInfo": return {"ok": True, "data": exchange_info_fixture()}
         if path == "/fapi/v1/time": return {"ok": True, "data": {"serverTime": 1}}
