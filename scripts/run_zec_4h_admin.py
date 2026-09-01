@@ -9,13 +9,28 @@ import json
 import os
 from pathlib import Path
 import sys
+import threading
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.zec_4h_admin import collect_admin_snapshot
+from core.zec_4h_admin import (
+    apply_control_change,
+    collect_admin_snapshot,
+    collect_control_snapshot,
+)
+from core.zec_4h_live_execution import BinanceUsdMExecutionAdapter
+from core.zec_control import (
+    ControlConflictError,
+    DEFAULT_AUDIT_PATH,
+    DEFAULT_CONFIG_PATH,
+    UnsafeConfigurationChange,
+)
+
+
+CONTROL_LOCK = threading.Lock()
 
 
 HTML = r"""<!doctype html>
@@ -33,10 +48,10 @@ HTML = r"""<!doctype html>
 .section{margin-top:12px;padding:16px}.section h2{font-size:15px;margin:0 0 12px}.row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.kv{padding:10px 0;border-bottom:1px solid var(--line)}.kv b{display:block;font-size:12px;color:var(--muted);font-weight:500}.kv span{display:block;margin-top:5px;font-size:14px;word-break:break-word}
 .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.blue{color:var(--blue)}.pill{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:4px 8px;font-size:11px;margin:2px 5px 2px 0}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:900px}th,td{padding:10px 9px;text-align:right;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}th{color:var(--muted);font-weight:600;background:#111620;position:sticky;top:0}th:first-child,td:first-child{text-align:left}.empty{color:var(--muted);padding:18px;text-align:center}
-.toolbar{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-bottom:10px}.toolbar input,.toolbar select{background:#0f141c;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px}
+.toolbar{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-bottom:10px}.toolbar input,.toolbar select,.control input,.control select{background:#0f141c;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px;width:100%}.control{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.danger{border-color:#7f2832;color:#ff9ba5}.primary{border-color:#285998;color:#a8c8ff}.disabled{opacity:.55;pointer-events:none}
 footer{color:var(--muted);font-size:11px;text-align:center;padding:18px}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.row{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:560px){.wrap{padding:12px}.grid{grid-template-columns:1fr 1fr;gap:8px}.card{padding:12px}.value{font-size:18px}.row{grid-template-columns:1fr 1fr}.title{font-size:19px}.top{align-items:flex-start}.section{padding:12px}}
+@media(max-width:560px){.wrap{padding:12px}.grid{grid-template-columns:1fr 1fr;gap:8px}.card{padding:12px}.value{font-size:18px}.row,.control{grid-template-columns:1fr 1fr}.title{font-size:19px}.top{align-items:flex-start}.section{padding:12px}}
 </style>
 </head>
 <body>
@@ -50,7 +65,19 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:18px}
     <div class="card"><div class="label">策略权益</div><div class="value" id="equity">—</div><div class="tiny">固定资金池 50 USDT</div></div>
     <div class="card"><div class="label">总盈亏</div><div class="value" id="totalPnl">—</div><div class="tiny" id="pnlSplit">—</div></div>
     <div class="card"><div class="label">当前持仓</div><div class="value" id="positionQty">—</div><div class="tiny" id="positionPnl">—</div></div>
-    <div class="card"><div class="label">实盘状态</div><div class="value" id="liveState">—</div><div class="tiny" id="preflightState">—</div></div>
+    <div class="card"><div class="label">自动交易引擎</div><div class="value" id="liveState">—</div><div class="tiny" id="preflightState">—</div></div>
+  </div>
+
+  <div class="section"><div class="toolbar"><h2 style="margin:0">策略控制</h2><span id="controlStatus" class="pill">读取中</span></div>
+    <div class="control">
+      <label class="kv"><b>策略 ID</b><select id="ctlStrategy"><option value="zec_4h_live_v1">ZEC 4H long-only</option></select></label>
+      <label class="kv"><b>标的</b><select id="ctlSymbol"></select></label>
+      <label class="kv"><b>周期</b><select id="ctlTimeframe"><option>15m</option><option>30m</option><option>1h</option><option>2h</option><option selected>4h</option><option>6h</option><option>8h</option><option>12h</option><option>1d</option></select></label>
+      <label class="kv"><b>Sizing Base (USDT)</b><input id="ctlSizing" type="number" min="0.01" max="50" step="0.01"></label>
+    </div>
+    <div class="row" style="margin-top:10px"><div class="kv"><b>资金硬上限</b><span>50 USDT · 只读</span></div><div class="kv"><b>杠杆</b><span>50x · 只读</span></div><div class="kv"><b>配置版本</b><span id="ctlRevision">—</span></div><div class="kv"><b>策略状态</b><span id="ctlEnabled">—</span></div></div>
+    <div class="toolbar" style="margin-top:12px;margin-bottom:0"><button class="btn primary" onclick="saveSettings()">保存设置</button><div><button class="btn danger" onclick="setStrategy(false)">关闭策略</button> <button class="btn primary" onclick="setStrategy(true)">开启策略</button></div></div>
+    <div class="tiny" id="controlMessage">设置变更仅允许在空仓、无挂单、无待执行/恢复动作时进行；关闭策略不阻断止损、止盈和恢复。</div>
   </div>
 
   <div class="section"><h2>当前持仓明细</h2><div class="row" id="positionDetails"></div></div>
@@ -67,7 +94,7 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:18px}
   <footer>只读后台 · 不提供下单接口 · 管理服务仅监听本机回环地址</footer>
 </div>
 <script>
-let DATA=null;
+let DATA=null,CONTROL=null;
 const $=id=>document.getElementById(id);
 const num=(v,d=2)=>v===null||v===undefined||Number.isNaN(Number(v))?'—':Number(v).toFixed(d);
 const money=v=>v===null||v===undefined?'—':`${Number(v)>=0?'+':''}${num(v,4)} USDT`;
@@ -85,8 +112,8 @@ function render(){
   $('pnlSplit').textContent=`已实现 ${money(p.realized_net_pnl)} · 浮动 ${money(p.unrealized_pnl)}`;
   $('positionQty').textContent=Number(pos.qty||0)===0?'空仓':`${num(pos.qty,6)} ZEC`;
   $('positionPnl').textContent=`Mark ${num(pos.mark_price,4)} · ${money(pos.unrealized_pnl)}`;
-  $('liveState').textContent=r.real_order?'REAL ORDER ON':'LIVE OFF'; $('liveState').className=`value ${r.real_order?'bad':'ok'}`;
-  $('preflightState').textContent=`只读 Preflight ${h.preflight_pass?'PASS':'未通过/运行中状态'}`;
+  $('liveState').textContent=r.engine_running?'RUNNING':'STALE / OFFLINE'; $('liveState').className=`value ${r.engine_running?'ok':'warn'}`;
+  $('preflightState').textContent=`实盘权限 ${r.live_enabled?'ARMED':'OFF'} · Preflight ${h.preflight_pass?'PASS':'未通过'}`;
   $('positionDetails').innerHTML=[kv('开仓价',num(pos.entry_price,4)),kv('Mark Price',num(pos.mark_price,4)),kv('名义价值',`${num(pos.notional,4)} USDT`),kv('浮动盈亏',money(pos.unrealized_pnl),cls(pos.unrealized_pnl)),kv('估算 ROE',pctRaw(pos.roe_pct_estimate),cls(pos.roe_pct_estimate)),kv('止损 SL',pos.stop_loss==null?'—':num(pos.stop_loss,4)),kv('止盈 TP',pos.take_profit==null?'—':num(pos.take_profit,4)),kv('距离 SL / TP',`${pctRaw(pos.distance_to_sl_pct)} / ${pctRaw(pos.distance_to_tp_pct)}`)].join('');
   $('pnlDetails').innerHTML=[kv('已平仓交易',String(p.closed_trades??0)),kv('胜率',pct(p.win_rate)),kv('平均盈利',money(p.avg_win),cls(p.avg_win)),kv('平均亏损',money(p.avg_loss),cls(p.avg_loss)),kv('Profit Factor',num(p.profit_factor,2)),kv('最大单笔盈利',money(p.max_win),cls(p.max_win)),kv('最大单笔亏损',money(p.max_loss),cls(p.max_loss)),kv('近 7 / 30 天',`${money(p.pnl_7d)} / ${money(p.pnl_30d)}`,cls(p.pnl_30d))].join('')+`<div class="tiny" style="grid-column:1/-1">${p.sample_status==='INSUFFICIENT_SAMPLE'?'样本不足 20 笔：统计仅供观察，不作为策略有效性结论。':'样本数量已达到基础统计门槛。'}</div>`;
   $('health').innerHTML=[boolPill('PAPI认证',h.api_authentication),boolPill('Portfolio Margin',h.portfolio_margin_access),boolPill('交易权限',h.trading_permission),`<span class="pill ${h.withdraw_permission==='OFF'?'ok':'bad'}">提现权限 · ${safe(h.withdraw_permission||'UNKNOWN')}</span>`,boolPill('IP限制',h.ip_restricted),boolPill('ZEC 50x',h.zecusdt_50x_allowed),`<span class="pill ${h.position_mode==='HEDGE'?'ok':'warn'}">持仓模式 · ${safe(h.position_mode||'UNKNOWN')}</span>`,`<span class="pill">账户杠杆 · ${safe(h.account_leverage??'—')}x</span>`,h.error?`<span class="pill bad">错误 · ${safe(h.error)}</span>`:''].join('');
@@ -95,8 +122,13 @@ function render(){
   const events=(d.recent_events||[]).slice(0,30);
   $('eventsBody').innerHTML=events.length?events.map(e=>`<tr><td>${safe(e.recorded_at||e.bar_close_time)}</td><td>${safe(e.action)}</td><td>${safe(e.status)}</td><td>${safe(e.reason)}</td><td>${num(e.filled_qty,6)}</td><td>${num(e.average_fill_price,4)}</td><td class="${cls(e.realized_pnl)}">${money(e.realized_pnl)}</td><td>${num(e.fee,6)}</td><td>${safe(e.exchange_order_id)}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">暂无执行记录</td></tr>`;
 }
+function renderControl(){if(!CONTROL)return;$('ctlStrategy').innerHTML=(CONTROL.registry||[]).map(x=>`<option value="${safe(x.strategy_id)}">${safe(x.name)}</option>`).join('');$('ctlStrategy').value=CONTROL.strategy_id;$('ctlSymbol').innerHTML=(CONTROL.available_symbols||[CONTROL.symbol]).map(x=>`<option value="${safe(x)}">${safe(x)}</option>`).join('');$('ctlSymbol').value=CONTROL.symbol;$('ctlTimeframe').value=CONTROL.timeframe;$('ctlSizing').value=CONTROL.sizing_base_usdt;$('ctlRevision').textContent=CONTROL.revision;$('ctlEnabled').textContent=CONTROL.strategy_enabled?'ON':'OFF';$('ctlEnabled').className=CONTROL.strategy_enabled?'ok':'warn';$('controlStatus').textContent=CONTROL.strategy_enabled?'STRATEGY ON':'STRATEGY OFF';$('controlStatus').className=`pill ${CONTROL.strategy_enabled?'ok':'warn'}`;}
+async function loadControl(){const res=await fetch('api/control',{cache:'no-store'});if(!res.ok)throw new Error(`CONTROL HTTP ${res.status}`);CONTROL=await res.json();renderControl();}
+async function postControl(path,payload){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await res.json().catch(()=>({error:`HTTP ${res.status}`}));if(!res.ok)throw new Error(body.error||`HTTP ${res.status}`);CONTROL=body;renderControl();$('controlMessage').textContent='变更已写入并完成审计。';}
+async function saveSettings(){if(!CONTROL)return;const sizing=Number($('ctlSizing').value),summary=`策略：${$('ctlStrategy').value}\n标的：${$('ctlSymbol').value}\n周期：${$('ctlTimeframe').value}\n仓位基数：${sizing.toFixed(2)} USDT\n杠杆：50x\n预计名义仓位：${(sizing*50).toFixed(2)} USDT`;if(!confirm(`确认保存设置？\n\n${summary}\n\n只有空仓且无挂单/恢复动作时才会接受。`))return;try{await postControl('api/control/settings',{expected_revision:CONTROL.revision,strategy_id:$('ctlStrategy').value,symbol:$('ctlSymbol').value,timeframe:$('ctlTimeframe').value,sizing_base_usdt:sizing});}catch(e){$('controlMessage').textContent=`拒绝：${e.message}`;}}
+async function setStrategy(enabled){if(!CONTROL)return;const message=enabled?'开启后只从下一根有效 CLOSED BAR 开始，不补旧入场信号。':'关闭策略后将停止新的开仓和加仓。\n已有持仓的止损、止盈和风险退出仍继续运行。';if(!confirm(`${message}\n\n确认${enabled?'开启':'关闭'}？`))return;try{await postControl(`api/control/strategy/${enabled?'enable':'disable'}`,{expected_revision:CONTROL.revision});}catch(e){$('controlMessage').textContent=`拒绝：${e.message}`;}}
 function renderHistory(){if(!DATA)return;const q=($('historySearch').value||'').toLowerCase(),limit=Number($('historyLimit').value||20);let rows=(DATA.history||[]).filter(x=>!q||JSON.stringify([x.order_id,x.action,x.exit_reason,x.side]).toLowerCase().includes(q)).slice(0,limit);$('historyBody').innerHTML=rows.length?rows.map(x=>`<tr><td>${safe(x.time)}</td><td>${safe(x.side)}</td><td>${safe(x.action||'—')}</td><td>${num(x.price,4)}</td><td>${num(x.qty,6)}</td><td>${num(x.notional,4)}</td><td>${num(x.fee,6)} ${safe(x.fee_asset)}</td><td class="${cls(x.realized_pnl)}">${money(x.realized_pnl)}</td><td>${x.r_multiple==null?'—':num(x.r_multiple,2)+'R'}</td><td>${safe(x.exit_reason||'—')}</td><td>${safe(x.order_id)}</td></tr>`).join(''):`<tr><td colspan="11" class="empty">暂无历史成交</td></tr>`;}
-async function loadData(){$('generated').textContent='读取中…';try{const res=await fetch('api/snapshot',{cache:'no-store'});if(!res.ok)throw new Error(`HTTP ${res.status}`);DATA=await res.json();render();}catch(e){$('generated').textContent=`读取失败：${e.message}`;}}
+async function loadData(){$('generated').textContent='读取中…';try{const [res]=await Promise.all([fetch('api/snapshot',{cache:'no-store'}),loadControl()]);if(!res.ok)throw new Error(`HTTP ${res.status}`);DATA=await res.json();render();}catch(e){$('generated').textContent=`读取失败：${e.message}`;}}
 loadData();
 </script>
 </body></html>
@@ -134,18 +166,91 @@ class AdminHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(body))); self._security_headers(); self.end_headers(); self.wfile.write(body)
 
+    def _same_origin(self) -> bool:
+        host = self.headers.get("Host", "").strip().lower()
+        origin = self.headers.get("Origin", "").strip()
+        if not host or not origin:
+            return False
+        parsed = urlparse(origin)
+        return parsed.scheme in {"http", "https"} and parsed.netloc.lower() == host
+
+    def _read_json(self) -> dict:
+        if self.headers.get_content_type() != "application/json":
+            raise ValueError("JSON_CONTENT_TYPE_REQUIRED")
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 16_384:
+            raise ValueError("INVALID_JSON_BODY_LENGTH")
+        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("JSON_OBJECT_REQUIRED")
+        return payload
+
+    @staticmethod
+    def _control_adapter() -> BinanceUsdMExecutionAdapter:
+        api_key = os.environ.get("ZEC_4H_BINANCE_API_KEY", "")
+        api_secret = os.environ.get("ZEC_4H_BINANCE_API_SECRET", "")
+        if not api_key or not api_secret:
+            raise RuntimeError("CONTROL_PREFLIGHT_CREDENTIALS_MISSING")
+        return BinanceUsdMExecutionAdapter(api_key=api_key, api_secret=api_secret, live_enabled=False)
+
+    def _control_payload(self) -> dict:
+        try:
+            return collect_control_snapshot(adapter=self._control_adapter())
+        except Exception:
+            return collect_control_snapshot()
+
     def do_GET(self) -> None:
         if not self._require_auth(): return
         path = urlparse(self.path).path
         if path == "/":
             body = HTML.encode("utf-8"); self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(body))); self._security_headers(); self.end_headers(); self.wfile.write(body); return
         if path == "/api/snapshot": self._send_json(200, collect_admin_snapshot()); return
+        if path == "/api/control": self._send_json(200, self._control_payload()); return
         if path == "/healthz": self._send_json(200, {"ok": True, "mode": "READ_ONLY"}); return
         self._send_json(404, {"error": "NOT_FOUND"})
 
     def do_POST(self) -> None:
         if not self._require_auth(): return
-        self._send_json(405, {"error": "READ_ONLY_ADMIN_NO_WRITE_ENDPOINTS"})
+        path = urlparse(self.path).path
+        if path not in {"/api/control/settings", "/api/control/strategy/enable", "/api/control/strategy/disable"}:
+            self._send_json(405, {"error": "NO_ORDER_OR_MANUAL_TRADE_ENDPOINT"}); return
+        if not self._same_origin():
+            self._send_json(403, {"error": "SAME_ORIGIN_REQUIRED"}); return
+        try:
+            payload = self._read_json()
+            expected_revision = int(payload.pop("expected_revision"))
+            if path == "/api/control/settings":
+                allowed = {"strategy_id", "symbol", "timeframe", "sizing_base_usdt"}
+                if set(payload) != allowed:
+                    raise ValueError("EXACT_SETTINGS_FIELDS_REQUIRED")
+                changes = payload
+            else:
+                if payload:
+                    raise ValueError("UNEXPECTED_TOGGLE_FIELDS")
+                changes = {"strategy_enabled": path.endswith("/enable")}
+            with CONTROL_LOCK:
+                apply_control_change(
+                    changes,
+                    expected_revision=expected_revision,
+                    actor=self._authenticated_user(),
+                    adapter=self._control_adapter(),
+                )
+                self._send_json(200, self._control_payload())
+        except ControlConflictError:
+            self._send_json(409, {"error": "CONFIG_REVISION_CONFLICT"})
+        except UnsafeConfigurationChange as exc:
+            self._send_json(409, {"error": f"CONFIG_CHANGE_BLOCKED_ACTIVE_POSITION:{exc}"})
+        except (ValueError, KeyError, json.JSONDecodeError) as exc:
+            self._send_json(400, {"error": str(exc) or exc.__class__.__name__})
+        except Exception as exc:
+            self._send_json(503, {"error": exc.__class__.__name__})
+
+    def _authenticated_user(self) -> str:
+        header = self.headers.get("Authorization", "")
+        try:
+            return base64.b64decode(header[6:], validate=True).decode("utf-8").split(":", 1)[0]
+        except Exception:
+            return "admin"
     def do_PUT(self) -> None: self.do_POST()
     def do_DELETE(self) -> None: self.do_POST()
     def log_message(self, fmt: str, *args: object) -> None: sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))

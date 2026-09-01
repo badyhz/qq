@@ -23,6 +23,7 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/quant-shadow/zec-4h-small-live
+ReadOnlyPaths=/var/lib/quant-shadow/zec-control
 UMask=0077
 
 [Install]

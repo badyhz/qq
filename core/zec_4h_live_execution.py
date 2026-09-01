@@ -39,6 +39,7 @@ from core.zec_4h_live import (
     build_signal_key,
     safe_initial_notional,
 )
+from core.zec_control import RuntimeConfig
 
 
 ORDER_STATUSES = {
@@ -622,11 +623,12 @@ def reconcile_startup(
     adapter: ExecutionAdapter,
     *,
     tolerance: float = 1e-9,
+    symbol: str = SYMBOL,
 ) -> dict[str, Any]:
     """Fail closed when local ledger/state and exchange truth disagree."""
-    position = adapter.get_position()
+    position = adapter.get_position(symbol=symbol)
     exchange_qty = position_quantity(position)
-    open_orders = adapter.get_open_orders()
+    open_orders = adapter.get_open_orders(symbol=symbol)
     if exchange_qty < -tolerance:
         return {"ok": False, "reason": "SHORT_POSITION_FORBIDDEN", "exchange_qty": exchange_qty}
 
@@ -784,6 +786,7 @@ def recover_unapplied_filled_transitions(
     adapter: ExecutionAdapter,
     *,
     tolerance: float = 1e-9,
+    symbol: str = SYMBOL,
 ) -> dict[str, Any]:
     """Apply ledgered exchange fills exactly once before startup reconciliation."""
     latest: dict[str, dict[str, Any]] = {}
@@ -807,7 +810,7 @@ def recover_unapplied_filled_transitions(
         if status not in TERMINAL_FAILURE_STATUSES or filled > 0:
             continue
         decision = _decision_from_ledger_record(terminal)
-        exchange_qty = position_quantity(adapter.get_position())
+        exchange_qty = position_quantity(adapter.get_position(symbol=symbol))
         _arm_terminal_safety_exit(
             state,
             decision,
@@ -861,7 +864,7 @@ def recover_unapplied_filled_transitions(
                 status=status,
                 filled_qty=filled_qty,
             )
-    exchange_qty = position_quantity(adapter.get_position())
+    exchange_qty = position_quantity(adapter.get_position(symbol=symbol))
     if abs(projected.actual_position_qty - exchange_qty) > tolerance:
         return {
             "ok": False,
@@ -881,9 +884,15 @@ def recover_unapplied_filled_transitions(
 class LiveExecutionEngine:
     """Order idempotency and exchange-status reconciliation boundary."""
 
-    def __init__(self, adapter: ExecutionAdapter, ledger: LiveExecutionLedger):
+    def __init__(
+        self,
+        adapter: ExecutionAdapter,
+        ledger: LiveExecutionLedger,
+        runtime_config: Optional[RuntimeConfig] = None,
+    ):
         self.adapter = adapter
         self.ledger = ledger
+        self.runtime_config = runtime_config or RuntimeConfig(strategy_enabled=True)
 
     def execute(
         self,
@@ -910,6 +919,7 @@ class LiveExecutionEngine:
             recovered = self.adapter.query_order(
                 client_order_id=decision.client_order_id,
                 exchange_order_id=str(previous.get("exchange_order_id", "")),
+                symbol=self.runtime_config.symbol,
             )
             if recovered is not None:
                 return self._record_exchange_status(
@@ -966,6 +976,8 @@ class LiveExecutionEngine:
             mark_price=mark_price,
             symbol_rules=symbol_rules,
             leverage=int(invariants.get("selected_leverage", 0) or 0),
+            sizing_base_usdt=self.runtime_config.sizing_base_usdt,
+            capital_cap_usdt=self.runtime_config.capital_cap_usdt,
         )
         if requested_qty <= 0:
             if decision.action in RISK_INCREASE_ACTIONS:
@@ -987,15 +999,23 @@ class LiveExecutionEngine:
         side = "BUY" if decision.action in RISK_INCREASE_ACTIONS else "SELL"
         reduce_only = decision.action in RISK_REDUCTION_ACTIONS
         try:
+            order_kwargs = {
+                "side": side,
+                "quantity": requested_qty,
+                "client_order_id": decision.client_order_id,
+                "reduce_only": reduce_only,
+                "position_side": str(invariants.get("position_side", "BOTH")),
+            }
+            if self.runtime_config.symbol != SYMBOL:
+                order_kwargs["symbol"] = self.runtime_config.symbol
             response = self.adapter.submit_market_order(
-                side=side,
-                quantity=requested_qty,
-                client_order_id=decision.client_order_id,
-                reduce_only=reduce_only,
-                position_side=str(invariants.get("position_side", "BOTH")),
+                **order_kwargs,
             )
         except (TimeoutError, ConnectionError, OSError):
-            recovered = self.adapter.query_order(client_order_id=decision.client_order_id)
+            recovered = self.adapter.query_order(
+                client_order_id=decision.client_order_id,
+                symbol=self.runtime_config.symbol,
+            )
             if recovered is None:
                 self.ledger.append({**base, "status": UNKNOWN_STATUS})
                 return {"ok": False, "submitted": True, "status": UNKNOWN_STATUS}
@@ -1021,6 +1041,7 @@ class LiveExecutionEngine:
         response = self.adapter.query_order(
             client_order_id=decision.client_order_id,
             exchange_order_id=str(previous.get("exchange_order_id", "")),
+            symbol=self.runtime_config.symbol,
         )
         if response is None:
             unknown = dict(previous)
@@ -1044,9 +1065,9 @@ class LiveExecutionEngine:
             if row.get("status") == "ACCOUNT_INCOME"
         }
         appended = 0
-        for row in self.adapter.get_income(income_type="FUNDING_FEE"):
+        for row in self.adapter.get_income(symbol=self.runtime_config.symbol, income_type="FUNDING_FEE"):
             event_id = str(row.get("tranId", "") or f"{row.get('time','')}:{row.get('income','')}")
-            signal_key = f"{STRATEGY_ID}:{SYMBOL}:FUNDING:{event_id}"
+            signal_key = f"{self.runtime_config.strategy_id}:{self.runtime_config.symbol}:FUNDING:{event_id}"
             if signal_key in existing:
                 continue
             epoch_ms = int(float(row.get("time", 0) or 0))
@@ -1055,10 +1076,11 @@ class LiveExecutionEngine:
                 if epoch_ms > 0 else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
             )
             self.ledger.append({
-                "strategy_id": STRATEGY_ID,
+                "strategy_id": self.runtime_config.strategy_id,
                 "signal_key": signal_key,
-                "symbol": SYMBOL,
-                "timeframe": TIMEFRAME,
+                "symbol": self.runtime_config.symbol,
+                "timeframe": self.runtime_config.timeframe,
+                "config_revision": self.runtime_config.revision,
                 "bar_close_time": recorded_at,
                 "action": "FUNDING_PAYMENT",
                 "status": "ACCOUNT_INCOME",
@@ -1092,13 +1114,19 @@ class LiveExecutionEngine:
         mark_price: float,
         symbol_rules: dict[str, Any],
         leverage: int = 1,
+        sizing_base_usdt: float = SIZING_BASE_USDT,
+        capital_cap_usdt: float = LIVE_CAPITAL_CAP_USDT,
     ) -> float:
         if mark_price <= 0:
             return 0.0
         if action == LiveAction.OPEN.value:
-            if exchange_available_balance is not None and float(exchange_available_balance) < SIZING_BASE_USDT:
+            if exchange_available_balance is not None and float(exchange_available_balance) < sizing_base_usdt:
                 return 0.0
-            raw_qty = safe_initial_notional(strategy_equity, leverage) / mark_price
+            managed_capital = min(float(strategy_equity), capital_cap_usdt)
+            raw_qty = (
+                sizing_base_usdt * leverage / mark_price
+                if managed_capital >= sizing_base_usdt else 0.0
+            )
         elif action == LiveAction.REDUCE_50.value:
             raw_qty = max(
                 0.0,
@@ -1141,21 +1169,41 @@ class LiveExecutionEngine:
         strategy_equity: float,
     ) -> dict[str, Any]:
         if action in RISK_INCREASE_ACTIONS:
-            reconciliation = reconcile_startup(state, self.ledger, self.adapter)
+            if not self.runtime_config.strategy_enabled:
+                return {"ok": False, "reason": "STRATEGY_DISABLED"}
+            expected_identity = (
+                self.runtime_config.strategy_id,
+                self.runtime_config.symbol,
+                self.runtime_config.timeframe,
+                self.runtime_config.revision,
+            )
+            observed_identity = (
+                state.strategy_id, state.symbol, state.timeframe, state.config_revision,
+            )
+            if observed_identity != expected_identity:
+                return {"ok": False, "reason": "RUNTIME_CONFIG_STATE_IDENTITY_MISMATCH"}
+            reconciliation = reconcile_startup(
+                state, self.ledger, self.adapter, symbol=self.runtime_config.symbol
+            )
             if reconciliation.get("ok") is not True:
                 return {"ok": False, "reason": reconciliation.get("reason", "RECONCILIATION_FAILED")}
             try:
-                fixed_allowed = fixed_leverage_allowed(self.adapter.get_leverage_brackets())
+                fixed_allowed = fixed_leverage_allowed(
+                    self.adapter.get_leverage_brackets(symbol=self.runtime_config.symbol),
+                    symbol=self.runtime_config.symbol,
+                    leverage=self.runtime_config.leverage,
+                    sizing_base_usdt=self.runtime_config.sizing_base_usdt,
+                )
             except Exception:
                 return {"ok": False, "reason": "FIXED_50X_PERMISSION_UNAVAILABLE"}
-            symbol_config = self.adapter.get_symbol_config()
-            leverage_fixed_50x = int(float(symbol_config.get("leverage", 0) or 0)) == FIXED_LEVERAGE
+            symbol_config = self.adapter.get_symbol_config(symbol=self.runtime_config.symbol)
+            leverage_fixed_50x = int(float(symbol_config.get("leverage", 0) or 0)) == self.runtime_config.leverage
             dual_side = _dual_side_mode(self.adapter.get_position_mode())
             position_side = "LONG" if dual_side else "BOTH"
             self.adapter.get_account()  # authenticated PAPI access must remain healthy
             available_balance = usdt_available_balance(self.adapter.get_balance())
             restrictions = self.adapter.get_api_restrictions()
-            managed_capital = min(max(float(strategy_equity), 0.0), LIVE_CAPITAL_CAP_USDT)
+            managed_capital = min(max(float(strategy_equity), 0.0), self.runtime_config.capital_cap_usdt)
             checks = {
                 "reconciliation": True,
                 "position_mode_supported": True,
@@ -1163,8 +1211,8 @@ class LiveExecutionEngine:
                 "portfolio_margin_account": True,
                 "fixed_50x_allowed": fixed_allowed,
                 "leverage_fixed_50x": leverage_fixed_50x,
-                "capital_cap": managed_capital <= LIVE_CAPITAL_CAP_USDT,
-                "sizing_base_available": available_balance >= SIZING_BASE_USDT,
+                "capital_cap": managed_capital <= self.runtime_config.capital_cap_usdt,
+                "sizing_base_available": available_balance >= self.runtime_config.sizing_base_usdt,
                 "api_trade": _to_bool(restrictions.get("enablePortfolioMarginTrading")),
                 "withdrawal_disabled": not _to_bool(restrictions.get("enableWithdrawals")),
                 "no_unrecognized_open_orders": True,
@@ -1173,13 +1221,13 @@ class LiveExecutionEngine:
                 "ok": all(checks.values()),
                 "checks": checks,
                 "gate": "RISK_INCREASE_FULL",
-                "selected_leverage": FIXED_LEVERAGE,
+                "selected_leverage": self.runtime_config.leverage,
                 "account_mode": ACCOUNT_MODE,
                 "api_mode": API_MODE,
                 "position_mode": "HEDGE" if dual_side else "ONE_WAY",
                 "position_side": position_side,
-                "capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
-                "sizing_base_usdt": SIZING_BASE_USDT,
+                "capital_cap_usdt": self.runtime_config.capital_cap_usdt,
+                "sizing_base_usdt": self.runtime_config.sizing_base_usdt,
             }
 
         if action not in RISK_REDUCTION_ACTIONS:
@@ -1188,7 +1236,7 @@ class LiveExecutionEngine:
         # Risk-reducing orders must remain available when leverage or account
         # equity has drifted. They still require a
         # clearly identified one-way LONG and no conflicting exchange order.
-        position = self.adapter.get_position()
+        position = self.adapter.get_position(symbol=self.runtime_config.symbol)
         exchange_qty = position_quantity(position)
         if exchange_qty <= 1e-12:
             return {
@@ -1200,7 +1248,7 @@ class LiveExecutionEngine:
         dual_side = _dual_side_mode(self.adapter.get_position_mode())
         position_side = "LONG" if dual_side else "BOTH"
 
-        open_orders = self.adapter.get_open_orders()
+        open_orders = self.adapter.get_open_orders(symbol=self.runtime_config.symbol)
         latest: dict[str, dict[str, Any]] = {}
         for row in self.ledger.read():
             signal_key = str(row.get("signal_key", ""))
@@ -1277,18 +1325,19 @@ class LiveExecutionEngine:
         state.recovery_status = STALE_RISK_INCREASE_STATUS
         state.recovery_decision = {}
 
-    @staticmethod
     def _base_record(
+        self,
         decision: StrategyDecision,
         *,
         requested_qty: float,
         strategy_equity_before: float,
     ) -> dict[str, Any]:
         return {
-            "strategy_id": STRATEGY_ID,
+            "strategy_id": self.runtime_config.strategy_id,
             "signal_key": decision.signal_key,
-            "symbol": SYMBOL,
-            "timeframe": TIMEFRAME,
+            "symbol": self.runtime_config.symbol,
+            "timeframe": self.runtime_config.timeframe,
+            "config_revision": self.runtime_config.revision,
             "bar_close_time": decision.bar_close_time,
             "action": decision.action,
             "signal_price": decision.signal_price,
@@ -1307,13 +1356,13 @@ class LiveExecutionEngine:
             "realized_slippage": 0.0,
             "strategy_equity_before": float(strategy_equity_before),
             "strategy_equity_after": float(strategy_equity_before),
-            "live_capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
+            "live_capital_cap_usdt": self.runtime_config.capital_cap_usdt,
             "account_mode": ACCOUNT_MODE,
             "api_mode": API_MODE,
-            "sizing_base_usdt": SIZING_BASE_USDT,
+            "sizing_base_usdt": self.runtime_config.sizing_base_usdt,
             "leverage_mode": "FIXED",
-            "leverage": FIXED_LEVERAGE,
-            "target_initial_notional_usdt": TARGET_INITIAL_NOTIONAL_USDT,
+            "leverage": self.runtime_config.leverage,
+            "target_initial_notional_usdt": self.runtime_config.sizing_base_usdt * self.runtime_config.leverage,
             "exchange_snapshot": {},
             "live_safety_deviations": list(APPROVED_LIVE_SAFETY_DEVIATIONS),
             "recorded_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
@@ -1418,7 +1467,9 @@ class LiveExecutionEngine:
                 state.phase = StrategyPhase.HARD_STOP.value
                 state.hard_stop_reason = f"ORDER_{status}"
             try:
-                exchange_qty = position_quantity(self.adapter.get_position())
+                exchange_qty = position_quantity(
+                    self.adapter.get_position(symbol=self.runtime_config.symbol)
+                )
             except Exception:
                 state.phase = StrategyPhase.HARD_STOP.value
                 state.recovery_status = "TERMINAL_POSITION_UNVERIFIED"
@@ -1447,7 +1498,10 @@ class LiveExecutionEngine:
         if not exchange_order_id:
             return {}
         try:
-            fills = self.adapter.get_fills(order_id=exchange_order_id)
+            fills = self.adapter.get_fills(
+                symbol=self.runtime_config.symbol,
+                order_id=exchange_order_id,
+            )
         except Exception:
             return {}
         matching = [row for row in fills if str(row.get("orderId", "")) == exchange_order_id]

@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
+import time
 from typing import Any, Iterable, Optional
 
 from core.zec_4h_live import (
@@ -27,8 +28,21 @@ from core.zec_4h_live import (
 )
 from core.zec_4h_live_execution import (
     BinanceUsdMExecutionAdapter,
+    fixed_leverage_allowed,
+    position_quantity,
     run_live_preflight,
     strategy_equity_from_evidence,
+)
+from core.zec_control import (
+    DEFAULT_AUDIT_PATH,
+    DEFAULT_CONFIG_PATH,
+    RuntimeConfig,
+    STRATEGY_REGISTRY,
+    assert_safe_configuration_change,
+    load_runtime_config,
+    timeframe_seconds,
+    update_runtime_config,
+    validate_exchange_symbol,
 )
 
 
@@ -298,7 +312,10 @@ def normalize_position(position: dict[str, Any], state: StrategyState) -> dict[s
 
 def _signal_summary(state: StrategyState) -> dict[str, Any]:
     last_close = _parse_iso(state.last_processed_bar_close_time)
-    next_close = last_close + timedelta(hours=4) if last_close is not None else None
+    next_close = (
+        last_close + timedelta(seconds=timeframe_seconds(state.timeframe))
+        if last_close is not None else None
+    )
     return {
         "phase": state.phase,
         "last_signal": state.last_signal,
@@ -328,15 +345,151 @@ def _recent_events(records: Iterable[dict[str, Any]], limit: int = 25) -> list[d
     return [{key: row.get(key) for key in keys} for row in rows]
 
 
+def collect_control_snapshot(
+    *,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    state_path: Path = DEFAULT_STATE_PATH,
+    adapter: Optional[BinanceUsdMExecutionAdapter] = None,
+) -> dict[str, Any]:
+    config = load_runtime_config(
+        config_path,
+        create=True,
+        initial_strategy_enabled=_bool_env("ZEC_4H_LIVE_ENABLED"),
+    )
+    state = load_strategy_state(state_path)
+    available_symbols = [config.symbol]
+    if adapter is not None:
+        exchange_info = adapter.get_exchange_info()
+        available_symbols = sorted({
+            str(item.get("symbol", "")).upper()
+            for item in exchange_info.get("symbols", [])
+            if isinstance(item, dict)
+            and str(item.get("status", "")).upper() == "TRADING"
+            and str(item.get("quoteAsset", "")).upper() == "USDT"
+            and str(item.get("contractType", "PERPETUAL")).upper() == "PERPETUAL"
+        })
+        if config.symbol not in available_symbols:
+            available_symbols.append(config.symbol)
+    return {
+        "schema_version": config.schema_version,
+        "revision": config.revision,
+        "strategy_enabled": config.strategy_enabled,
+        "strategy_id": config.strategy_id,
+        "symbol": config.symbol,
+        "timeframe": config.timeframe,
+        "sizing_base_usdt": config.sizing_base_usdt,
+        "capital_cap_usdt": config.capital_cap_usdt,
+        "leverage": config.leverage,
+        "target_initial_notional_usdt": config.sizing_base_usdt * config.leverage,
+        "updated_at": config.updated_at,
+        "last_processed_bar_close_time": state.last_processed_bar_close_time,
+        "pending_action": state.pending_action,
+        "recovery_status": state.recovery_status,
+        "registry": [
+            {
+                "strategy_id": strategy_id,
+                "name": definition["display_name"],
+                "direction": definition["direction"],
+                "allowed_timeframes": list(definition["allowed_timeframes"]),
+            }
+            for strategy_id, definition in STRATEGY_REGISTRY.items()
+        ],
+        "available_symbols": available_symbols,
+        "mutable_fields": ["strategy_id", "symbol", "timeframe", "sizing_base_usdt"],
+        "immutable_fields": ["capital_cap_usdt", "leverage"],
+    }
+
+
+def apply_control_change(
+    changes: dict[str, Any],
+    *,
+    expected_revision: int,
+    actor: str,
+    adapter: BinanceUsdMExecutionAdapter,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    audit_path: Path = DEFAULT_AUDIT_PATH,
+    state_path: Path = DEFAULT_STATE_PATH,
+) -> RuntimeConfig:
+    """Apply one settings/toggle request after read-only exchange guards."""
+    current = load_runtime_config(config_path, create=True)
+    # Emergency strategy disable is entirely local and must remain available
+    # during an exchange/API outage. It never submits or cancels an order.
+    if changes == {"strategy_enabled": False}:
+        return update_runtime_config(
+            config_path,
+            expected_revision=expected_revision,
+            changes=changes,
+            audit_path=audit_path,
+            actor=actor,
+        )
+    candidate_payload = current.to_dict()
+    candidate_payload.update(changes)
+    candidate_payload["revision"] = current.revision
+    candidate = RuntimeConfig.from_dict(candidate_payload)
+    validate_exchange_symbol(candidate, adapter.get_exchange_info())
+    if not fixed_leverage_allowed(
+        adapter.get_leverage_brackets(symbol=candidate.symbol),
+        symbol=candidate.symbol,
+        leverage=candidate.leverage,
+        sizing_base_usdt=candidate.sizing_base_usdt,
+    ):
+        raise RuntimeError("FIXED_50X_NOT_ALLOWED_FOR_CONFIGURED_SYMBOL")
+    state = load_strategy_state(state_path)
+    position = adapter.get_position(symbol=current.symbol)
+    open_orders = adapter.get_open_orders(symbol=current.symbol)
+    candidate_position = position
+    if candidate.symbol != current.symbol:
+        candidate_position = adapter.get_position(symbol=candidate.symbol)
+        open_orders = [
+            *open_orders,
+            *adapter.get_open_orders(symbol=candidate.symbol),
+        ]
+    guarded_qty = max(
+        abs(position_quantity(position)),
+        abs(position_quantity(candidate_position)),
+    )
+    assert_safe_configuration_change(
+        current,
+        candidate,
+        position_qty=guarded_qty,
+        open_order_count=len(open_orders),
+        pending_action=state.pending_action,
+        recovery_status=state.recovery_status,
+    )
+    if changes == {"strategy_enabled": True} and (
+        guarded_qty > 0
+        or open_orders
+        or state.pending_action
+        or state.recovery_status
+    ):
+        raise UnsafeConfigurationChange("ENABLE_REQUIRES_FLAT_QUIESCENT_ENGINE")
+    if any(key in changes for key in {"strategy_id", "symbol", "timeframe", "sizing_base_usdt"}) and current.strategy_enabled:
+        raise RuntimeError("STRATEGY_MUST_BE_DISABLED_FOR_SETTINGS_CHANGE")
+    normalized = dict(changes)
+    if normalized.get("strategy_enabled") is True:
+        normalized["risk_increase_after_bar_close_time"] = str(
+            state.last_processed_bar_close_time or ""
+        )
+    return update_runtime_config(
+        config_path,
+        expected_revision=expected_revision,
+        changes=normalized,
+        audit_path=audit_path,
+        actor=actor,
+    )
+
+
 def collect_admin_snapshot(
     *,
     adapter: Optional[BinanceUsdMExecutionAdapter] = None,
     state_path: Path = DEFAULT_STATE_PATH,
     ledger_path: Path = DEFAULT_LEDGER_PATH,
+    config_path: Path = DEFAULT_CONFIG_PATH,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     """Return one safe, read-only payload for the admin UI."""
     generated = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    config = load_runtime_config(config_path, create=False)
     state = load_strategy_state(Path(state_path))
     records = LiveExecutionLedger(Path(ledger_path)).read()
     sessions = build_closed_trade_sessions(records)
@@ -353,22 +506,29 @@ def collect_admin_snapshot(
     payload: dict[str, Any] = {
         "generated_at": generated.isoformat(timespec="seconds"),
         "strategy": {
-            "symbol": SYMBOL,
-            "timeframe": "4h",
+            "strategy_id": config.strategy_id,
+            "symbol": config.symbol,
+            "timeframe": config.timeframe,
             "direction": "LONG_ONLY",
             "account_mode": "PORTFOLIO_MARGIN",
             "api_mode": "PAPI",
-            "capital_pool_usdt": LIVE_CAPITAL_CAP_USDT,
-            "sizing_base_usdt": SIZING_BASE_USDT,
-            "leverage": FIXED_LEVERAGE,
-            "target_initial_notional_usdt": TARGET_INITIAL_NOTIONAL_USDT,
+            "capital_pool_usdt": config.capital_cap_usdt,
+            "sizing_base_usdt": config.sizing_base_usdt,
+            "leverage": config.leverage,
+            "target_initial_notional_usdt": config.sizing_base_usdt * config.leverage,
             "take_profit_mode": TAKE_PROFIT_MODE,
         },
         "runtime": {
+            "engine_running": (
+                DEFAULT_SCORECARD_PATH.exists()
+                and time.time() - DEFAULT_SCORECARD_PATH.stat().st_mtime <= 180
+            ),
             "live_enabled": _bool_env("ZEC_4H_LIVE_ENABLED"),
             "real_order": _bool_env("ZEC_4H_LIVE_ENABLED")
             and os.environ.get("ZEC_4H_LIVE_ACTIVATION", "") == "zec_4h_live_v1",
             "preflight_enabled": _bool_env("ZEC_4H_PREFLIGHT_ENABLED"),
+            "strategy_enabled": config.strategy_enabled,
+            "config_revision": config.revision,
             "credential_key_present": api_key_present,
             "credential_secret_present": api_secret_present,
         },
@@ -402,9 +562,9 @@ def collect_admin_snapshot(
         return payload
 
     try:
-        position = adapter.get_position()
-        open_orders = adapter.get_open_orders()
-        fills = adapter.get_fills()
+        position = adapter.get_position(symbol=config.symbol)
+        open_orders = adapter.get_open_orders(symbol=config.symbol)
+        fills = adapter.get_fills(symbol=config.symbol)
         equity = strategy_equity_from_evidence(records, position)
         preflight = run_live_preflight(
             adapter,
@@ -417,6 +577,7 @@ def collect_admin_snapshot(
             current_position=position,
             current_open_orders=open_orders,
             strategy_state=state,
+            runtime_config=config,
         )
         payload["position"] = normalized_position
         payload["open_orders"] = open_orders

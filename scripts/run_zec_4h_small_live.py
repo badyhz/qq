@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 import time
 
@@ -44,6 +45,12 @@ from core.zec_4h_live_execution import (
     strategy_equity_from_evidence,
     usdt_available_balance,
 )
+from core.zec_control import (
+    DEFAULT_CONFIG_PATH,
+    RuntimeConfig,
+    load_runtime_config,
+    timeframe_seconds,
+)
 
 
 SAFETY_EXIT_RECOVERY_STATUSES = {
@@ -61,6 +68,13 @@ def _assert_activation() -> None:
         raise RuntimeError("ZEC_4H_LIVE_DISABLED")
     if os.environ.get("ZEC_4H_LIVE_ACTIVATION", "") != "zec_4h_live_v1":
         raise RuntimeError("ZEC_4H_LIVE_ACTIVATION_MISSING")
+
+
+def _master_activation_armed() -> bool:
+    return (
+        _enabled("ZEC_4H_LIVE_ENABLED")
+        and os.environ.get("ZEC_4H_LIVE_ACTIVATION", "") == "zec_4h_live_v1"
+    )
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -119,15 +133,27 @@ def _pending_record(ledger: LiveExecutionLedger) -> dict | None:
     return pending[0] if pending else None
 
 
-def _append_replay_evidence(ledger: LiveExecutionLedger, row: dict) -> None:
+def _append_replay_evidence(
+    ledger: LiveExecutionLedger,
+    row: dict,
+    config: RuntimeConfig | None = None,
+) -> None:
+    config = config or RuntimeConfig(strategy_enabled=True)
     base_key = str(row.get("signal_key", "")) or build_signal_key(
-        str(row.get("action", "STATE_REPLAY")), str(row["bar_close_time"])
+        str(row.get("action", "STATE_REPLAY")),
+        str(row["bar_close_time"]),
+        strategy_id=config.strategy_id,
+        symbol=config.symbol,
+        timeframe=config.timeframe,
     )
     evidence_key = f"{base_key}:EVIDENCE:{row['status']}"
     if ledger.latest_by_signal_key(evidence_key) is not None:
         return
     ledger.append({
-        "strategy_id": "zec_4h_live_v1",
+        "strategy_id": config.strategy_id,
+        "symbol": config.symbol,
+        "timeframe": config.timeframe,
+        "config_revision": config.revision,
         "signal_key": evidence_key,
         "bar_close_time": str(row["bar_close_time"]),
         "action": str(row.get("action", "STATE_REPLAY")),
@@ -237,19 +263,78 @@ def _expire_crash_before_submit_risk_increase(
     }
 
 
+def _load_runtime_state(state_path: Path, config: RuntimeConfig) -> StrategyState:
+    identity = (config.strategy_id, config.symbol, config.timeframe, config.revision)
+    if not state_path.exists():
+        return load_strategy_state(state_path, expected_identity=identity)
+    raw = load_strategy_state(state_path)
+    observed = (raw.strategy_id, raw.symbol, raw.timeframe, raw.config_revision)
+    if observed == identity:
+        return raw
+    if (raw.strategy_id, raw.symbol, raw.timeframe) == identity[:3]:
+        # Toggle-only revisions do not invalidate indicator or position state.
+        raw.config_revision = config.revision
+        return raw
+    # A settings change is accepted by the control plane only while flat and
+    # quiescent.  The engine owns state migration so the admin service never
+    # receives write access to the execution directory.
+    archive = state_path.parent / "archive"
+    archive.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    safe_strategy = raw.strategy_id.replace("/", "_")
+    safe_symbol = raw.symbol.replace("/", "_")
+    safe_timeframe = raw.timeframe.replace("/", "_")
+    archived = archive / (
+        f"state.{safe_strategy}.{safe_symbol}.{safe_timeframe}."
+        f"rev{raw.config_revision}.{stamp}.json"
+    )
+    shutil.copy2(state_path, archived)
+    os.chmod(archived, 0o600)
+    return load_strategy_state(Path("/nonexistent"), expected_identity=identity)
+
+
+def _risk_increase_block_reason(
+    decision: StrategyDecision,
+    config: RuntimeConfig,
+) -> str:
+    if decision.action not in RISK_INCREASE_ACTIONS:
+        return ""
+    if not config.strategy_enabled:
+        return "STRATEGY_DISABLED_RISK_INCREASE_BLOCKED"
+    boundary = str(config.risk_increase_after_bar_close_time or "")
+    if boundary and decision.bar_close_time <= boundary:
+        return "PRE_ENABLE_BAR_RISK_INCREASE_BLOCKED"
+    return ""
+
+
 def run_cycle(
     *,
     state_path: Path,
     ledger_path: Path,
     scorecard_path: Path,
+    config_path: Path | None = None,
 ) -> dict:
-    _assert_activation()
-    adapter = _adapter(live_enabled=True)
+    master_armed = _master_activation_armed() if config_path is not None else True
+    config = (
+        load_runtime_config(
+            config_path,
+            create=True,
+            initial_strategy_enabled=master_armed,
+        )
+        if config_path is not None
+        else RuntimeConfig(strategy_enabled=True)
+    )
+    # Direct-call tests retain the legacy armed contract. The service always
+    # passes a control path and can therefore stay running in monitoring mode
+    # while the independent master order permission is off.
+    adapter = _adapter(live_enabled=master_armed)
     ledger = LiveExecutionLedger(ledger_path)
-    state = load_strategy_state(state_path)
-    engine = LiveExecutionEngine(adapter, ledger)
+    state = _load_runtime_state(state_path, config)
+    engine = LiveExecutionEngine(adapter, ledger, runtime_config=config)
 
-    fill_recovery = recover_unapplied_filled_transitions(state, ledger, adapter)
+    fill_recovery = recover_unapplied_filled_transitions(
+        state, ledger, adapter, symbol=config.symbol
+    )
     if fill_recovery.get("ok") is not True:
         raise RuntimeError(f"FILLED_CRASH_RECOVERY_BLOCKED:{fill_recovery.get('reason')}")
     if int(fill_recovery.get("recovered", 0) or 0) > 0:
@@ -259,7 +344,7 @@ def run_cycle(
 
     # Initial provisioning is strictly no-order and must prove the dedicated
     # account starts near 50 USDT.  Subsequent restarts recover from ledger.
-    if not ledger.read():
+    if not ledger.read() and master_armed:
         preflight = run_live_preflight(
             adapter,
             withdrawal_disabled_verified=_enabled("ZEC_4H_WITHDRAWAL_DISABLED_VERIFIED"),
@@ -267,11 +352,11 @@ def run_cycle(
         if preflight.get("preflight_pass") is not True:
             raise RuntimeError("LIVE_PREFLIGHT_BLOCKED")
 
-    recovery = reconcile_startup(state, ledger, adapter)
+    recovery = reconcile_startup(state, ledger, adapter, symbol=config.symbol)
     if recovery.get("ok") is not True:
         raise RuntimeError(f"STARTUP_RECONCILIATION_BLOCKED:{recovery.get('reason')}")
     engine.sync_funding_income()
-    equity = strategy_equity_from_evidence(ledger.read(), adapter.get_position())
+    equity = strategy_equity_from_evidence(ledger.read(), adapter.get_position(symbol=config.symbol))
     # Dedicated-account budget drift is a hard gate for OPEN/ADD inside the
     # execution engine.  It is intentionally not a global runner gate because a
     # confirmed reduce-only STOP/HARD_STOP must still be able to lower risk.
@@ -279,14 +364,30 @@ def run_cycle(
     pending = _pending_record(ledger)
     if pending is not None:
         recovered_decision = _decision_from_record(pending)
-        if pending.get("status") == UNKNOWN_STATUS:
+        block_reason = _risk_increase_block_reason(recovered_decision, config)
+        if not master_armed:
+            result = {
+                "ok": True,
+                "submitted": False,
+                "reason": "MASTER_LIVE_PERMISSION_OFF_PENDING_RECONCILIATION",
+            }
+        elif pending.get("status") == UNKNOWN_STATUS and block_reason:
+            engine._expire_unsubmitted_risk_increase(
+                recovered_decision,
+                state,
+                strategy_equity=equity,
+                reason=block_reason,
+                details={"config_revision": config.revision},
+            )
+            result = {"ok": True, "submitted": False, "reason": block_reason}
+        elif pending.get("status") == UNKNOWN_STATUS:
             result = _execute_with_immediate_safety_exit(
                 engine,
                 recovered_decision,
                 state,
                 strategy_equity=equity,
                 mark_price=float(pending.get("signal_price", 0.0) or 0.0),
-                symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
+                symbol_rules=extract_symbol_rules(adapter.get_exchange_info(), symbol=config.symbol),
             )
         else:
             result = engine.reconcile_order(
@@ -303,7 +404,7 @@ def run_cycle(
                     state,
                     strategy_equity=equity,
                     mark_price=safety_decision.signal_price,
-                    symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
+                    symbol_rules=extract_symbol_rules(adapter.get_exchange_info(), symbol=config.symbol),
                 )
                 result = {
                     "ok": safety_exit.get("ok") is True,
@@ -314,14 +415,23 @@ def run_cycle(
         save_strategy_state(state_path, state)
     elif state.recovery_decision:
         recovered_risk_decision = _decision_from_record(state.recovery_decision)
-        result = _execute_with_immediate_safety_exit(
-            engine,
-            recovered_risk_decision,
-            state,
-            strategy_equity=equity,
-            mark_price=recovered_risk_decision.signal_price,
-            symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
-        )
+        if not master_armed:
+            result = {
+                "ok": True,
+                "submitted": False,
+                "reason": "MASTER_LIVE_PERMISSION_OFF_RECOVERY_PENDING",
+            }
+        else:
+            result = _execute_with_immediate_safety_exit(
+                engine,
+                recovered_risk_decision,
+                state,
+                strategy_equity=equity,
+                mark_price=recovered_risk_decision.signal_price,
+                symbol_rules=extract_symbol_rules(
+                    adapter.get_exchange_info(), symbol=config.symbol
+                ),
+            )
         save_strategy_state(state_path, state)
     elif state.pending_decision:
         persisted_decision = _decision_from_record(state.pending_decision)
@@ -339,6 +449,12 @@ def run_cycle(
                 state,
                 strategy_equity=equity,
             )
+        elif not master_armed:
+            result = {
+                "ok": True,
+                "submitted": False,
+                "reason": "MASTER_LIVE_PERMISSION_OFF_DECISION_PENDING",
+            }
         else:
             result = _execute_with_immediate_safety_exit(
                 engine,
@@ -346,14 +462,14 @@ def run_cycle(
                 state,
                 strategy_equity=equity,
                 mark_price=persisted_decision.signal_price,
-                symbol_rules=extract_symbol_rules(adapter.get_exchange_info()),
+                symbol_rules=extract_symbol_rules(adapter.get_exchange_info(), symbol=config.symbol),
             )
         save_strategy_state(state_path, state)
     else:
         source = BinancePublicKlineAdapter(
-            DataSourceConfig(mode="snapshot", symbol="ZECUSDT", timeframe="4h", network_enabled=True)
+            DataSourceConfig(mode="snapshot", symbol=config.symbol, timeframe=config.timeframe, network_enabled=True)
         )
-        raw_bars = source.get_bars("ZECUSDT", "4h", limit=1500)
+        raw_bars = source.get_bars(config.symbol, config.timeframe, limit=1500)
         selected = select_closed_bars(raw_bars, datetime.now(timezone.utc))
         if len(selected.bars) < WARMUP_BARS:
             raise RuntimeError("INSUFFICIENT_CANONICAL_CLOSED_BARS")
@@ -368,7 +484,7 @@ def run_cycle(
                 "warmup_bars": len(selected.bars),
             }
         else:
-            position = adapter.get_position()
+            position = adapter.get_position(symbol=config.symbol)
             actual_qty = float(position.get("positionAmt", 0.0) or 0.0)
             boundary_time = datetime.fromisoformat(
                 str(state.last_processed_bar_close_time).replace("Z", "+00:00")
@@ -377,11 +493,12 @@ def run_cycle(
                 bar for bar in selected.bars
                 if bar.close_time is not None and bar.close_time > boundary_time
             ]
-            expected_close = boundary_time + timedelta(hours=4)
+            interval = timedelta(seconds=timeframe_seconds(config.timeframe))
+            expected_close = boundary_time + interval
             for bar in unprocessed_bars:
                 if bar.close_time is None or abs((bar.close_time - expected_close).total_seconds()) > 0.002:
                     raise RuntimeError("CLOSED_BAR_RECOVERY_GAP")
-                expected_close = bar.close_time + timedelta(hours=4)
+                expected_close = bar.close_time + interval
             unprocessed_count = len(unprocessed_bars)
             decision = None
             if unprocessed_count >= 2:
@@ -392,9 +509,11 @@ def run_cycle(
                     actual_position_qty=actual_qty,
                 )
                 for evidence in replay.evidence:
-                    _append_replay_evidence(ledger, dict(evidence))
+                    _append_replay_evidence(ledger, dict(evidence), config)
                 save_strategy_state(state_path, state)
-                post_replay_recovery = reconcile_startup(state, ledger, adapter)
+                post_replay_recovery = reconcile_startup(
+                    state, ledger, adapter, symbol=config.symbol
+                )
                 if post_replay_recovery.get("ok") is not True:
                     raise RuntimeError(
                         f"POST_REPLAY_RECONCILIATION_BLOCKED:{post_replay_recovery.get('reason')}"
@@ -417,11 +536,17 @@ def run_cycle(
                     _append_replay_evidence(ledger, {
                         "status": "LIVE_SAFETY_DEVIATION_BLOCKED",
                         "action": "REDUCE_50_SIGNAL",
-                        "signal_key": build_signal_key("REDUCE_50_SIGNAL", decision.bar_close_time),
+                        "signal_key": build_signal_key(
+                            "REDUCE_50_SIGNAL",
+                            decision.bar_close_time,
+                            strategy_id=config.strategy_id,
+                            symbol=config.symbol,
+                            timeframe=config.timeframe,
+                        ),
                         "bar_close_time": decision.bar_close_time,
                         "reason": decision.reason,
                         "live_safety_deviation": "NO_REDUCTION_BELOW_HALF_TARGET",
-                    })
+                    }, config)
             else:
                 if equity <= 30.0:
                     # Capital risk is polled continuously; technical indicators
@@ -436,10 +561,36 @@ def run_cycle(
                 else:
                     result = {"ok": True, "submitted": False, "reason": "NO_NEW_CLOSED_BAR"}
 
+            block_reason = (
+                _risk_increase_block_reason(decision, config)
+                if decision is not None else ""
+            )
+            if block_reason:
+                engine._expire_unsubmitted_risk_increase(
+                    decision,
+                    state,
+                    strategy_equity=equity,
+                    reason=block_reason,
+                    details={"config_revision": config.revision},
+                )
+                result = {
+                    "ok": True,
+                    "submitted": False,
+                    "reason": block_reason,
+                }
+                decision = None
+            if decision is not None and decision.action and not master_armed:
+                state.pending_decision = asdict(decision)
+                result = {
+                    "ok": True,
+                    "submitted": False,
+                    "reason": "MASTER_LIVE_PERMISSION_OFF_DECISION_PENDING",
+                }
+                decision = None
             if decision is not None and decision.action:
                 state.pending_decision = asdict(decision)
                 save_strategy_state(state_path, state)
-                rules = extract_symbol_rules(adapter.get_exchange_info())
+                rules = extract_symbol_rules(adapter.get_exchange_info(), symbol=config.symbol)
                 result = _execute_with_immediate_safety_exit(
                     engine,
                     decision,
@@ -453,8 +604,8 @@ def run_cycle(
             save_strategy_state(state_path, state)
 
     engine.sync_funding_income()
-    position = adapter.get_position()
-    open_orders = adapter.get_open_orders()
+    position = adapter.get_position(symbol=config.symbol)
+    open_orders = adapter.get_open_orders(symbol=config.symbol)
     current_strategy_equity = strategy_equity_from_evidence(ledger.read(), position)
     scorecard = build_live_scorecard(
         ledger.read(),
@@ -462,9 +613,21 @@ def run_cycle(
         current_position=position,
         current_open_orders=open_orders,
         strategy_state=state,
+        runtime_config=config,
     )
     _write_json(scorecard_path, scorecard)
-    return {"result": result, "scorecard": scorecard}
+    return {
+        "result": result,
+        "scorecard": scorecard,
+        "control": {
+            "strategy_enabled": config.strategy_enabled,
+            "revision": config.revision,
+            "strategy_id": config.strategy_id,
+            "symbol": config.symbol,
+            "timeframe": config.timeframe,
+            "master_live_permission": master_armed,
+        },
+    }
 
 
 def main() -> int:
@@ -472,6 +635,7 @@ def main() -> int:
     parser.add_argument("--state", type=Path, default=Path("/var/lib/quant-shadow/zec-4h-small-live/state.json"))
     parser.add_argument("--ledger", type=Path, default=Path("/var/lib/quant-shadow/zec-4h-small-live/execution_ledger.jsonl"))
     parser.add_argument("--scorecard", type=Path, default=Path("/var/lib/quant-shadow/zec-4h-small-live/scorecard.json"))
+    parser.add_argument("--control-config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--poll-seconds", type=int, default=60)
@@ -482,7 +646,12 @@ def main() -> int:
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
             return 0 if payload.get("preflight_pass") is True else 2
         while True:
-            payload = run_cycle(state_path=args.state, ledger_path=args.ledger, scorecard_path=args.scorecard)
+            payload = run_cycle(
+                state_path=args.state,
+                ledger_path=args.ledger,
+                scorecard_path=args.scorecard,
+                config_path=args.control_config,
+            )
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
             if args.once:
                 return 0

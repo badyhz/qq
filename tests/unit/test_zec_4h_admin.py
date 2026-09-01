@@ -1,15 +1,26 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from pathlib import Path
+import base64
+import json
+import threading
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 import pytest
 
 from core.zec_4h_admin import (
+    apply_control_change,
     aggregate_exchange_fills,
     build_closed_trade_sessions,
     build_pnl_stats,
     collect_admin_snapshot,
 )
+from core.zec_4h_live import StrategyState, save_strategy_state
+from core.zec_control import RuntimeConfig, load_runtime_config, write_runtime_config
 from scripts.run_zec_4h_admin import HTML
+import scripts.run_zec_4h_admin as admin_runner
 
 
 def _record(
@@ -90,7 +101,7 @@ class FakeReadOnlyAdapter:
         self.write_calls = 0
 
     def get_exchange_info(self):
-        return {"symbols": [{"symbol": "ZECUSDT", "status": "TRADING", "contractType": "PERPETUAL", "pricePrecision": 2, "quantityPrecision": 3, "filters": [{"filterType": "PRICE_FILTER", "tickSize": "0.01"}, {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001"}, {"filterType": "MIN_NOTIONAL", "notional": "5"}]}]}
+        return {"symbols": [{"symbol": "ZECUSDT", "status": "TRADING", "quoteAsset": "USDT", "contractType": "PERPETUAL", "pricePrecision": 2, "quantityPrecision": 3, "filters": [{"filterType": "PRICE_FILTER", "tickSize": "0.01"}, {"filterType": "MARKET_LOT_SIZE", "stepSize": "0.001", "minQty": "0.001"}, {"filterType": "MIN_NOTIONAL", "notional": "5"}]}]}
 
     def get_server_time(self): return {"serverTime": int(datetime.now(timezone.utc).timestamp() * 1000)}
     def get_account(self): return {"assets": [{"asset": "USDT", "crossWalletBalance": "50", "crossUnPnl": "0"}]}
@@ -127,3 +138,92 @@ def test_collect_snapshot_is_read_only_and_uses_existing_strategy_contract(tmp_p
     assert payload["health"]["zecusdt_50x_allowed"] is True
     assert payload["health"]["position_mode"] == "HEDGE"
     assert payload["health"]["preflight_pass"] is True
+
+
+def test_control_http_is_same_origin_json_only_and_has_no_order_endpoint(monkeypatch):
+    monkeypatch.setenv("ZEC_4H_ADMIN_USER", "admin")
+    monkeypatch.setenv("ZEC_4H_ADMIN_PASSWORD", "password")
+    current = {
+        "revision": 1, "strategy_enabled": False, "strategy_id": "zec_4h_live_v1",
+        "symbol": "ZECUSDT", "timeframe": "4h", "sizing_base_usdt": 0.5,
+    }
+    calls = []
+    monkeypatch.setattr(admin_runner, "collect_control_snapshot", lambda: dict(current))
+    monkeypatch.setattr(admin_runner.AdminHandler, "_control_adapter", staticmethod(lambda: object()))
+    monkeypatch.setattr(
+        admin_runner,
+        "apply_control_change",
+        lambda changes, **kwargs: calls.append((dict(changes), dict(kwargs))),
+    )
+    server = admin_runner.ThreadingHTTPServer(("127.0.0.1", 0), admin_runner.AdminHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host = f"127.0.0.1:{server.server_port}"
+    auth = "Basic " + base64.b64encode(b"admin:password").decode()
+
+    def request(path, *, body=None, origin=True):
+        headers = {"Authorization": auth}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+            if origin:
+                headers["Origin"] = f"http://{host}"
+        return urlopen(Request(f"http://{host}{path}", data=body, headers=headers), timeout=2)
+
+    try:
+        assert json.loads(request("/api/control").read())["revision"] == 1
+        payload = json.dumps({
+            "expected_revision": 1,
+            "strategy_id": "zec_4h_live_v1",
+            "symbol": "BTCUSDT",
+            "timeframe": "4h",
+            "sizing_base_usdt": 0.5,
+        }).encode()
+        assert request("/api/control/settings", body=payload).status == 200
+        assert calls[0][0]["symbol"] == "BTCUSDT"
+        with pytest.raises(HTTPError) as no_origin:
+            request("/api/control/strategy/enable", body=b'{"expected_revision":1}', origin=False)
+        assert no_origin.value.code == 403
+        with pytest.raises(HTTPError) as no_order:
+            request("/api/order", body=b"{}")
+        assert no_order.value.code == 405
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_emergency_disable_never_depends_on_exchange_and_enable_sets_boundary(tmp_path: Path):
+    config_path = tmp_path / "control" / "runtime.json"
+    audit_path = tmp_path / "control" / "audit.jsonl"
+    state_path = tmp_path / "live" / "state.json"
+    write_runtime_config(config_path, RuntimeConfig(strategy_enabled=True))
+
+    class NoExchangeCalls:
+        def __getattr__(self, name):
+            raise AssertionError(f"disable must not call exchange: {name}")
+
+    disabled = apply_control_change(
+        {"strategy_enabled": False},
+        expected_revision=1,
+        actor="admin",
+        adapter=NoExchangeCalls(),
+        config_path=config_path,
+        audit_path=audit_path,
+        state_path=state_path,
+    )
+    assert disabled.strategy_enabled is False
+
+    boundary = "2026-09-01T04:00:00+00:00"
+    save_strategy_state(state_path, StrategyState(last_processed_bar_close_time=boundary))
+    enabled = apply_control_change(
+        {"strategy_enabled": True},
+        expected_revision=disabled.revision,
+        actor="admin",
+        adapter=FakeReadOnlyAdapter(),
+        config_path=config_path,
+        audit_path=audit_path,
+        state_path=state_path,
+    )
+    assert enabled.strategy_enabled is True
+    assert enabled.risk_increase_after_bar_close_time == boundary
+    assert load_runtime_config(config_path).revision == 3
