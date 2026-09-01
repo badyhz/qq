@@ -1,8 +1,8 @@
-"""Read-only ZECUSDT 4H admin snapshot helpers.
+"""Read-only snapshots plus governed strategy-control helpers for ZEC V2.
 
-This module intentionally has no trading write path.  It reads the existing
-strategy state/ledger and authenticated PAPI account data through the same
-adapter used by the live executor, always with ``live_enabled=False``.
+Authenticated exchange access in this module is always constructed with
+``live_enabled=False``.  The control plane can mutate only local runtime
+configuration; it exposes no order-submission path.
 """
 from __future__ import annotations
 
@@ -14,12 +14,9 @@ from typing import Any, Iterable, Optional
 
 from core.zec_4h_live import (
     FIXED_LEVERAGE,
-    LIVE_CAPITAL_CAP_USDT,
-    SIZING_BASE_USDT,
     STARTING_EQUITY,
     SYMBOL,
     TAKE_PROFIT_MODE,
-    TARGET_INITIAL_NOTIONAL_USDT,
     LiveAction,
     LiveExecutionLedger,
     StrategyState,
@@ -38,6 +35,7 @@ from core.zec_control import (
     DEFAULT_CONFIG_PATH,
     RuntimeConfig,
     STRATEGY_REGISTRY,
+    UnsafeConfigurationChange,
     assert_safe_configuration_change,
     load_runtime_config,
     timeframe_seconds,
@@ -61,6 +59,14 @@ def _number(value: Any, default: float = 0.0) -> float:
 
 def _bool_env(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _master_live_permission_armed() -> bool:
+    """Use the exact same master-live contract as the execution runner."""
+    return (
+        _bool_env("ZEC_4H_LIVE_ENABLED")
+        and os.environ.get("ZEC_4H_LIVE_ACTIVATION", "") == "zec_4h_live_v1"
+    )
 
 
 def _iso_from_epoch_ms(value: Any) -> str:
@@ -111,7 +117,6 @@ def build_closed_trade_sessions(records: Iterable[dict[str, Any]]) -> list[dict[
 
         if executed and action == LiveAction.OPEN.value:
             if active is not None:
-                # Corrupt/overlapping evidence should not be silently merged.
                 active = None
             entry = _number(row.get("average_fill_price") or row.get("signal_price"))
             stop = _number(row.get("entry_low"))
@@ -294,7 +299,7 @@ def normalize_position(position: dict[str, Any], state: StrategyState) -> dict[s
     stop = _number(state.stop_guard_price if state.stop_guard_active else state.entry_low)
     take_profit = _number(state.take_profit_price if state.take_profit_active else 0.0)
     return {
-        "symbol": SYMBOL,
+        "symbol": str(position.get("symbol") or state.symbol or SYMBOL).upper(),
         "position_side": str(position.get("positionSide", "LONG" if qty > 0 else "BOTH")),
         "qty": qty,
         "entry_price": entry,
@@ -354,7 +359,7 @@ def collect_control_snapshot(
     config = load_runtime_config(
         config_path,
         create=True,
-        initial_strategy_enabled=_bool_env("ZEC_4H_LIVE_ENABLED"),
+        initial_strategy_enabled=_master_live_permission_armed(),
     )
     state = load_strategy_state(state_path)
     available_symbols = [config.symbol]
@@ -372,7 +377,9 @@ def collect_control_snapshot(
             available_symbols.append(config.symbol)
     return {
         "schema_version": config.schema_version,
-        "revision": config.revision,
+        # UI/API concurrency token.
+        "revision": config.control_revision,
+        "execution_revision": config.revision,
         "strategy_enabled": config.strategy_enabled,
         "strategy_id": config.strategy_id,
         "symbol": config.symbol,
@@ -412,8 +419,6 @@ def apply_control_change(
 ) -> RuntimeConfig:
     """Apply one settings/toggle request after read-only exchange guards."""
     current = load_runtime_config(config_path, create=True)
-    # Emergency strategy disable is entirely local and must remain available
-    # during an exchange/API outage. It never submits or cancels an order.
     if changes == {"strategy_enabled": False}:
         return update_runtime_config(
             config_path,
@@ -422,9 +427,11 @@ def apply_control_change(
             audit_path=audit_path,
             actor=actor,
         )
+
     candidate_payload = current.to_dict()
     candidate_payload.update(changes)
     candidate_payload["revision"] = current.revision
+    candidate_payload["control_revision"] = current.control_revision
     candidate = RuntimeConfig.from_dict(candidate_payload)
     validate_exchange_symbol(candidate, adapter.get_exchange_info())
     if not fixed_leverage_allowed(
@@ -434,6 +441,7 @@ def apply_control_change(
         sizing_base_usdt=candidate.sizing_base_usdt,
     ):
         raise RuntimeError("FIXED_50X_NOT_ALLOWED_FOR_CONFIGURED_SYMBOL")
+
     state = load_strategy_state(state_path)
     position = adapter.get_position(symbol=current.symbol)
     open_orders = adapter.get_open_orders(symbol=current.symbol)
@@ -463,8 +471,12 @@ def apply_control_change(
         or state.recovery_status
     ):
         raise UnsafeConfigurationChange("ENABLE_REQUIRES_FLAT_QUIESCENT_ENGINE")
-    if any(key in changes for key in {"strategy_id", "symbol", "timeframe", "sizing_base_usdt"}) and current.strategy_enabled:
+    if any(
+        key in changes
+        for key in {"strategy_id", "symbol", "timeframe", "sizing_base_usdt"}
+    ) and current.strategy_enabled:
         raise RuntimeError("STRATEGY_MUST_BE_DISABLED_FOR_SETTINGS_CHANGE")
+
     normalized = dict(changes)
     if normalized.get("strategy_enabled") is True:
         normalized["risk_increase_after_bar_close_time"] = str(
@@ -487,7 +499,7 @@ def collect_admin_snapshot(
     config_path: Path = DEFAULT_CONFIG_PATH,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
-    """Return one safe, read-only payload for the admin UI."""
+    """Return one safe payload for the authenticated admin UI."""
     generated = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     config = load_runtime_config(config_path, create=False)
     state = load_strategy_state(Path(state_path))
@@ -523,12 +535,12 @@ def collect_admin_snapshot(
                 DEFAULT_SCORECARD_PATH.exists()
                 and time.time() - DEFAULT_SCORECARD_PATH.stat().st_mtime <= 180
             ),
-            "live_enabled": _bool_env("ZEC_4H_LIVE_ENABLED"),
-            "real_order": _bool_env("ZEC_4H_LIVE_ENABLED")
-            and os.environ.get("ZEC_4H_LIVE_ACTIVATION", "") == "zec_4h_live_v1",
+            "live_enabled": _master_live_permission_armed(),
+            "real_order": _master_live_permission_armed(),
             "preflight_enabled": _bool_env("ZEC_4H_PREFLIGHT_ENABLED"),
             "strategy_enabled": config.strategy_enabled,
             "config_revision": config.revision,
+            "control_revision": config.control_revision,
             "credential_key_present": api_key_present,
             "credential_secret_present": api_secret_present,
         },
