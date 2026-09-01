@@ -9,6 +9,7 @@ from core.zec_4h_admin import (
     build_pnl_stats,
     collect_admin_snapshot,
 )
+from scripts.run_zec_4h_admin import HTML
 
 
 def _record(
@@ -77,6 +78,11 @@ def test_exchange_fills_are_aggregated_by_order_and_annotated():
     assert history[0]["realized_pnl"] == pytest.approx(-0.25)
     assert history[0]["action"] == "STOP_CLOSE"
     assert history[0]["exit_reason"] == "CLOSED_BAR_BELOW_ENTRY_LOW"
+
+
+def test_dashboard_snapshot_request_is_relative_for_subpath_proxying():
+    assert "fetch('api/snapshot'" in HTML
+    assert "fetch('/api/snapshot'" not in HTML
 
 
 class FakeReadOnlyAdapter:
