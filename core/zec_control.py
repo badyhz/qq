@@ -3,6 +3,13 @@
 The control plane owns configuration only.  It has no order-submission API and
 cannot mutate strategy/execution state.  Runtime documents are atomically
 replaced and every accepted change is appended to a local audit trail.
+
+Two revisions are intentionally separated:
+- ``control_revision`` is an optimistic-concurrency token and increments for
+  every accepted UI mutation, including strategy ON/OFF.
+- ``revision`` is the execution-identity revision and increments only when
+  strategy/symbol/timeframe/sizing changes.  A plain ON/OFF toggle therefore
+  never resets scorecard/ledger continuity.
 """
 from __future__ import annotations
 
@@ -68,7 +75,10 @@ def utc_now() -> str:
 @dataclass(frozen=True)
 class RuntimeConfig:
     schema_version: int = CONTROL_SCHEMA_VERSION
+    # Execution identity.  Only settings changes advance this value.
     revision: int = 1
+    # UI/API optimistic concurrency token.  Every accepted mutation advances it.
+    control_revision: int = 1
     strategy_enabled: bool = False
     strategy_id: str = DEFAULT_STRATEGY_ID
     symbol: str = DEFAULT_SYMBOL
@@ -95,6 +105,8 @@ def validate_runtime_config(config: RuntimeConfig) -> RuntimeConfig:
         raise ValueError("strategy_enabled must be boolean")
     if isinstance(config.revision, bool):
         raise ValueError("runtime config revision must be an integer")
+    if isinstance(config.control_revision, bool):
+        raise ValueError("runtime control revision must be an integer")
     if isinstance(config.sizing_base_usdt, bool):
         raise ValueError("sizing_base_usdt must be numeric")
     strategy_id = str(config.strategy_id).strip()
@@ -104,6 +116,8 @@ def validate_runtime_config(config: RuntimeConfig) -> RuntimeConfig:
         raise ValueError("unsupported runtime config schema")
     if int(config.revision) < 1:
         raise ValueError("runtime config revision must be positive")
+    if int(config.control_revision) < 1:
+        raise ValueError("runtime control revision must be positive")
     if strategy_id not in STRATEGY_REGISTRY:
         raise ValueError("unknown strategy_id")
     registry = STRATEGY_REGISTRY[strategy_id]
@@ -121,6 +135,7 @@ def validate_runtime_config(config: RuntimeConfig) -> RuntimeConfig:
     return replace(
         config,
         revision=int(config.revision),
+        control_revision=int(config.control_revision),
         strategy_enabled=bool(config.strategy_enabled),
         strategy_id=strategy_id,
         symbol=symbol,
@@ -216,6 +231,15 @@ def append_audit(path: Path, event: Mapping[str, Any]) -> None:
     os.chmod(path, 0o600)
 
 
+def identity_changed(before: RuntimeConfig, after: RuntimeConfig) -> bool:
+    return any((
+        before.strategy_id != after.strategy_id,
+        before.symbol != after.symbol,
+        before.timeframe != after.timeframe,
+        before.sizing_base_usdt != after.sizing_base_usdt,
+    ))
+
+
 def update_runtime_config(
     path: Path,
     *,
@@ -225,25 +249,49 @@ def update_runtime_config(
     actor: str = "admin",
 ) -> RuntimeConfig:
     current = load_runtime_config(path, create=True)
-    if int(expected_revision) != current.revision:
+    if int(expected_revision) != current.control_revision:
         raise ControlConflictError("runtime config revision conflict")
-    immutable = {"schema_version", "revision", "capital_cap_usdt", "leverage", "updated_at"}
+    immutable = {
+        "schema_version",
+        "revision",
+        "control_revision",
+        "capital_cap_usdt",
+        "leverage",
+        "updated_at",
+    }
     if immutable.intersection(changes):
         raise ValueError("attempted mutation of governed runtime field")
-    allowed = {"strategy_enabled", "strategy_id", "symbol", "timeframe", "sizing_base_usdt", "risk_increase_after_bar_close_time"}
+    allowed = {
+        "strategy_enabled",
+        "strategy_id",
+        "symbol",
+        "timeframe",
+        "sizing_base_usdt",
+        "risk_increase_after_bar_close_time",
+    }
     unknown = set(changes) - allowed
     if unknown:
         raise ValueError(f"unknown runtime field: {sorted(unknown)[0]}")
-    candidate = validate_runtime_config(replace(current, **dict(changes), revision=current.revision + 1, updated_at=utc_now()))
+
+    proposed = validate_runtime_config(replace(current, **dict(changes)))
+    next_execution_revision = current.revision + 1 if identity_changed(current, proposed) else current.revision
+    candidate = validate_runtime_config(replace(
+        proposed,
+        revision=next_execution_revision,
+        control_revision=current.control_revision + 1,
+        updated_at=utc_now(),
+    ))
     write_runtime_config(path, candidate)
     append_audit(audit_path, {
         "event": "RUNTIME_CONFIG_UPDATED",
         "action": "RUNTIME_CONFIG_UPDATED",
         "actor": actor,
-        "from_revision": current.revision,
-        "to_revision": candidate.revision,
-        "old_revision": current.revision,
-        "new_revision": candidate.revision,
+        "from_control_revision": current.control_revision,
+        "to_control_revision": candidate.control_revision,
+        "old_revision": current.control_revision,
+        "new_revision": candidate.control_revision,
+        "from_execution_revision": current.revision,
+        "to_execution_revision": candidate.revision,
         "changed_fields": sorted(changes),
         "before": current.to_dict(),
         "after": candidate.to_dict(),
@@ -252,15 +300,6 @@ def update_runtime_config(
         "result": "PASS",
     })
     return candidate
-
-
-def identity_changed(before: RuntimeConfig, after: RuntimeConfig) -> bool:
-    return any((
-        before.strategy_id != after.strategy_id,
-        before.symbol != after.symbol,
-        before.timeframe != after.timeframe,
-        before.sizing_base_usdt != after.sizing_base_usdt,
-    ))
 
 
 def assert_safe_configuration_change(
