@@ -40,6 +40,7 @@ def _record(
         "funding": 0.0,
         "realized_pnl": realized_pnl,
         "exchange_order_id": order_id,
+        "reason": reason,
         "recorded_at": recorded_at,
     }
 
