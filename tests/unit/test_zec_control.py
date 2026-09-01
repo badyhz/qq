@@ -7,7 +7,6 @@ import pytest
 
 from core.zec_4h_live import LiveAction, StrategyDecision, StrategyState, save_strategy_state
 from scripts.run_zec_4h_small_live import _load_runtime_state, _risk_increase_block_reason
-
 from core.zec_control import (
     ControlConflictError,
     RuntimeConfig,
@@ -26,6 +25,7 @@ def test_runtime_config_is_fail_closed_and_atomic_0600(tmp_path):
     config = load_runtime_config(path, create=True)
     assert config.strategy_enabled is False
     assert config.revision == 1
+    assert config.control_revision == 1
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert not list(path.parent.glob("*.tmp"))
 
@@ -53,25 +53,63 @@ def test_runtime_config_rejects_cap_leverage_and_unknown_strategy(tmp_path):
         write_runtime_config(path, RuntimeConfig(sizing_base_usdt=51))
 
 
+def test_toggle_advances_control_revision_but_not_execution_revision(tmp_path):
+    path = tmp_path / "runtime_config.json"
+    audit = tmp_path / "audit.jsonl"
+    first = load_runtime_config(path, create=True)
+    second = update_runtime_config(
+        path,
+        expected_revision=first.control_revision,
+        changes={"strategy_enabled": True},
+        audit_path=audit,
+    )
+    assert second.control_revision == first.control_revision + 1
+    assert second.revision == first.revision
+    third = update_runtime_config(
+        path,
+        expected_revision=second.control_revision,
+        changes={"strategy_enabled": False},
+        audit_path=audit,
+    )
+    assert third.control_revision == second.control_revision + 1
+    assert third.revision == first.revision
+
+
+def test_settings_change_advances_execution_and_control_revision(tmp_path):
+    path = tmp_path / "runtime_config.json"
+    audit = tmp_path / "audit.jsonl"
+    first = load_runtime_config(path, create=True)
+    second = update_runtime_config(
+        path,
+        expected_revision=first.control_revision,
+        changes={"symbol": "BTCUSDT"},
+        audit_path=audit,
+    )
+    assert second.control_revision == first.control_revision + 1
+    assert second.revision == first.revision + 1
+
+
 def test_revision_conflict_does_not_overwrite(tmp_path):
     path = tmp_path / "runtime_config.json"
     audit = tmp_path / "audit.jsonl"
     first = load_runtime_config(path, create=True)
     second = update_runtime_config(
         path,
-        expected_revision=first.revision,
+        expected_revision=first.control_revision,
         changes={"strategy_enabled": True},
         audit_path=audit,
     )
     with pytest.raises(ControlConflictError):
         update_runtime_config(
             path,
-            expected_revision=first.revision,
+            expected_revision=first.control_revision,
             changes={"strategy_enabled": False},
             audit_path=audit,
         )
-    assert load_runtime_config(path).revision == second.revision
-    assert load_runtime_config(path).strategy_enabled is True
+    current = load_runtime_config(path)
+    assert current.control_revision == second.control_revision
+    assert current.revision == second.revision
+    assert current.strategy_enabled is True
 
 
 def test_audit_is_append_only_0600_and_redacts_secret_named_fields(tmp_path):
@@ -129,9 +167,19 @@ def test_control_update_rejects_unknown_and_immutable_fields(tmp_path):
     audit = tmp_path / "audit.jsonl"
     current = load_runtime_config(path, create=True)
     with pytest.raises(ValueError, match="governed"):
-        update_runtime_config(path, expected_revision=current.revision, changes={"leverage": 100}, audit_path=audit)
+        update_runtime_config(
+            path,
+            expected_revision=current.control_revision,
+            changes={"leverage": 100},
+            audit_path=audit,
+        )
     with pytest.raises(ValueError, match="unknown"):
-        update_runtime_config(path, expected_revision=current.revision, changes={"manual_order": True}, audit_path=audit)
+        update_runtime_config(
+            path,
+            expected_revision=current.control_revision,
+            changes={"manual_order": True},
+            audit_path=audit,
+        )
 
 
 def _decision(action: str, close_time: str = "2026-09-01T04:00:00+00:00") -> StrategyDecision:
@@ -173,7 +221,7 @@ def test_config_revision_change_archives_old_state_and_starts_cold(tmp_path):
     save_strategy_state(state_path, old)
     new = _load_runtime_state(
         state_path,
-        RuntimeConfig(revision=2, strategy_enabled=False, symbol="BTCUSDT"),
+        RuntimeConfig(revision=2, control_revision=2, strategy_enabled=False, symbol="BTCUSDT"),
     )
     assert new.symbol == "BTCUSDT"
     assert new.config_revision == 2
@@ -183,21 +231,30 @@ def test_config_revision_change_archives_old_state_and_starts_cold(tmp_path):
     assert json.loads(archives[0].read_text())["last_signal"] == "BUY"
 
 
-def test_toggle_only_revision_preserves_position_and_indicator_state(tmp_path):
+def test_toggle_only_control_revision_preserves_state_and_scorecard_epoch(tmp_path):
+    config_path = tmp_path / "runtime_config.json"
+    audit = tmp_path / "audit.jsonl"
+    first = load_runtime_config(config_path, create=True)
+    toggled = update_runtime_config(
+        config_path,
+        expected_revision=first.control_revision,
+        changes={"strategy_enabled": True},
+        audit_path=audit,
+    )
+    assert toggled.revision == first.revision
+    assert toggled.control_revision != first.control_revision
+
     state_path = tmp_path / "runtime" / "state.json"
     old = StrategyState(
-        config_revision=1,
+        config_revision=first.revision,
         warmup_complete=True,
         last_signal="BUY",
         actual_position_qty=0.25,
         full_position_qty=0.25,
     )
     save_strategy_state(state_path, old)
-    migrated = _load_runtime_state(
-        state_path,
-        RuntimeConfig(revision=2, strategy_enabled=False),
-    )
-    assert migrated.config_revision == 2
+    migrated = _load_runtime_state(state_path, toggled)
+    assert migrated.config_revision == first.revision
     assert migrated.warmup_complete is True
     assert migrated.last_signal == "BUY"
     assert migrated.actual_position_qty == 0.25
