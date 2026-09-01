@@ -10,7 +10,8 @@ User=codex
 Group=codex
 WorkingDirectory=/opt/quant-shadow/qq
 Environment=ZEC_4H_ADMIN_BIND=127.0.0.1
-Environment=ZEC_4H_ADMIN_PORT=8765
+# 8765 is reserved by the existing Heima Strategy Lab API on production.
+Environment=ZEC_4H_ADMIN_PORT=8766
 # Read the same API credentials/flags as the executor, but the admin adapter is
 # always constructed with live_enabled=False and exposes no write endpoints.
 EnvironmentFile=-/etc/quant-shadow/zec-4h-small-live.env
