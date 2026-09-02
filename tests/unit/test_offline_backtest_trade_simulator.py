@@ -32,26 +32,21 @@ def _make_bars_with_tp_sl(n=30, break_high_at=None, break_low_at=None, stop_pric
     bars = []
     for i in range(n):
         if break_high_at is not None and i == break_high_at:
-            # High above TP, low stays above stop
             bars.append(_bar(high=tp_price + 5.0, low=stop_price + 2.0, open_=100.0, close=tp_price + 2.0, ts=i))
         elif break_low_at is not None and i == break_low_at:
-            # Low below stop, high stays below TP
             bars.append(_bar(high=tp_price - 5.0, low=stop_price - 2.0, open_=99.0, close=stop_price - 1.0, ts=i))
         else:
-            # Normal bar: stays in range
             bars.append(_bar(high=tp_price - 3.0, low=stop_price + 1.0, open_=100.0, close=101.0, ts=i))
     return bars
 
 
 class TestApplySlippage:
     def test_long_increases_price(self):
-        # 5 bps = 0.05%, 100 * 1.0005 = 100.05
         result = apply_slippage(100.0, 5.0, "long")
         assert result > 100.0
         assert abs(result - 100.05) < 1e-10
 
     def test_short_decreases_price(self):
-        # 5 bps = 0.05%, 100 * 0.9995 = 99.95
         result = apply_slippage(100.0, 5.0, "short")
         assert result < 100.0
         assert abs(result - 99.95) < 1e-10
@@ -95,12 +90,10 @@ class TestApplyFee:
 class TestComputeRMetric:
     def test_positive_r(self):
         r = compute_r_metric(entry=100.0, exit_=105.0, stop_loss=98.0)
-        # risk = 100 - 98 = 2, reward = 105 - 100 = 5, R = 2.5
         assert abs(r - 2.5) < 1e-6
 
     def test_negative_r(self):
         r = compute_r_metric(entry=100.0, exit_=99.0, stop_loss=98.0)
-        # risk = 2, reward = -1, R = -0.5
         assert abs(r - (-0.5)) < 1e-6
 
     def test_zero_r_at_entry(self):
@@ -152,7 +145,6 @@ class TestSimulateTrade:
         assert result.exit_reason == ExitReason.STOP_LOSS.value
 
     def test_max_hold_exit(self):
-        # Neither TP nor SL hit
         bars = [_bar(high=102.0, low=99.0, open_=100.0, close=101.0, ts=i) for i in range(50)]
         signal = _make_signal(entry_bar=5, entry_price=100.0, stop_price=90.0, tp_price=110.0)
         params = TradeSimulationParams(slippage_pct=0.0, fee_pct=0.0, max_hold_bars=10)
@@ -170,7 +162,6 @@ class TestSimulateTrade:
         signal = _make_signal(entry_bar=5, entry_price=100.0, stop_price=90.0, tp_price=120.0)
         params = TradeSimulationParams(slippage_pct=0.001, fee_pct=0.0, max_hold_bars=5)
         result = simulate_trade(signal, bars, params)
-        # Entry price should be higher due to slippage
         assert result.entry_price >= 100.0
 
     def test_fees_positive(self):
@@ -207,18 +198,53 @@ class TestSimulateTrade:
         assert result.signal_id == "sig_1"
 
     def test_stop_loss_before_take_profit(self):
-        """If both SL and TP could trigger on same bar, SL should take priority."""
         bars = [_bar(high=110.0, low=90.0, open_=100.0, close=100.0, ts=i) for i in range(20)]
-        # TP at 105, SL at 98 — bar 8 has low=90 (hits SL) and high=110 (hits TP)
         signal = _make_signal(entry_bar=5, entry_price=100.0, stop_price=98.0, tp_price=105.0)
         params = TradeSimulationParams(slippage_pct=0.0, fee_pct=0.0)
         result = simulate_trade(signal, bars, params)
-        # SL should trigger first since it's checked first
         assert result.exit_reason == ExitReason.STOP_LOSS.value
 
     def test_default_params(self):
-        """Should work with None params (uses defaults)."""
         bars = [_bar(high=102.0, low=99.0, open_=100.0, close=101.0, ts=i) for i in range(20)]
         signal = _make_signal(entry_bar=5, entry_price=100.0, stop_price=90.0, tp_price=120.0)
         result = simulate_trade(signal, bars, None)
         assert isinstance(result, TradeOutcome)
+
+    def test_legacy_execution_does_not_scan_entry_bar(self):
+        bars = [_bar(high=102.0, low=99.0, open_=100.0, close=100.0, ts=i) for i in range(10)]
+        bars[5] = _bar(high=110.0, low=99.0, open_=100.0, close=105.0, ts=5)
+        bars[6] = _bar(high=102.0, low=99.0, open_=100.0, close=100.0, ts=6)
+        signal = _make_signal(entry_bar=5, entry_price=100.0, stop_price=98.0, tp_price=105.0)
+        result = simulate_trade(
+            signal,
+            bars,
+            TradeSimulationParams(slippage_pct=0.0, fee_pct=0.0, max_hold_bars=1),
+        )
+        assert result.exit_reason != ExitReason.TAKE_PROFIT.value
+
+    def test_bar_open_execution_scans_entry_bar(self):
+        bars = [_bar(high=102.0, low=99.0, open_=100.0, close=100.0, ts=i) for i in range(10)]
+        bars[5] = _bar(high=110.0, low=99.0, open_=100.0, close=105.0, ts=5)
+        signal = _make_signal(entry_bar=5, entry_price=100.0, stop_price=98.0, tp_price=105.0)
+        signal["entry_execution"] = "bar_open"
+        result = simulate_trade(
+            signal,
+            bars,
+            TradeSimulationParams(slippage_pct=0.0, fee_pct=0.0, max_hold_bars=1),
+        )
+        assert result.exit_reason == ExitReason.TAKE_PROFIT.value
+        assert result.exit_bar_index == 5
+        assert result.hold_bars == 0
+
+    def test_unknown_entry_execution_fails_closed(self):
+        bars = [_bar(ts=i) for i in range(10)]
+        signal = _make_signal(entry_bar=5)
+        signal["entry_execution"] = "mystery"
+        with pytest.raises(ValueError, match="unsupported entry_execution"):
+            simulate_trade(signal, bars)
+
+    def test_entry_index_outside_dataset_fails_closed(self):
+        bars = [_bar(ts=i) for i in range(3)]
+        signal = _make_signal(entry_bar=5)
+        with pytest.raises(ValueError, match="outside bar data"):
+            simulate_trade(signal, bars)
