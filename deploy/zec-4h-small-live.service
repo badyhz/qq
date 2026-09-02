@@ -1,5 +1,5 @@
 [Unit]
-Description=ZECUSDT 4H Small Live v1 (disabled until governed provisioning)
+Description=ZEC Strategy Live Execution Engine
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=/etc/quant-shadow/zec-4h-small-live.env
@@ -9,8 +9,8 @@ Type=simple
 User=codex
 Group=codex
 WorkingDirectory=/opt/quant-shadow/qq
-# Fail closed by default.  A separately audited EnvironmentFile may override
-# these only during the later secret-provisioning and LIVE PREFLIGHT phase.
+# Master exchange-write permission remains independent from the web-managed
+# strategy_enabled flag. Existing EnvironmentFile values may arm the master.
 Environment=ZEC_4H_LIVE_ENABLED=false
 Environment=ZEC_4H_PREFLIGHT_ENABLED=false
 Environment=ZEC_4H_LIVE_ACTIVATION=disabled
@@ -23,6 +23,7 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/quant-shadow/zec-4h-small-live
+ReadOnlyPaths=/var/lib/quant-shadow/zec-control
 UMask=0077
 
 [Install]

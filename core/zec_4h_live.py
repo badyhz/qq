@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
 from core.paper_trading.data_source import MarketBar, format_utc_timestamp
+from core.zec_control import timeframe_seconds
 
 
 STRATEGY_ID = "zec_4h_live_v1"
@@ -66,6 +67,7 @@ class StrategyState:
     strategy_id: str = STRATEGY_ID
     symbol: str = SYMBOL
     timeframe: str = TIMEFRAME
+    config_revision: int = 1
     phase: str = StrategyPhase.FLAT.value
     last_signal: str = ""
     last_signal_open: Optional[float] = None
@@ -107,12 +109,26 @@ class StrategyState:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, raw: Optional[dict[str, Any]]) -> "StrategyState":
+    def from_dict(
+        cls,
+        raw: Optional[dict[str, Any]],
+        *,
+        expected_identity: Optional[tuple[str, str, str, int]] = None,
+    ) -> "StrategyState":
         values = dict(raw or {})
         allowed = set(cls.__dataclass_fields__)
         state = cls(**{key: value for key, value in values.items() if key in allowed})
-        if state.strategy_id != STRATEGY_ID or state.symbol != SYMBOL or state.timeframe != TIMEFRAME:
-            raise ValueError("strategy state identity mismatch")
+        state.symbol = str(state.symbol).upper()
+        state.timeframe = str(state.timeframe).lower()
+        state.config_revision = int(state.config_revision)
+        if expected_identity is not None:
+            expected = (
+                str(expected_identity[0]), str(expected_identity[1]).upper(),
+                str(expected_identity[2]).lower(), int(expected_identity[3]),
+            )
+            observed = (state.strategy_id, state.symbol, state.timeframe, state.config_revision)
+            if observed != expected:
+                raise ValueError("strategy state identity mismatch")
         if state.phase not in {item.value for item in StrategyPhase}:
             raise ValueError("unknown strategy phase")
         return state
@@ -141,10 +157,24 @@ class StateReplayResult:
     actual_position_qty: float
 
 
-def load_strategy_state(path: Path) -> StrategyState:
+def load_strategy_state(
+    path: Path,
+    *,
+    expected_identity: Optional[tuple[str, str, str, int]] = None,
+) -> StrategyState:
     if not path.exists():
-        return StrategyState()
-    return StrategyState.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        if expected_identity is None:
+            return StrategyState()
+        return StrategyState(
+            strategy_id=str(expected_identity[0]),
+            symbol=str(expected_identity[1]).upper(),
+            timeframe=str(expected_identity[2]).lower(),
+            config_revision=int(expected_identity[3]),
+        )
+    return StrategyState.from_dict(
+        json.loads(path.read_text(encoding="utf-8")),
+        expected_identity=expected_identity,
+    )
 
 
 def save_strategy_state(path: Path, state: StrategyState) -> None:
@@ -205,9 +235,15 @@ def _bar_close_time(bar: MarketBar) -> str:
         raise ValueError("closed bar close_time must be timezone-aware")
     if bar.provider_closed is not True:
         raise ValueError("strategy only accepts canonical provider_closed bars")
-    if str(bar.symbol).upper() != SYMBOL or str(bar.timeframe).lower() != TIMEFRAME:
-        raise ValueError("unexpected bar identity")
     return format_utc_timestamp(bar.close_time)
+
+
+def _validate_bar_identity(bar: MarketBar, state: StrategyState) -> None:
+    if (
+        str(bar.symbol).upper() != state.symbol
+        or str(bar.timeframe).lower() != state.timeframe
+    ):
+        raise ValueError("unexpected bar identity")
 
 
 def _is_black_horse(last_three: Sequence[MarketBar]) -> bool:
@@ -226,13 +262,20 @@ def _is_black_horse(last_three: Sequence[MarketBar]) -> bool:
     )
 
 
-def build_signal_key(action: str, bar_close_time: str) -> str:
+def build_signal_key(
+    action: str,
+    bar_close_time: str,
+    *,
+    strategy_id: str = STRATEGY_ID,
+    symbol: str = SYMBOL,
+    timeframe: str = TIMEFRAME,
+) -> str:
     stamp = (
         datetime.fromisoformat(bar_close_time.replace("Z", "+00:00"))
         .astimezone(timezone.utc)
         .strftime("%Y%m%dT%H%M%SZ")
     )
-    return f"{STRATEGY_ID}:{SYMBOL}:{TIMEFRAME}:{stamp}:{action}"
+    return f"{strategy_id}:{str(symbol).upper()}:{str(timeframe).lower()}:{stamp}:{action}"
 
 
 def build_client_order_id(signal_key: str, action: str, bar_close_time: str) -> str:
@@ -263,7 +306,12 @@ def _decision(
     diagnostics: Optional[dict[str, Any]] = None,
 ) -> StrategyDecision:
     close_time = _bar_close_time(bar)
-    signal_key = build_signal_key(action, close_time) if action else ""
+    signal_key = build_signal_key(
+        action,
+        close_time,
+        symbol=str(bar.symbol).upper(),
+        timeframe=str(bar.timeframe).lower(),
+    ) if action else ""
     client_id = build_client_order_id(signal_key, action, close_time) if action else ""
     return StrategyDecision(
         action=action,
@@ -286,6 +334,7 @@ class Zec4hStrategy:
             raise ValueError(f"at least {WARMUP_BARS} closed bars are required for warmup")
         for bar in bars:
             _bar_close_time(bar)
+            _validate_bar_identity(bar, state)
         closes = [float(bar.close) for bar in bars]
         ma_values = _sma(closes, 27)
         dif, _dea = _macd_lines(closes)
@@ -430,6 +479,7 @@ class Zec4hStrategy:
             raise ValueError("at least 28 closed bars are required")
         for bar in bars[-28:]:
             _bar_close_time(bar)
+            _validate_bar_identity(bar, state)
         current = bars[-1]
         previous = bars[-2]
         close_time = _bar_close_time(current)
@@ -894,6 +944,7 @@ def replay_missed_closed_bars(
         raise ValueError(f"at least {WARMUP_BARS} closed bars are required for replay")
     for bar in bars:
         _bar_close_time(bar)
+        _validate_bar_identity(bar, state)
     if not state.last_processed_bar_close_time:
         raise ValueError("replay requires a prior processed bar boundary")
     unprocessed = [
@@ -903,12 +954,13 @@ def replay_missed_closed_bars(
     if len(unprocessed) < 2:
         raise ValueError("state replay is reserved for two or more missed bars")
     boundary = datetime.fromisoformat(state.last_processed_bar_close_time.replace("Z", "+00:00"))
-    expected = boundary + timedelta(hours=4)
+    interval = timedelta(seconds=timeframe_seconds(state.timeframe))
+    expected = boundary + interval
     for index in unprocessed:
         observed = bars[index].close_time
         if observed is None or abs((observed - expected).total_seconds()) > 0.002:
             raise ValueError("closed-bar replay gap detected")
-        expected = observed + timedelta(hours=4)
+        expected = observed + interval
 
     actual_qty = max(0.0, float(actual_position_qty))
     projected = StrategyState.from_dict(state.to_dict())
@@ -1103,10 +1155,17 @@ def build_live_scorecard(
     current_position: Any,
     current_open_orders: Any,
     strategy_state: StrategyState,
+    runtime_config: Optional[Any] = None,
 ) -> dict[str, Any]:
     """Calculate only from exchange-derived execution ledger values."""
     latest: dict[str, dict[str, Any]] = {}
     for row in records:
+        if runtime_config is not None:
+            row_revision = row.get("config_revision")
+            if row_revision is None and int(runtime_config.revision) != 1:
+                continue
+            if row_revision is not None and int(row_revision) != int(runtime_config.revision):
+                continue
         key = str(row.get("signal_key", ""))
         if key:
             latest[key] = dict(row)
@@ -1164,18 +1223,24 @@ def build_live_scorecard(
         max_drawdown = max(max_drawdown, peak - value)
     net_gains = sum(value for value in net if value > 0)
     net_losses = abs(sum(value for value in net if value < 0))
+    capital_cap = float(getattr(runtime_config, "capital_cap_usdt", LIVE_CAPITAL_CAP_USDT))
+    sizing_base = float(getattr(runtime_config, "sizing_base_usdt", SIZING_BASE_USDT))
+    leverage = int(getattr(runtime_config, "leverage", FIXED_LEVERAGE))
     return {
-        "strategy_id": STRATEGY_ID,
+        "strategy_id": strategy_state.strategy_id,
+        "symbol": strategy_state.symbol,
+        "timeframe": strategy_state.timeframe,
+        "config_revision": strategy_state.config_revision,
         "starting_equity": STARTING_EQUITY,
-        "live_capital_cap_usdt": LIVE_CAPITAL_CAP_USDT,
+        "live_capital_cap_usdt": capital_cap,
         "account_mode": ACCOUNT_MODE,
         "api_mode": API_MODE,
         "sizing_base_rate": SIZING_BASE_RATE,
-        "sizing_base_usdt": SIZING_BASE_USDT,
+        "sizing_base_usdt": sizing_base,
         "leverage_mode": "FIXED",
-        "leverage": FIXED_LEVERAGE,
-        "target_initial_notional_usdt": TARGET_INITIAL_NOTIONAL_USDT,
-        "managed_capital_usdt": min(max(float(current_equity), 0.0), LIVE_CAPITAL_CAP_USDT),
+        "leverage": leverage,
+        "target_initial_notional_usdt": sizing_base * leverage,
+        "managed_capital_usdt": min(max(float(current_equity), 0.0), capital_cap),
         "current_equity": float(current_equity),
         "net_profit": net_profit,
         "target_equity": TARGET_EQUITY,

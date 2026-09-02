@@ -45,6 +45,7 @@ from scripts.run_zec_4h_small_live import (
     _execute_with_immediate_safety_exit,
     _recover_persisted_recovery_outcome,
 )
+from core.zec_control import RuntimeConfig
 
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -1506,6 +1507,38 @@ def test_runner_hard_floor_closes_on_poll_without_new_closed_bar(tmp_path: Path,
     assert persisted.phase == StrategyPhase.HARD_STOP.value
     assert persisted.actual_position_qty == 0.0
     assert persisted.last_processed_bar_close_time == before_boundary
+
+
+def test_execution_engine_strategy_off_blocks_open_but_allows_stop(tmp_path: Path):
+    adapter = FakeAdapter()
+    ledger = LiveExecutionLedger(tmp_path / "live.jsonl")
+    config = RuntimeConfig(strategy_enabled=False)
+    engine = LiveExecutionEngine(adapter, ledger, runtime_config=config)
+    flat = StrategyState(config_revision=config.revision)
+    opened = engine.execute(
+        decision(LiveAction.OPEN.value),
+        flat,
+        strategy_equity=50,
+        mark_price=100,
+        symbol_rules=RULES,
+    )
+    assert opened["submitted"] is False
+    assert adapter.submit_count == 0
+    assert ledger.latest_by_signal_key(decision(LiveAction.OPEN.value).signal_key)["status"] == "STALE_RISK_INCREASE_BLOCKED"
+
+    adapter.position["positionAmt"] = "1"
+    adapter.submit_response.update(status="FILLED", executedQty="1", avgPrice="99")
+    long_state = protected_long_state(config_revision=config.revision)
+    stopped = engine.execute(
+        decision(LiveAction.STOP_CLOSE.value),
+        long_state,
+        strategy_equity=50,
+        mark_price=99,
+        symbol_rules=RULES,
+    )
+    assert stopped["status"] == "FILLED"
+    assert adapter.submit_count == 1
+    assert adapter.submitted[-1]["reduce_only"] is True
 
 
 def test_runner_partial_terminal_executes_safety_exit_in_same_cycle(tmp_path: Path, monkeypatch):

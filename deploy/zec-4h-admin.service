@@ -1,5 +1,5 @@
 [Unit]
-Description=ZECUSDT 4H Read-Only Admin Dashboard
+Description=ZEC Strategy Governed Control Dashboard
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=/etc/quant-shadow/zec-4h-admin.env
@@ -13,7 +13,7 @@ Environment=ZEC_4H_ADMIN_BIND=127.0.0.1
 # 8765 is reserved by the existing Heima Strategy Lab API on production.
 Environment=ZEC_4H_ADMIN_PORT=8766
 # Read the same API credentials/flags as the executor, but the admin adapter is
-# always constructed with live_enabled=False and exposes no write endpoints.
+# always constructed with live_enabled=False and exposes no manual order path.
 EnvironmentFile=-/etc/quant-shadow/zec-4h-small-live.env
 EnvironmentFile=/etc/quant-shadow/zec-4h-admin.env
 ExecStart=/usr/bin/python3 /opt/quant-shadow/qq/scripts/run_zec_4h_admin.py
@@ -23,6 +23,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
+# The admin may mutate only governed runtime config/audit documents. It has no
+# write access to strategy state, ledgers, repository files, or credentials.
+StateDirectory=quant-shadow/zec-control
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/quant-shadow/zec-control
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
