@@ -9,7 +9,13 @@ Signal-bar time, exchange fill time, and local record/replay time remain separat
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import sys
 from typing import Any, Iterable
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from core.zec_4h_admin import (
     DEFAULT_LEDGER_PATH,
