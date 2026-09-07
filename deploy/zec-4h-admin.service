@@ -16,7 +16,7 @@ Environment=ZEC_4H_ADMIN_PORT=8766
 # always constructed with live_enabled=False and exposes no manual order path.
 EnvironmentFile=-/etc/quant-shadow/zec-4h-small-live.env
 EnvironmentFile=/etc/quant-shadow/zec-4h-admin.env
-ExecStart=/usr/bin/python3 /opt/quant-shadow/qq/scripts/run_zec_4h_admin.py
+ExecStart=/usr/bin/python3 /opt/quant-shadow/qq/scripts/zec_4h_admin_strategy_view.py
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
