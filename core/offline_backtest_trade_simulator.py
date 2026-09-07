@@ -2,6 +2,13 @@
 
 Simulates trade outcomes from signal entries against bar data.
 Computes P&L, R-multiples, MFE/MAE, hold duration, slippage, and fees.
+
+Legacy signals keep the original behavior: their entry bar is treated as the
+observation bar and price-path simulation begins on the following bar.
+Signals that explicitly set ``entry_execution='bar_open'`` are filled at that
+bar's open and are exposed to that same bar's high/low path. This enables a
+closed-signal -> next-bar-open execution contract without creating a second
+simulator or changing existing callers.
 """
 from __future__ import annotations
 
@@ -61,17 +68,14 @@ def simulate_trade(
 ) -> TradeOutcome:
     """Simulate a single trade from a signal against bar data.
 
-    Parameters
-    ----------
-    signal : dict
-        Must have: signal_id, entry_bar_index, entry_price, stop_price, tp_price.
-    bars : Sequence[dict]
-        Bar dicts with open/high/low/close/volume.
-    params : TradeSimulationParams, optional
+    Required signal keys: ``signal_id``, ``entry_bar_index``, ``entry_price``,
+    ``stop_price`` and ``tp_price``.
 
-    Returns
-    -------
-    TradeOutcome
+    Optional ``entry_execution`` values:
+    - ``observation_price`` (default): preserve legacy behavior and begin path
+      simulation on the bar after ``entry_bar_index``;
+    - ``bar_open``: ``entry_price`` is the selected entry bar's open, so stop/
+      target checks begin on that same bar.
     """
     if params is None:
         params = TradeSimulationParams()
@@ -81,20 +85,24 @@ def simulate_trade(
     entry_price = float(signal["entry_price"])
     stop_price = float(signal["stop_price"])
     tp_price = float(signal["tp_price"])
+    entry_execution = str(signal.get("entry_execution") or "observation_price")
+    if entry_execution not in {"observation_price", "bar_open"}:
+        raise ValueError(f"unsupported entry_execution: {entry_execution}")
+    if entry_idx < 0 or entry_idx >= len(bars):
+        raise ValueError("entry_bar_index is outside bar data")
 
     # Direction: SHORT if stop > entry, LONG if stop < entry
     is_short = stop_price > entry_price
 
-    # Apply slippage to entry
+    # Apply adverse slippage to entry.
     if is_short:
         actual_entry = entry_price * (1 - params.slippage_pct)
     else:
         actual_entry = entry_price * (1 + params.slippage_pct)
 
-    # Risk distance in R
     risk_distance = abs(actual_entry - stop_price)
     if risk_distance <= 0:
-        risk_distance = entry_price * 0.01  # fallback 1%
+        risk_distance = entry_price * 0.01  # legacy fallback 1%
 
     best_favorable = 0.0
     worst_adverse = 0.0
@@ -102,13 +110,13 @@ def simulate_trade(
     exit_idx = entry_idx
     exit_price = actual_entry
     exit_reason = ExitReason.END_OF_DATA.value
+    scan_start = entry_idx if entry_execution == "bar_open" else entry_idx + 1
 
-    for i in range(entry_idx + 1, min(entry_idx + params.max_hold_bars + 1, len(bars))):
+    for i in range(scan_start, min(entry_idx + params.max_hold_bars + 1, len(bars))):
         bar = bars[i]
         high = float(bar["high"])
         low = float(bar["low"])
 
-        # Compute excursion in R
         if is_short:
             favorable = (actual_entry - low) / risk_distance
             adverse = (high - actual_entry) / risk_distance
@@ -119,25 +127,24 @@ def simulate_trade(
         best_favorable = max(best_favorable, favorable)
         worst_adverse = max(worst_adverse, adverse)
 
-        # Check stop loss
+        # Preserve existing conservative intrabar ambiguity rule: stop first.
         if is_short and high >= stop_price:
             exit_idx = i
             exit_price = stop_price * (1 + params.slippage_pct)
             exit_reason = ExitReason.STOP_LOSS.value
             break
-        elif not is_short and low <= stop_price:
+        if not is_short and low <= stop_price:
             exit_idx = i
             exit_price = stop_price * (1 - params.slippage_pct)
             exit_reason = ExitReason.STOP_LOSS.value
             break
 
-        # Check take profit
         if is_short and low <= tp_price:
             exit_idx = i
             exit_price = tp_price * (1 + params.slippage_pct)
             exit_reason = ExitReason.TAKE_PROFIT.value
             break
-        elif not is_short and high >= tp_price:
+        if not is_short and high >= tp_price:
             exit_idx = i
             exit_price = tp_price * (1 - params.slippage_pct)
             exit_reason = ExitReason.TAKE_PROFIT.value
@@ -145,11 +152,12 @@ def simulate_trade(
 
         exit_idx = i
 
-    # If max hold exceeded
-    if exit_reason == ExitReason.END_OF_DATA.value and exit_idx >= entry_idx + params.max_hold_bars:
+    if (
+        exit_reason == ExitReason.END_OF_DATA.value
+        and exit_idx >= entry_idx + params.max_hold_bars
+    ):
         exit_reason = ExitReason.MAX_HOLD.value
 
-    # P&L calculation
     if is_short:
         gross_pnl = actual_entry - exit_price
     else:
@@ -190,8 +198,7 @@ def apply_slippage(price: float, slippage_bps: float, direction: str = "long") -
         raise ValueError(f"slippage_bps must be >= 0, got {slippage_bps}")
     if direction == "long":
         return price * (1.0 + slippage_bps / 10000.0)
-    else:
-        return price * (1.0 - slippage_bps / 10000.0)
+    return price * (1.0 - slippage_bps / 10000.0)
 
 
 def apply_fee(notional: float, fee_bps: float) -> float:

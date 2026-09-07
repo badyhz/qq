@@ -1,0 +1,51 @@
+name: Indicator Ports Focused CI
+
+on:
+  push:
+    branches:
+      - agent/indicator-composite-v1
+  pull_request:
+    paths:
+      - "core/binance_public_ohlcv_archive.py"
+      - "core/offline_backtest_trade_simulator.py"
+      - "core/paper_trading/aicoin_indicator_ports.py"
+      - "core/paper_trading/indicator_composite_strategy.py"
+      - "core/paper_trading/market_accelerator_port.py"
+      - "tests/unit/test_aicoin_indicator_ports.py"
+      - "tests/unit/test_binance_public_ohlcv_archive.py"
+      - "tests/unit/test_market_accelerator_port.py"
+      - "tests/unit/test_offline_backtest_trade_simulator.py"
+      - ".github/workflows/indicator-composite-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install focused test dependency
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Run retained indicator and simulator tests
+        env:
+          HOME: ${{ runner.temp }}/isolated-home
+        run: |
+          mkdir -p "$HOME"
+          python -m pytest -q \
+            tests/unit/test_offline_backtest_trade_simulator.py \
+            tests/unit/test_aicoin_indicator_ports.py \
+            tests/unit/test_market_accelerator_port.py \
+            tests/unit/test_binance_public_ohlcv_archive.py
