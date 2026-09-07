@@ -1,6 +1,30 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 from scripts.zec_4h_admin_strategy_view import HTML, repair_admin_snapshot
+
+
+def test_systemd_entrypoint_imports_repo_modules_from_outside_repo(tmp_path: Path):
+    root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env.pop("ZEC_4H_ADMIN_USER", None)
+    env.pop("ZEC_4H_ADMIN_PASSWORD", None)
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts" / "zec_4h_admin_strategy_view.py")],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "ZEC_4H_ADMIN_CREDENTIALS_MISSING" in result.stderr
+    assert "ModuleNotFoundError" not in result.stderr
 
 
 def test_strategy_history_hides_unmatched_account_fills_and_separates_times():
